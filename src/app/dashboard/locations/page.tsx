@@ -21,6 +21,7 @@ export default function LocationsPage() {
   });
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +49,7 @@ export default function LocationsPage() {
 
   const handleDelete = async (locationId: string) => {
     if (!coach || !db) return;
-    if (!confirm('Are you sure you want to delete this location?')) return;
+    setConfirmDeleteId(null);
     setDeletingId(locationId);
 
     try {
@@ -120,7 +121,7 @@ export default function LocationsPage() {
                 <Button
                   variant="danger"
                   size="sm"
-                  onClick={() => handleDelete(location.id)}
+                  onClick={() => setConfirmDeleteId(location.id)}
                   loading={deletingId === location.id}
                 >
                   Delete
@@ -130,6 +131,23 @@ export default function LocationsPage() {
           ))}
         </div>
       )}
+
+      {/* Delete Location Confirmation Modal */}
+      <Modal
+        isOpen={confirmDeleteId !== null}
+        onClose={() => setConfirmDeleteId(null)}
+        title="Delete Location"
+      >
+        <p className="text-gray-600 mb-6">Are you sure you want to delete this location?</p>
+        <div className="flex justify-end gap-3">
+          <Button variant="secondary" onClick={() => setConfirmDeleteId(null)}>
+            No, Keep It
+          </Button>
+          <Button variant="danger" onClick={() => confirmDeleteId && handleDelete(confirmDeleteId)}>
+            Yes, Delete
+          </Button>
+        </div>
+      </Modal>
 
       {/* Add Location Modal */}
       <Modal

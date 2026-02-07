@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
@@ -42,6 +42,7 @@ export default function SettingsPage() {
   const { workingHours, loading: hoursLoading } = useWorkingHours(coach?.id);
   const { showToast } = useToast();
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   const [formData, setFormData] = useState({
     lessonDurationMinutes: '60',
@@ -70,10 +71,19 @@ export default function SettingsPage() {
     }
   }, [coach]);
 
-  // Load working hours
+  // Load working hours (skip while saving to prevent race condition)
   useEffect(() => {
+    if (savingRef.current) return;
     if (workingHours.length > 0) {
-      const newSchedule = { ...schedule };
+      const newSchedule: Record<DayOfWeek, { enabled: boolean; startTime: string; endTime: string }> = {
+        monday: { enabled: false, startTime: '09:00', endTime: '17:00' },
+        tuesday: { enabled: false, startTime: '09:00', endTime: '17:00' },
+        wednesday: { enabled: false, startTime: '09:00', endTime: '17:00' },
+        thursday: { enabled: false, startTime: '09:00', endTime: '17:00' },
+        friday: { enabled: false, startTime: '09:00', endTime: '17:00' },
+        saturday: { enabled: false, startTime: '09:00', endTime: '17:00' },
+        sunday: { enabled: false, startTime: '09:00', endTime: '17:00' },
+      };
       workingHours.forEach((wh) => {
         newSchedule[wh.day] = {
           enabled: wh.enabled,
@@ -87,25 +97,32 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     if (!coach || !db) return;
+    const firestore = db;
     setSaving(true);
+    savingRef.current = true;
+
+    // Capture current schedule state to avoid stale closures
+    const scheduleSnapshot = { ...schedule };
 
     try {
       // Update coach profile
-      await updateDoc(doc(db, 'coaches', coach.id), {
+      await updateDoc(doc(firestore, 'coaches', coach.id), {
         lessonDurationMinutes: parseInt(formData.lessonDurationMinutes),
         travelBufferMinutes: parseInt(formData.travelBufferMinutes),
         whatsappNumber: formData.whatsappNumber,
         updatedAt: serverTimestamp(),
       });
 
-      // Update working hours
-      for (const day of DAYS) {
-        await updateDoc(doc(db, 'coaches', coach.id, 'workingHours', day), {
-          enabled: schedule[day].enabled,
-          startTime: schedule[day].startTime,
-          endTime: schedule[day].endTime,
-        });
-      }
+      // Update all working hours in parallel
+      await Promise.all(
+        DAYS.map((day) =>
+          updateDoc(doc(firestore, 'coaches', coach.id, 'workingHours', day), {
+            enabled: scheduleSnapshot[day].enabled,
+            startTime: scheduleSnapshot[day].startTime,
+            endTime: scheduleSnapshot[day].endTime,
+          })
+        )
+      );
 
       await refreshCoach();
       showToast('Settings saved!', 'success');
@@ -113,6 +130,7 @@ export default function SettingsPage() {
       console.error('Error saving settings:', error);
       showToast('Failed to save settings', 'error');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };

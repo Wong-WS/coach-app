@@ -42,7 +42,7 @@ export default function Home() {
             <Link href="/signup">
               <Button size="lg">Start Free</Button>
             </Link>
-            <Link href="/demo">
+            <Link href="/test-coach">
               <Button variant="secondary" size="lg">View Demo</Button>
             </Link>
           </div>

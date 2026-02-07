@@ -39,10 +39,18 @@ export default function DashboardPage() {
   // Get current day
   const today = DAYS[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1];
 
+  if (!coach) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Welcome, {coach?.displayName}!</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Welcome, {coach.displayName}!</h1>
         <p className="text-gray-600 mt-1">Here&apos;s an overview of your schedule</p>
       </div>
 

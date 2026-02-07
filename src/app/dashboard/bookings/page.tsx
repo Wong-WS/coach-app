@@ -51,6 +51,7 @@ export default function BookingsPage() {
   });
   const [saving, setSaving] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
 
   const confirmedBookings = bookings.filter((b) => b.status === 'confirmed');
   const cancelledBookings = bookings.filter((b) => b.status === 'cancelled');
@@ -115,7 +116,7 @@ export default function BookingsPage() {
 
   const handleCancel = async (bookingId: string) => {
     if (!coach || !db) return;
-    if (!confirm('Are you sure you want to cancel this booking?')) return;
+    setConfirmCancelId(null);
     setCancellingId(bookingId);
 
     try {
@@ -216,7 +217,7 @@ export default function BookingsPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleCancel(booking.id)}
+                          onClick={() => setConfirmCancelId(booking.id)}
                           loading={cancellingId === booking.id}
                         >
                           Cancel
@@ -257,6 +258,23 @@ export default function BookingsPage() {
           </div>
         </div>
       )}
+
+      {/* Cancel Booking Confirmation Modal */}
+      <Modal
+        isOpen={confirmCancelId !== null}
+        onClose={() => setConfirmCancelId(null)}
+        title="Cancel Booking"
+      >
+        <p className="text-gray-600 mb-6">Are you sure you want to cancel this booking?</p>
+        <div className="flex justify-end gap-3">
+          <Button variant="secondary" onClick={() => setConfirmCancelId(null)}>
+            No, Keep It
+          </Button>
+          <Button variant="danger" onClick={() => confirmCancelId && handleCancel(confirmCancelId)}>
+            Yes, Cancel Booking
+          </Button>
+        </div>
+      </Modal>
 
       {/* Add Booking Modal */}
       <Modal
