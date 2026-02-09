@@ -73,6 +73,25 @@ export interface SignupFormData {
   whatsappNumber: string;
 }
 
+// Waitlist types
+export type WaitlistStatus = 'waiting' | 'contacted' | 'booked';
+export type PreferredTime = 'morning' | 'afternoon' | 'evening' | 'any';
+
+export interface WaitlistEntry {
+  id: string;
+  locationId: string;
+  locationName: string;
+  dayOfWeek: DayOfWeek;
+  preferredTime: PreferredTime;
+  clientName: string;
+  clientPhone: string;
+  notes: string;
+  status: WaitlistStatus;
+  createdAt: Date;
+  contactedAt?: Date;
+  bookedAt?: Date;
+}
+
 export interface BookingFormData {
   locationId: string;
   dayOfWeek: DayOfWeek;

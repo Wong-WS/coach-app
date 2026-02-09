@@ -3,6 +3,7 @@
 ## Project: CoachApp - Multi-Tenant Scheduling SaaS
 
 ### Useful Commands
+
 - `npm run dev` - Run development server (http://localhost:3000)
 - `npm run build` - Build for production
 - `npm run lint` - Run ESLint
@@ -10,6 +11,7 @@
 - `firebase deploy --only firestore:rules` - Deploy Firestore security rules
 
 ### Project Structure
+
 ```
 coach-app/src/
 ├── app/
@@ -37,6 +39,7 @@ coach-app/src/
 ```
 
 ### Technology Stack
+
 - **Framework**: Next.js 15 with App Router
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
@@ -45,6 +48,7 @@ coach-app/src/
 - **Hosting**: Vercel (planned)
 
 ### Firestore Data Model
+
 ```
 coachSlugs/{slug}                        # Top-level lookup: slug → coachId
   coachId: string
@@ -68,6 +72,7 @@ coaches/{coachId}/bookings/{bookingId}   # Recurring weekly bookings
 ```
 
 ### Key Features (Phase 1)
+
 1. Coach signup with unique slug (public URL)
 2. Working hours configuration (per day)
 3. Lesson duration and travel buffer settings
@@ -78,18 +83,28 @@ coaches/{coachId}/bookings/{bookingId}   # Recurring weekly bookings
 8. Availability engine with travel buffer calculation
 
 ### Availability Engine Logic
+
 - Takes: workingHours, lessonDuration, travelBuffer, confirmedBookings, clientLocationId
 - For each day, finds gaps between bookings
 - Applies travel buffer only when adjacent booking is at DIFFERENT location
 - Generates available start times in 30-minute increments
 
 ### Security Rules
+
 - coachSlugs: public read, authenticated create (own uid only)
 - coaches: public read, owner write
 - workingHours/locations: public read, owner write
 - bookings: public read (for availability engine), owner write
 
+### Test Account
+
+- **Email**: testcoach@example.com
+- **Password**: Test123!
+- **Slug**: test-coach
+- **Public page**: https://coach-app-ashen-delta.vercel.app/test-coach
+
 ### Environment Variables (.env.local)
+
 ```
 NEXT_PUBLIC_FIREBASE_API_KEY=
 NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
@@ -100,10 +115,12 @@ NEXT_PUBLIC_FIREBASE_APP_ID=
 ```
 
 ### Phase 2 (Future)
+
 - Waitlist system
 - WhatsApp/SMS notifications
 - Holiday/exception handling
 
 ### Phase 3 (Future)
+
 - Payments/subscriptions
 - Custom domains
