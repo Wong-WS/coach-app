@@ -22,9 +22,9 @@ const LESSON_TYPE_OPTIONS = [
   { value: 'group', label: 'Group' },
 ];
 
-const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
-  const hours = Math.floor(i / 2);
-  const minutes = (i % 2) * 30;
+const TIME_OPTIONS = Array.from({ length: 24 * 12 }, (_, i) => {
+  const hours = Math.floor(i / 12);
+  const minutes = (i % 12) * 5;
   const time = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
   const period = hours >= 12 ? 'PM' : 'AM';
   const displayHours = hours % 12 || 12;
