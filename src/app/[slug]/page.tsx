@@ -21,6 +21,7 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
   const [selectedLocation, setSelectedLocation] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [afterSchool, setAfterSchool] = useState(false);
   const [isWaitlistModalOpen, setIsWaitlistModalOpen] = useState(false);
   const [waitlistSaving, setWaitlistSaving] = useState(false);
   const [waitlistForm, setWaitlistForm] = useState({
@@ -279,16 +280,39 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
             {/* Availability grid */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100">
               <div className="p-6 border-b border-gray-100">
-                <h2 className="text-lg font-semibold text-gray-900">Available Slots</h2>
-                <p className="text-sm text-gray-600 mt-1">
-                  {coach.lessonDurationMinutes} minute lessons
-                </p>
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900">Available Slots</h2>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {coach.lessonDurationMinutes} minute lessons
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setAfterSchool(false)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        !afterSchool ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      All times
+                    </button>
+                    <button
+                      onClick={() => setAfterSchool(true)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        afterSchool ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      After 3 PM
+                    </button>
+                  </div>
+                </div>
               </div>
               <div className="p-6">
                 <div className="space-y-6">
                   {DAYS.map((day) => {
                     const dayAvailability = availability.find((a) => a.dayOfWeek === day);
-                    const slots = dayAvailability?.slots || [];
+                    const allSlots = dayAvailability?.slots || [];
+                    const slots = afterSchool ? allSlots.filter((s) => s.startTime >= '15:00') : allSlots;
 
                     return (
                       <div key={day} className="border-b border-gray-100 pb-4 last:border-0 last:pb-0">
