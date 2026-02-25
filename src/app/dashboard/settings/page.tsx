@@ -47,6 +47,35 @@ const defaultDaySchedule = (enabled: boolean): DaySchedule => ({
   timeRanges: [{ startTime: '09:00', endTime: '17:00' }],
 });
 
+function t(time: string): number {
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
+}
+
+// Returns an error message if the schedule has invalid or overlapping ranges, null if valid
+function validateSchedule(schedule: Record<DayOfWeek, DaySchedule>): string | null {
+  for (const day of DAYS) {
+    const { enabled, timeRanges } = schedule[day];
+    if (!enabled || timeRanges.length === 0) continue;
+
+    for (let i = 0; i < timeRanges.length; i++) {
+      const { startTime, endTime } = timeRanges[i];
+      if (t(startTime) >= t(endTime)) {
+        return `${getDayDisplayName(day)}: range ${i + 1} — start time must be before end time`;
+      }
+    }
+
+    // Sort by start and check for overlaps between adjacent ranges
+    const sorted = [...timeRanges].sort((a, b) => t(a.startTime) - t(b.startTime));
+    for (let i = 0; i < sorted.length - 1; i++) {
+      if (t(sorted[i].endTime) > t(sorted[i + 1].startTime)) {
+        return `${getDayDisplayName(day)}: time ranges overlap — ${sorted[i].startTime}–${sorted[i].endTime} conflicts with ${sorted[i + 1].startTime}–${sorted[i + 1].endTime}`;
+      }
+    }
+  }
+  return null;
+}
+
 export default function SettingsPage() {
   const { coach, refreshCoach } = useAuth();
   const { workingHours, loading: hoursLoading } = useWorkingHours(coach?.id);
@@ -136,6 +165,13 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     if (!coach || !db) return;
+
+    const validationError = validateSchedule(schedule);
+    if (validationError) {
+      showToast(validationError, 'error');
+      return;
+    }
+
     const firestore = db;
     setSaving(true);
     savingRef.current = true;
@@ -249,45 +285,72 @@ export default function SettingsPage() {
 
                 {schedule[day].enabled ? (
                   <div className="flex-1 space-y-2">
-                    {schedule[day].timeRanges.map((range, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <select
-                          value={range.startTime}
-                          onChange={(e) => updateTimeRange(day, idx, 'startTime', e.target.value)}
-                          className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        >
-                          {TIME_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                        <span className="text-gray-400 text-sm">to</span>
-                        <select
-                          value={range.endTime}
-                          onChange={(e) => updateTimeRange(day, idx, 'endTime', e.target.value)}
-                          className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        >
-                          {TIME_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                        {schedule[day].timeRanges.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeTimeRange(day, idx)}
-                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Remove this time range"
-                          >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                    {(() => {
+                      // Compute which range indices are invalid (start >= end or overlapping)
+                      const ranges = schedule[day].timeRanges;
+                      const errorIndices = new Set<number>();
+                      ranges.forEach((r, i) => {
+                        if (t(r.startTime) >= t(r.endTime)) errorIndices.add(i);
+                      });
+                      // Check overlaps: for each pair, mark both as errors
+                      for (let i = 0; i < ranges.length; i++) {
+                        for (let j = i + 1; j < ranges.length; j++) {
+                          const a = ranges[i], b = ranges[j];
+                          if (t(a.startTime) < t(b.endTime) && t(b.startTime) < t(a.endTime)) {
+                            errorIndices.add(i);
+                            errorIndices.add(j);
+                          }
+                        }
+                      }
+                      return ranges.map((range, idx) => {
+                        const hasError = errorIndices.has(idx);
+                        const borderClass = hasError
+                          ? 'border-red-400 ring-1 ring-red-400'
+                          : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500';
+                        return (
+                          <div key={idx} className="flex items-center gap-2">
+                            <select
+                              value={range.startTime}
+                              onChange={(e) => updateTimeRange(day, idx, 'startTime', e.target.value)}
+                              className={`text-sm border rounded-lg px-3 py-2 focus:ring-2 ${borderClass}`}
+                            >
+                              {TIME_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
+                            </select>
+                            <span className="text-gray-400 text-sm">to</span>
+                            <select
+                              value={range.endTime}
+                              onChange={(e) => updateTimeRange(day, idx, 'endTime', e.target.value)}
+                              className={`text-sm border rounded-lg px-3 py-2 focus:ring-2 ${borderClass}`}
+                            >
+                              {TIME_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
+                            </select>
+                            {hasError && (
+                              <span className="text-red-500" title={t(range.startTime) >= t(range.endTime) ? 'Start must be before end' : 'Overlaps with another range'}>
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 3a9 9 0 110 18A9 9 0 0112 3z" />
+                                </svg>
+                              </span>
+                            )}
+                            {ranges.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeTimeRange(day, idx)}
+                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Remove this time range"
+                              >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
                     <button
                       type="button"
                       onClick={() => addTimeRange(day)}
