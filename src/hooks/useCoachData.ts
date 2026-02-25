@@ -19,12 +19,17 @@ export function useWorkingHours(coachId: string | undefined) {
     const unsubscribe = onSnapshot(
       collection(firestore, 'coaches', coachId, 'workingHours'),
       (snapshot) => {
-        const hours: WorkingHours[] = snapshot.docs.map((d) => ({
-          day: d.id as DayOfWeek,
-          enabled: d.data().enabled,
-          startTime: d.data().startTime,
-          endTime: d.data().endTime,
-        }));
+        const hours: WorkingHours[] = snapshot.docs.map((d) => {
+          const data = d.data();
+          // Backward compat: migrate old { startTime, endTime } format
+          const timeRanges = data.timeRanges
+            ?? (data.startTime ? [{ startTime: data.startTime, endTime: data.endTime }] : [{ startTime: '09:00', endTime: '17:00' }]);
+          return {
+            day: d.id as DayOfWeek,
+            enabled: data.enabled,
+            timeRanges,
+          };
+        });
         setWorkingHours(hours);
         setLoading(false);
       }

@@ -37,6 +37,16 @@ const TIME_OPTIONS = Array.from({ length: 24 * 2 }, (_, i) => {
   return { value: time, label };
 });
 
+type DaySchedule = {
+  enabled: boolean;
+  timeRanges: { startTime: string; endTime: string }[];
+};
+
+const defaultDaySchedule = (enabled: boolean): DaySchedule => ({
+  enabled,
+  timeRanges: [{ startTime: '09:00', endTime: '17:00' }],
+});
+
 export default function SettingsPage() {
   const { coach, refreshCoach } = useAuth();
   const { workingHours, loading: hoursLoading } = useWorkingHours(coach?.id);
@@ -50,14 +60,14 @@ export default function SettingsPage() {
     whatsappNumber: '',
   });
 
-  const [schedule, setSchedule] = useState<Record<DayOfWeek, { enabled: boolean; startTime: string; endTime: string }>>({
-    monday: { enabled: true, startTime: '09:00', endTime: '17:00' },
-    tuesday: { enabled: true, startTime: '09:00', endTime: '17:00' },
-    wednesday: { enabled: true, startTime: '09:00', endTime: '17:00' },
-    thursday: { enabled: true, startTime: '09:00', endTime: '17:00' },
-    friday: { enabled: true, startTime: '09:00', endTime: '17:00' },
-    saturday: { enabled: false, startTime: '09:00', endTime: '17:00' },
-    sunday: { enabled: false, startTime: '09:00', endTime: '17:00' },
+  const [schedule, setSchedule] = useState<Record<DayOfWeek, DaySchedule>>({
+    monday: defaultDaySchedule(true),
+    tuesday: defaultDaySchedule(true),
+    wednesday: defaultDaySchedule(true),
+    thursday: defaultDaySchedule(true),
+    friday: defaultDaySchedule(true),
+    saturday: defaultDaySchedule(false),
+    sunday: defaultDaySchedule(false),
   });
 
   // Load coach data
@@ -75,25 +85,54 @@ export default function SettingsPage() {
   useEffect(() => {
     if (savingRef.current) return;
     if (workingHours.length > 0) {
-      const newSchedule: Record<DayOfWeek, { enabled: boolean; startTime: string; endTime: string }> = {
-        monday: { enabled: false, startTime: '09:00', endTime: '17:00' },
-        tuesday: { enabled: false, startTime: '09:00', endTime: '17:00' },
-        wednesday: { enabled: false, startTime: '09:00', endTime: '17:00' },
-        thursday: { enabled: false, startTime: '09:00', endTime: '17:00' },
-        friday: { enabled: false, startTime: '09:00', endTime: '17:00' },
-        saturday: { enabled: false, startTime: '09:00', endTime: '17:00' },
-        sunday: { enabled: false, startTime: '09:00', endTime: '17:00' },
+      const newSchedule: Record<DayOfWeek, DaySchedule> = {
+        monday: defaultDaySchedule(false),
+        tuesday: defaultDaySchedule(false),
+        wednesday: defaultDaySchedule(false),
+        thursday: defaultDaySchedule(false),
+        friday: defaultDaySchedule(false),
+        saturday: defaultDaySchedule(false),
+        sunday: defaultDaySchedule(false),
       };
       workingHours.forEach((wh) => {
         newSchedule[wh.day] = {
           enabled: wh.enabled,
-          startTime: wh.startTime,
-          endTime: wh.endTime,
+          timeRanges: wh.timeRanges.length > 0 ? wh.timeRanges : [{ startTime: '09:00', endTime: '17:00' }],
         };
       });
       setSchedule(newSchedule);
     }
   }, [workingHours]);
+
+  const addTimeRange = (day: DayOfWeek) => {
+    setSchedule((prev) => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        timeRanges: [...prev[day].timeRanges, { startTime: '09:00', endTime: '17:00' }],
+      },
+    }));
+  };
+
+  const removeTimeRange = (day: DayOfWeek, index: number) => {
+    setSchedule((prev) => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        timeRanges: prev[day].timeRanges.filter((_, i) => i !== index),
+      },
+    }));
+  };
+
+  const updateTimeRange = (day: DayOfWeek, index: number, field: 'startTime' | 'endTime', value: string) => {
+    setSchedule((prev) => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        timeRanges: prev[day].timeRanges.map((r, i) => (i === index ? { ...r, [field]: value } : r)),
+      },
+    }));
+  };
 
   const handleSave = async () => {
     if (!coach || !db) return;
@@ -101,11 +140,9 @@ export default function SettingsPage() {
     setSaving(true);
     savingRef.current = true;
 
-    // Capture current schedule state to avoid stale closures
     const scheduleSnapshot = { ...schedule };
 
     try {
-      // Update coach profile
       await updateDoc(doc(firestore, 'coaches', coach.id), {
         lessonDurationMinutes: parseInt(formData.lessonDurationMinutes),
         travelBufferMinutes: parseInt(formData.travelBufferMinutes),
@@ -113,13 +150,11 @@ export default function SettingsPage() {
         updatedAt: serverTimestamp(),
       });
 
-      // Update all working hours in parallel
       await Promise.all(
         DAYS.map((day) =>
           updateDoc(doc(firestore, 'coaches', coach.id, 'workingHours', day), {
             enabled: scheduleSnapshot[day].enabled,
-            startTime: scheduleSnapshot[day].startTime,
-            endTime: scheduleSnapshot[day].endTime,
+            timeRanges: scheduleSnapshot[day].timeRanges,
           })
         )
       );
@@ -194,63 +229,80 @@ export default function SettingsPage() {
         <h2 className="text-lg font-semibold text-gray-900 mb-6">Weekly Schedule</h2>
         <div className="space-y-4">
           {DAYS.map((day) => (
-            <div key={day} className="flex items-center gap-4 py-2 border-b border-gray-100 last:border-0">
-              <label className="flex items-center gap-3 w-32">
-                <input
-                  type="checkbox"
-                  checked={schedule[day].enabled}
-                  onChange={(e) =>
-                    setSchedule({
-                      ...schedule,
-                      [day]: { ...schedule[day], enabled: e.target.checked },
-                    })
-                  }
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-sm font-medium text-gray-700">{getDayDisplayName(day)}</span>
-              </label>
-
-              {schedule[day].enabled && (
-                <div className="flex items-center gap-2 flex-1">
-                  <select
-                    value={schedule[day].startTime}
+            <div key={day} className="py-3 border-b border-gray-100 last:border-0">
+              <div className="flex items-start gap-4">
+                {/* Checkbox + day label */}
+                <label className="flex items-center gap-3 w-32 pt-2 cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={schedule[day].enabled}
                     onChange={(e) =>
                       setSchedule({
                         ...schedule,
-                        [day]: { ...schedule[day], startTime: e.target.value },
+                        [day]: { ...schedule[day], enabled: e.target.checked },
                       })
                     }
-                    className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    {TIME_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-gray-400">to</span>
-                  <select
-                    value={schedule[day].endTime}
-                    onChange={(e) =>
-                      setSchedule({
-                        ...schedule,
-                        [day]: { ...schedule[day], endTime: e.target.value },
-                      })
-                    }
-                    className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    {TIME_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">{getDayDisplayName(day)}</span>
+                </label>
 
-              {!schedule[day].enabled && (
-                <span className="text-sm text-gray-400">Day off</span>
-              )}
+                {schedule[day].enabled ? (
+                  <div className="flex-1 space-y-2">
+                    {schedule[day].timeRanges.map((range, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <select
+                          value={range.startTime}
+                          onChange={(e) => updateTimeRange(day, idx, 'startTime', e.target.value)}
+                          className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          {TIME_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="text-gray-400 text-sm">to</span>
+                        <select
+                          value={range.endTime}
+                          onChange={(e) => updateTimeRange(day, idx, 'endTime', e.target.value)}
+                          className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          {TIME_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                        {schedule[day].timeRanges.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeTimeRange(day, idx)}
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Remove this time range"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => addTimeRange(day)}
+                      className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 mt-1"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add time range
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-sm text-gray-400 pt-2">Day off</span>
+                )}
+              </div>
             </div>
           ))}
         </div>

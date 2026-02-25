@@ -19,11 +19,15 @@ export interface CoachSlug {
   coachId: string;
 }
 
+export interface TimeRange {
+  startTime: string; // "09:00" (24h format)
+  endTime: string;   // "17:00"
+}
+
 export interface WorkingHours {
   day: DayOfWeek;
   enabled: boolean;
-  startTime: string; // "15:00" (24h format)
-  endTime: string;   // "18:30"
+  timeRanges: TimeRange[];
 }
 
 export interface Location {

@@ -13,6 +13,13 @@ interface DayAvailability {
   slots: TimeSlot[];
 }
 
+// Minimal booking shape for gap calculations within a time range
+interface RangeBooking {
+  locationId: string;
+  start: number;
+  end: number;
+}
+
 // Convert "HH:MM" to minutes from midnight
 function timeToMinutes(time: string): number {
   const [hours, minutes] = time.split(':').map(Number);
@@ -33,7 +40,7 @@ function generateSlots(
   lessonDuration: number
 ): TimeSlot[] {
   const slots: TimeSlot[] = [];
-  const increment = 30; // 30-minute increments
+  const increment = 30;
 
   for (let start = windowStart; start + lessonDuration <= windowEnd; start += increment) {
     slots.push({
@@ -45,7 +52,77 @@ function generateSlots(
   return slots;
 }
 
-// Calculate available slots for a single day
+// Calculate available slots within a single time range, accounting for bookings
+function calculateRangeSlots(
+  rangeStart: number,
+  rangeEnd: number,
+  dayBookings: Booking[],
+  lessonDuration: number,
+  travelBuffer: number,
+  clientLocationId: string
+): TimeSlot[] {
+  // Filter bookings overlapping this range and clip to range boundaries
+  const rangeBookings: RangeBooking[] = dayBookings
+    .filter(b => {
+      const bStart = timeToMinutes(b.startTime);
+      const bEnd = timeToMinutes(b.endTime);
+      return bStart < rangeEnd && bEnd > rangeStart;
+    })
+    .map(b => ({
+      locationId: b.locationId,
+      start: Math.max(timeToMinutes(b.startTime), rangeStart),
+      end: Math.min(timeToMinutes(b.endTime), rangeEnd),
+    }))
+    .sort((a, b) => a.start - b.start);
+
+  if (rangeBookings.length === 0) {
+    return generateSlots(rangeStart, rangeEnd, lessonDuration);
+  }
+
+  const allSlots: TimeSlot[] = [];
+
+  // Process gaps: before first booking, between bookings, after last booking
+  for (let i = 0; i <= rangeBookings.length; i++) {
+    let gapStart: number;
+    let gapEnd: number;
+    let bufferBefore = 0;
+    let bufferAfter = 0;
+
+    if (i === 0) {
+      gapStart = rangeStart;
+      gapEnd = rangeBookings[0].start;
+      if (rangeBookings[0].locationId !== clientLocationId) {
+        bufferAfter = travelBuffer;
+      }
+    } else if (i === rangeBookings.length) {
+      gapStart = rangeBookings[i - 1].end;
+      gapEnd = rangeEnd;
+      if (rangeBookings[i - 1].locationId !== clientLocationId) {
+        bufferBefore = travelBuffer;
+      }
+    } else {
+      gapStart = rangeBookings[i - 1].end;
+      gapEnd = rangeBookings[i].start;
+      if (rangeBookings[i - 1].locationId !== clientLocationId) {
+        bufferBefore = travelBuffer;
+      }
+      if (rangeBookings[i].locationId !== clientLocationId) {
+        bufferAfter = travelBuffer;
+      }
+    }
+
+    const usableStart = gapStart + bufferBefore;
+    const usableEnd = gapEnd - bufferAfter;
+
+    if (usableEnd - usableStart >= lessonDuration) {
+      allSlots.push(...generateSlots(usableStart, usableEnd, lessonDuration));
+    }
+  }
+
+  return allSlots;
+}
+
+// Calculate available slots for a single day across all its time ranges
 function calculateDayAvailability(
   dayHours: WorkingHours,
   bookings: Booking[],
@@ -53,72 +130,23 @@ function calculateDayAvailability(
   travelBuffer: number,
   clientLocationId: string
 ): TimeSlot[] {
-  if (!dayHours.enabled) {
+  if (!dayHours.enabled || !dayHours.timeRanges || dayHours.timeRanges.length === 0) {
     return [];
   }
 
-  const workStart = timeToMinutes(dayHours.startTime);
-  const workEnd = timeToMinutes(dayHours.endTime);
-
-  // Filter confirmed bookings for this day and sort by start time
   const dayBookings = bookings
     .filter(b => b.status === 'confirmed')
     .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
 
-  if (dayBookings.length === 0) {
-    // No bookings - entire working hours available
-    return generateSlots(workStart, workEnd, lessonDuration);
-  }
-
   const allSlots: TimeSlot[] = [];
 
-  // Process gaps between bookings (including before first and after last)
-  for (let i = 0; i <= dayBookings.length; i++) {
-    let gapStart: number;
-    let gapEnd: number;
-    let bufferBefore = 0;
-    let bufferAfter = 0;
-
-    if (i === 0) {
-      // Gap before first booking
-      gapStart = workStart;
-      gapEnd = timeToMinutes(dayBookings[0].startTime);
-
-      // Buffer needed if next booking is at different location
-      if (dayBookings[0].locationId !== clientLocationId) {
-        bufferAfter = travelBuffer;
-      }
-    } else if (i === dayBookings.length) {
-      // Gap after last booking
-      gapStart = timeToMinutes(dayBookings[i - 1].endTime);
-      gapEnd = workEnd;
-
-      // Buffer needed if previous booking is at different location
-      if (dayBookings[i - 1].locationId !== clientLocationId) {
-        bufferBefore = travelBuffer;
-      }
-    } else {
-      // Gap between two bookings
-      gapStart = timeToMinutes(dayBookings[i - 1].endTime);
-      gapEnd = timeToMinutes(dayBookings[i].startTime);
-
-      // Buffer needed for adjacent different-location bookings
-      if (dayBookings[i - 1].locationId !== clientLocationId) {
-        bufferBefore = travelBuffer;
-      }
-      if (dayBookings[i].locationId !== clientLocationId) {
-        bufferAfter = travelBuffer;
-      }
-    }
-
-    // Apply buffers to shrink usable window
-    const usableStart = gapStart + bufferBefore;
-    const usableEnd = gapEnd - bufferAfter;
-
-    // Generate slots if window is large enough
-    if (usableEnd - usableStart >= lessonDuration) {
-      const slots = generateSlots(usableStart, usableEnd, lessonDuration);
-      allSlots.push(...slots);
+  for (const range of dayHours.timeRanges) {
+    const rangeStart = timeToMinutes(range.startTime);
+    const rangeEnd = timeToMinutes(range.endTime);
+    if (rangeEnd > rangeStart) {
+      allSlots.push(
+        ...calculateRangeSlots(rangeStart, rangeEnd, dayBookings, lessonDuration, travelBuffer, clientLocationId)
+      );
     }
   }
 
@@ -138,14 +166,7 @@ export function calculateAvailability(input: AvailabilityInput): DayAvailability
     }
 
     const dayBookings = confirmedBookings.filter(b => b.dayOfWeek === day);
-
-    const slots = calculateDayAvailability(
-      dayHours,
-      dayBookings,
-      lessonDurationMinutes,
-      travelBufferMinutes,
-      clientLocationId
-    );
+    const slots = calculateDayAvailability(dayHours, dayBookings, lessonDurationMinutes, travelBufferMinutes, clientLocationId);
 
     return { dayOfWeek: day, slots };
   });

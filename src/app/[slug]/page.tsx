@@ -90,12 +90,17 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
 
         // Fetch working hours
         const hoursSnapshot = await getDocs(collection(db, 'coaches', coachId, 'workingHours'));
-        const hours: WorkingHours[] = hoursSnapshot.docs.map((docSnap) => ({
-          day: docSnap.id as DayOfWeek,
-          enabled: docSnap.data().enabled,
-          startTime: docSnap.data().startTime,
-          endTime: docSnap.data().endTime,
-        }));
+        const hours: WorkingHours[] = hoursSnapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          // Backward compat: migrate old { startTime, endTime } format
+          const timeRanges = data.timeRanges
+            ?? (data.startTime ? [{ startTime: data.startTime, endTime: data.endTime }] : [{ startTime: '09:00', endTime: '17:00' }]);
+          return {
+            day: docSnap.id as DayOfWeek,
+            enabled: data.enabled,
+            timeRanges,
+          };
+        });
         setWorkingHours(hours);
 
         // Fetch confirmed bookings

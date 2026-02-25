@@ -120,8 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const isWeekday = !['saturday', 'sunday'].includes(day);
       await setDoc(doc(db, 'coaches', uid, 'workingHours', day), {
         enabled: isWeekday,
-        startTime: '09:00',
-        endTime: '17:00',
+        timeRanges: [{ startTime: '09:00', endTime: '17:00' }],
       });
     }
   };
