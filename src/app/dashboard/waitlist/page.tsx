@@ -119,14 +119,14 @@ export default function WaitlistPage() {
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               activeTab === tab.value
                 ? 'bg-purple-600 text-white'
-                : 'bg-white dark:bg-zinc-700 text-gray-700 dark:text-zinc-300 border border-gray-200 dark:border-zinc-600 hover:bg-gray-50 dark:hover:bg-zinc-600'
+                : 'bg-white dark:bg-[#262626] text-gray-700 dark:text-zinc-300 border border-gray-200 dark:border-[#333333] hover:bg-gray-50 dark:hover:bg-[#303030]'
             }`}
           >
             {tab.label}
             <span className={`ml-2 px-1.5 py-0.5 rounded-full text-xs ${
               activeTab === tab.value
                 ? 'bg-purple-500 text-white'
-                : 'bg-gray-100 dark:bg-zinc-600 text-gray-600 dark:text-zinc-400'
+                : 'bg-gray-100 dark:bg-[#1a1a1a] text-gray-600 dark:text-zinc-400'
             }`}>
               {counts[tab.value]}
             </span>
@@ -136,7 +136,7 @@ export default function WaitlistPage() {
 
       {/* Entries */}
       {filteredEntries.length === 0 ? (
-        <div className="bg-white dark:bg-zinc-700 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-600 p-8 text-center">
+        <div className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-8 text-center">
           <svg className="w-12 h-12 text-gray-300 dark:text-zinc-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
           </svg>
@@ -152,7 +152,7 @@ export default function WaitlistPage() {
           {filteredEntries.map((entry) => (
             <div
               key={entry.id}
-              className="bg-white dark:bg-zinc-700 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-600 p-5 flex flex-col"
+              className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-5 flex flex-col"
             >
               {/* Header */}
               <div className="flex items-start justify-between mb-3">
@@ -193,7 +193,7 @@ export default function WaitlistPage() {
               </div>
 
               {/* Actions */}
-              <div className="border-t border-gray-100 dark:border-zinc-600 pt-3 space-y-2">
+              <div className="border-t border-gray-100 dark:border-[#333333] pt-3 space-y-2">
                 {/* WhatsApp button */}
                 <button
                   onClick={() => handleWhatsApp(entry)}

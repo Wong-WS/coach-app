@@ -21,20 +21,21 @@ coach-app/src/
 │   ├── login/page.tsx                # Login page
 │   ├── signup/page.tsx               # Signup page with slug creation
 │   ├── dashboard/
-│   │   ├── layout.tsx                # Auth guard + sidebar navigation
-│   │   ├── page.tsx                  # Overview (stats, weekly view)
-│   │   ├── settings/page.tsx         # Working hours, duration, buffer
+│   │   ├── layout.tsx                # Auth guard + sidebar + mobile bottom nav
+│   │   ├── page.tsx                  # Overview (stats, weekly view, copy public link)
+│   │   ├── settings/page.tsx         # Working hours (multiple time ranges), duration, buffer, WhatsApp
 │   │   ├── locations/page.tsx        # Manage locations
-│   │   └── bookings/page.tsx         # Create/view/cancel bookings
-│   └── [slug]/page.tsx               # Public coach page (view-only)
+│   │   ├── bookings/page.tsx         # Create/view/cancel bookings (5-min time increments)
+│   │   └── waitlist/page.tsx         # View and manage waitlist entries
+│   └── [slug]/page.tsx               # Public coach page with availability + waitlist join
 ├── lib/
 │   ├── firebase.ts                   # Firebase client init
 │   ├── auth-context.tsx              # Auth React context + signup logic
-│   └── availability-engine.ts        # Core slot calculation algorithm
+│   └── availability-engine.ts        # Core slot calculation algorithm (multi-range aware)
 ├── components/
 │   └── ui/                           # Button, Input, Select, Modal, Toast
 ├── hooks/
-│   └── useCoachData.ts               # Firestore hooks for data fetching
+│   └── useCoachData.ts               # Firestore hooks: useWorkingHours, useLocations, useBookings, useWaitlist, useCoachBySlug
 └── types/index.ts                    # TypeScript types
 ```
 
@@ -59,35 +60,54 @@ coaches/{coachId}                        # Coach profile & settings
   whatsappNumber, createdAt, updatedAt
 
 coaches/{coachId}/workingHours/{day}     # 7 docs (monday–sunday)
-  enabled, startTime, endTime
+  enabled: boolean
+  timeRanges: [{ startTime, endTime }]   # Multiple ranges per day (24h format)
+  # Legacy format (backward compatible): startTime, endTime at doc level
 
 coaches/{coachId}/locations/{locationId}
   name, address, notes, createdAt
 
 coaches/{coachId}/bookings/{bookingId}   # Recurring weekly bookings
   locationId, locationName, dayOfWeek
-  startTime, endTime, status
+  startTime, endTime, status             # status: 'confirmed' | 'cancelled'
   clientName, clientPhone, lessonType, groupSize, notes
   createdAt, cancelledAt
+
+coaches/{coachId}/waitlist/{entryId}     # Waitlist entries from public page
+  locationId, locationName, dayOfWeek
+  preferredTime                          # 'morning' | 'afternoon' | 'evening' | 'any'
+  clientName, clientPhone, notes
+  status                                 # 'waiting' | 'contacted' | 'booked'
+  createdAt, contactedAt, bookedAt
 ```
 
-### Key Features (Phase 1)
+### Key Features
 
+#### Phase 1 (Implemented)
 1. Coach signup with unique slug (public URL)
-2. Working hours configuration (per day)
-3. Lesson duration and travel buffer settings
-4. Multiple location management
-5. Booking creation/cancellation by coach
-6. Public page showing availability by location
-7. WhatsApp contact button for clients
-8. Availability engine with travel buffer calculation
+2. Working hours configuration with multiple time ranges per day
+3. Overlap and invalid time range validation before saving
+4. Lesson duration and travel buffer settings
+5. Multiple location management
+6. Booking creation/cancellation by coach (5-minute time increments)
+7. Public page showing availability by location
+8. After 3 PM time filter on public schedule page
+9. WhatsApp contact button for clients
+10. Availability engine with smart travel buffer calculation
+
+#### Phase 2 (Implemented)
+11. Waitlist system — clients can join from public page; coach manages via dashboard
+    - Public page: modal form (location, day, preferred time, name, phone, notes)
+    - Dashboard: tab filtering (Waiting/Contacted/Booked), status transitions, WhatsApp prefill, delete
 
 ### Availability Engine Logic
 
 - Takes: workingHours, lessonDuration, travelBuffer, confirmedBookings, clientLocationId
-- For each day, finds gaps between bookings
-- Applies travel buffer only when adjacent booking is at DIFFERENT location
+- Supports multiple time ranges per day (timeRanges array)
+- For each day and each range, finds gaps between bookings
+- Applies travel buffer only when adjacent booking is at DIFFERENT location than clientLocationId
 - Generates available start times in 30-minute increments
+- Backward compatible with old single startTime/endTime format
 
 ### Security Rules
 
@@ -95,6 +115,7 @@ coaches/{coachId}/bookings/{bookingId}   # Recurring weekly bookings
 - coaches: public read, owner write
 - workingHours/locations: public read, owner write
 - bookings: public read (for availability engine), owner write
+- waitlist: public create, owner read/write/delete
 
 ### Test Account
 
@@ -114,13 +135,9 @@ NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
 NEXT_PUBLIC_FIREBASE_APP_ID=
 ```
 
-### Phase 2 (Future)
-
-- Waitlist system
-- WhatsApp/SMS notifications
-- Holiday/exception handling
-
 ### Phase 3 (Future)
 
+- WhatsApp/SMS notifications
+- Holiday/exception handling
 - Payments/subscriptions
 - Custom domains

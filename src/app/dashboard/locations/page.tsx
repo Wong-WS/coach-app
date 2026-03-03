@@ -83,8 +83,8 @@ export default function LocationsPage() {
 
       {/* Locations list */}
       {locations.length === 0 ? (
-        <div className="bg-white dark:bg-zinc-700 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-600 p-12 text-center">
-          <div className="w-16 h-16 bg-gray-100 dark:bg-zinc-600 rounded-full flex items-center justify-center mx-auto mb-4">
+        <div className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-12 text-center">
+          <div className="w-16 h-16 bg-gray-100 dark:bg-[#1a1a1a] rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-gray-400 dark:text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
             </svg>
@@ -98,7 +98,7 @@ export default function LocationsPage() {
           {locations.map((location) => (
             <div
               key={location.id}
-              className="bg-white dark:bg-zinc-700 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-600 p-6"
+              className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-6"
             >
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-4">
@@ -181,7 +181,7 @@ export default function LocationsPage() {
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               placeholder="e.g., Pool on 7th floor, parking available"
               rows={3}
-              className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-zinc-600 text-gray-900 dark:text-zinc-100"
+              className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
             />
           </div>
           <div className="flex justify-end gap-3 pt-4">

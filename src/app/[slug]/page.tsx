@@ -140,7 +140,7 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-zinc-800">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-[#1f1f1f]">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     );
@@ -148,7 +148,7 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
 
   if (error || !coach) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-zinc-800 px-4">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-[#1f1f1f] px-4">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100 mb-2">Coach Not Found</h1>
           <p className="text-gray-600 dark:text-zinc-400 mb-6">The coach you&apos;re looking for doesn&apos;t exist.</p>
@@ -231,9 +231,9 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-zinc-800">
+    <div className="min-h-screen bg-gray-50 dark:bg-[#1f1f1f]">
       {/* Header */}
-      <header className="bg-white dark:bg-zinc-700 border-b border-gray-200 dark:border-zinc-600">
+      <header className="bg-white dark:bg-[#262626] border-b border-gray-200 dark:border-[#333333]">
         <div className="max-w-3xl mx-auto px-4 py-8">
           <div className="flex items-center justify-between">
             <div>
@@ -252,7 +252,7 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
 
       <main className="max-w-3xl mx-auto px-4 py-8">
         {locations.length === 0 ? (
-          <div className="bg-white dark:bg-zinc-700 rounded-xl p-8 text-center">
+          <div className="bg-white dark:bg-[#262626] rounded-xl p-8 text-center">
             <p className="text-gray-600 dark:text-zinc-400">No locations available yet.</p>
           </div>
         ) : (
@@ -268,7 +268,7 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                       selectedLocation === location.id
                         ? 'bg-blue-600 text-white'
-                        : 'bg-white dark:bg-zinc-700 text-gray-700 dark:text-zinc-300 border border-gray-200 dark:border-zinc-600 hover:bg-gray-50 dark:hover:bg-zinc-600'
+                        : 'bg-white dark:bg-[#262626] text-gray-700 dark:text-zinc-300 border border-gray-200 dark:border-[#333333] hover:bg-gray-50 dark:hover:bg-[#303030]'
                     }`}
                   >
                     {location.name}
@@ -278,8 +278,8 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
             </div>
 
             {/* Availability grid */}
-            <div className="bg-white dark:bg-zinc-700 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-600">
-              <div className="p-6 border-b border-gray-100 dark:border-zinc-600">
+            <div className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333]">
+              <div className="p-6 border-b border-gray-100 dark:border-[#333333]">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div>
                     <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">Available Slots</h2>
@@ -291,7 +291,7 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
                     <button
                       onClick={() => setAfterSchool(false)}
                       className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                        !afterSchool ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-zinc-600 text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-500'
+                        !afterSchool ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-[#1a1a1a] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-500'
                       }`}
                     >
                       All times
@@ -299,7 +299,7 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
                     <button
                       onClick={() => setAfterSchool(true)}
                       className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                        afterSchool ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-zinc-600 text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-500'
+                        afterSchool ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-[#1a1a1a] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-500'
                       }`}
                     >
                       After 3 PM
@@ -315,7 +315,7 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
                     const slots = afterSchool ? allSlots.filter((s) => s.startTime >= '15:00') : allSlots;
 
                     return (
-                      <div key={day} className="border-b border-gray-100 dark:border-zinc-600 pb-4 last:border-0 last:pb-0">
+                      <div key={day} className="border-b border-gray-100 dark:border-[#333333] pb-4 last:border-0 last:pb-0">
                         <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-3">
                           {getDayDisplayName(day)}
                         </h3>
@@ -446,7 +446,7 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
               onChange={(e) => setWaitlistForm({ ...waitlistForm, notes: e.target.value })}
               placeholder="Any preferences or details..."
               rows={2}
-              className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white dark:bg-zinc-600 text-gray-900 dark:text-zinc-100"
+              className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
             />
           </div>
 
@@ -466,7 +466,7 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
       </Modal>
 
       {/* Footer */}
-      <footer className="mt-16 border-t border-gray-200 dark:border-zinc-600 bg-white dark:bg-zinc-700">
+      <footer className="mt-16 border-t border-gray-200 dark:border-[#333333] bg-white dark:bg-[#262626]">
         <div className="max-w-3xl mx-auto px-4 py-6 text-center text-sm text-gray-500 dark:text-zinc-500">
           Powered by <Link href="/" className="text-blue-600 hover:underline">CoachApp</Link>
         </div>

@@ -222,7 +222,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Lesson Settings */}
-      <div className="bg-white dark:bg-zinc-700 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-600 p-6">
+      <div className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-6">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100 mb-6">Lesson Settings</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Select
@@ -246,7 +246,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Contact Settings */}
-      <div className="bg-white dark:bg-zinc-700 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-600 p-6">
+      <div className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-6">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100 mb-6">Contact Settings</h2>
         <Input
           id="whatsappNumber"
@@ -261,11 +261,11 @@ export default function SettingsPage() {
       </div>
 
       {/* Weekly Schedule */}
-      <div className="bg-white dark:bg-zinc-700 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-600 p-6">
+      <div className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-6">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100 mb-6">Weekly Schedule</h2>
         <div className="space-y-4">
           {DAYS.map((day) => (
-            <div key={day} className="py-3 border-b border-gray-100 dark:border-zinc-600 last:border-0">
+            <div key={day} className="py-3 border-b border-gray-100 dark:border-[#333333] last:border-0">
               <div className="flex items-start gap-4">
                 {/* Checkbox + day label */}
                 <label className="flex items-center gap-3 w-32 pt-2 cursor-pointer shrink-0">
@@ -312,7 +312,7 @@ export default function SettingsPage() {
                             <select
                               value={range.startTime}
                               onChange={(e) => updateTimeRange(day, idx, 'startTime', e.target.value)}
-                              className={`text-sm border rounded-lg px-3 py-2 focus:ring-2 bg-white dark:bg-zinc-600 text-gray-900 dark:text-zinc-100 ${borderClass}`}
+                              className={`text-sm border rounded-lg px-3 py-2 focus:ring-2 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 ${borderClass}`}
                             >
                               {TIME_OPTIONS.map((opt) => (
                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -322,7 +322,7 @@ export default function SettingsPage() {
                             <select
                               value={range.endTime}
                               onChange={(e) => updateTimeRange(day, idx, 'endTime', e.target.value)}
-                              className={`text-sm border rounded-lg px-3 py-2 focus:ring-2 bg-white dark:bg-zinc-600 text-gray-900 dark:text-zinc-100 ${borderClass}`}
+                              className={`text-sm border rounded-lg px-3 py-2 focus:ring-2 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 ${borderClass}`}
                             >
                               {TIME_OPTIONS.map((opt) => (
                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
