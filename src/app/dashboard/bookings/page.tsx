@@ -178,14 +178,14 @@ export default function BookingsPage() {
       )}
 
       {/* Weekly schedule view */}
-      <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-800">
-        <div className="p-6 border-b border-gray-100 dark:border-zinc-800">
+      <div className="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-700">
+        <div className="p-6 border-b border-gray-100 dark:border-zinc-700">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">Weekly Schedule</h2>
         </div>
         <div className="p-6">
           <div className="space-y-6">
             {DAYS.map((day) => (
-              <div key={day} className="border-b border-gray-100 dark:border-zinc-800 pb-4 last:border-0 last:pb-0">
+              <div key={day} className="border-b border-gray-100 dark:border-zinc-700 pb-4 last:border-0 last:pb-0">
                 <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-3">
                   {getDayDisplayName(day)}
                 </h3>
@@ -196,7 +196,7 @@ export default function BookingsPage() {
                     {bookingsByDay[day].map((booking) => (
                       <div
                         key={booking.id}
-                        className="flex items-start justify-between p-4 bg-gray-50 dark:bg-zinc-800/50 rounded-lg"
+                        className="flex items-start justify-between p-4 bg-gray-50 dark:bg-zinc-700/50 rounded-lg"
                       >
                         <div>
                           <div className="flex items-center gap-2">
@@ -234,14 +234,14 @@ export default function BookingsPage() {
 
       {/* Cancelled bookings */}
       {cancelledBookings.length > 0 && (
-        <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-800">
-          <div className="p-6 border-b border-gray-100 dark:border-zinc-800">
+        <div className="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-700">
+          <div className="p-6 border-b border-gray-100 dark:border-zinc-700">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">Cancelled Bookings</h2>
           </div>
           <div className="p-6">
             <div className="space-y-3">
               {cancelledBookings.map((booking) => (
-                <div key={booking.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-zinc-800/50 rounded-lg opacity-60">
+                <div key={booking.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-zinc-700/50 rounded-lg opacity-60">
                   <div>
                     <span className="text-sm text-gray-600 dark:text-zinc-400">
                       {getDayDisplayName(booking.dayOfWeek)} {formatTimeDisplay(booking.startTime)}
@@ -358,7 +358,7 @@ export default function BookingsPage() {
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               placeholder="Additional notes..."
               rows={2}
-              className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-700 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100"
+              className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-600 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-zinc-700 text-gray-900 dark:text-zinc-100"
             />
           </div>
 
