@@ -106,8 +106,8 @@ export default function DashboardPage() {
         <div className="p-6 border-b border-gray-100 dark:border-[#333333]">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">This Week&apos;s Schedule</h2>
         </div>
-        <div className="p-4 sm:p-6 overflow-x-auto">
-          <div className="grid grid-cols-7 gap-3 min-w-[560px]">
+        <div className="p-4 sm:p-6">
+          <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
             {DAYS.map((day) => (
               <div
                 key={day}
