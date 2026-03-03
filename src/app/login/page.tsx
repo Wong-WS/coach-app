@@ -32,14 +32,14 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center px-4">
-      <div className="bg-white rounded-xl shadow-lg p-8 w-full max-w-md">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:bg-[#262626] flex items-center justify-center px-4">
+      <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-lg p-8 w-full max-w-md">
         <div className="text-center mb-8">
           <Link href="/" className="text-2xl font-bold text-blue-600">
             CoachApp
           </Link>
-          <h1 className="text-2xl font-semibold text-gray-900 mt-4">Welcome back</h1>
-          <p className="text-gray-600 mt-2">Sign in to your account</p>
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-zinc-100 mt-4">Welcome back</h1>
+          <p className="text-gray-600 dark:text-zinc-400 mt-2">Sign in to your account</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -68,7 +68,7 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <p className="text-center text-gray-600 mt-6">
+        <p className="text-center text-gray-600 dark:text-zinc-400 mt-6">
           Don&apos;t have an account?{' '}
           <Link href="/signup" className="text-blue-600 hover:underline font-medium">
             Sign up

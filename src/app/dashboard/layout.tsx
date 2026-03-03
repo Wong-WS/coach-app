@@ -59,17 +59,17 @@ export default function DashboardLayout({
                 CoachApp
               </Link>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               {coach && (
                 <Link
                   href={`/${coach.slug}`}
                   target="_blank"
-                  className="text-sm text-gray-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400"
+                  className="hidden md:block text-sm text-gray-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400"
                 >
                   View Public Page
                 </Link>
               )}
-              <span className="text-sm text-gray-600 dark:text-zinc-400">{coach?.displayName || user.email}</span>
+              <span className="hidden sm:block text-sm text-gray-600 dark:text-zinc-400 truncate max-w-[140px]">{coach?.displayName || user.email}</span>
               <button
                 onClick={toggle}
                 className="p-2 rounded-lg text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-[#303030] transition-colors"
@@ -95,7 +95,7 @@ export default function DashboardLayout({
 
       <div className="flex pt-16">
         {/* Sidebar */}
-        <aside className="hidden md:flex md:flex-shrink-0">
+        <aside className="hidden lg:flex lg:flex-shrink-0">
           <div className="w-64 bg-white dark:bg-[#1f1f1f] border-r border-gray-200 dark:border-[#333333] min-h-[calc(100vh-4rem)]">
             <nav className="p-4 space-y-1">
               {navItems.map((item) => {
@@ -132,7 +132,7 @@ export default function DashboardLayout({
         </aside>
 
         {/* Mobile bottom nav */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#1f1f1f] border-t border-gray-200 dark:border-[#333333] z-30">
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#1f1f1f] border-t border-gray-200 dark:border-[#333333] z-30">
           <div className="flex justify-around py-2">
             {navItems.map((item) => {
               const isActive = pathname === item.href;
@@ -155,7 +155,7 @@ export default function DashboardLayout({
         </nav>
 
         {/* Main content */}
-        <main className="flex-1 p-6 md:p-8 pb-24 md:pb-8">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8 min-w-0">
           {children}
         </main>
       </div>

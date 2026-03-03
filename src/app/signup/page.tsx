@@ -76,14 +76,14 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center px-4 py-12">
-      <div className="bg-white rounded-xl shadow-lg p-8 w-full max-w-md">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:bg-[#262626] flex items-center justify-center px-4 py-12">
+      <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-lg p-8 w-full max-w-md">
         <div className="text-center mb-8">
           <Link href="/" className="text-2xl font-bold text-blue-600">
             CoachApp
           </Link>
-          <h1 className="text-2xl font-semibold text-gray-900 mt-4">Create your account</h1>
-          <p className="text-gray-600 mt-2">Start managing your schedule today</p>
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-zinc-100 mt-4">Create your account</h1>
+          <p className="text-gray-600 dark:text-zinc-400 mt-2">Start managing your schedule today</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -142,7 +142,7 @@ export default function SignupPage() {
               placeholder="coach-wei"
               required
             />
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-gray-500 dark:text-zinc-500 mt-1">
               Your page: coachapp.com/<span className="font-medium">{formData.slug || 'your-name'}</span>
             </p>
           </div>
@@ -174,7 +174,7 @@ export default function SignupPage() {
           </Button>
         </form>
 
-        <p className="text-center text-gray-600 mt-6">
+        <p className="text-center text-gray-600 dark:text-zinc-400 mt-6">
           Already have an account?{' '}
           <Link href="/login" className="text-blue-600 hover:underline font-medium">
             Sign in

@@ -55,7 +55,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
         <div className="bg-white dark:bg-[#1f1f1f] rounded-xl p-6 shadow-sm border border-gray-100 dark:border-[#333333]">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
@@ -106,8 +106,8 @@ export default function DashboardPage() {
         <div className="p-6 border-b border-gray-100 dark:border-[#333333]">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">This Week&apos;s Schedule</h2>
         </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
+        <div className="p-4 sm:p-6 overflow-x-auto">
+          <div className="grid grid-cols-7 gap-3 min-w-[560px]">
             {DAYS.map((day) => (
               <div
                 key={day}
