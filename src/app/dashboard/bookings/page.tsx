@@ -161,8 +161,8 @@ export default function BookingsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Bookings</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">Manage your recurring weekly bookings</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100">Bookings</h1>
+          <p className="text-gray-600 dark:text-zinc-400 mt-1">Manage your recurring weekly bookings</p>
         </div>
         <Button onClick={openAddModal} disabled={locations.length === 0}>
           Add Booking
@@ -178,29 +178,29 @@ export default function BookingsPage() {
       )}
 
       {/* Weekly schedule view */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-        <div className="p-6 border-b border-gray-100 dark:border-gray-700">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Weekly Schedule</h2>
+      <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-800">
+        <div className="p-6 border-b border-gray-100 dark:border-zinc-800">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">Weekly Schedule</h2>
         </div>
         <div className="p-6">
           <div className="space-y-6">
             {DAYS.map((day) => (
-              <div key={day} className="border-b border-gray-100 dark:border-gray-700 pb-4 last:border-0 last:pb-0">
-                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+              <div key={day} className="border-b border-gray-100 dark:border-zinc-800 pb-4 last:border-0 last:pb-0">
+                <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-3">
                   {getDayDisplayName(day)}
                 </h3>
                 {bookingsByDay[day].length === 0 ? (
-                  <p className="text-sm text-gray-400 dark:text-gray-500">No bookings</p>
+                  <p className="text-sm text-gray-400 dark:text-zinc-500">No bookings</p>
                 ) : (
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {bookingsByDay[day].map((booking) => (
                       <div
                         key={booking.id}
-                        className="flex items-start justify-between p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg"
+                        className="flex items-start justify-between p-4 bg-gray-50 dark:bg-zinc-800/50 rounded-lg"
                       >
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-medium text-gray-900 dark:text-gray-100">
+                            <span className="font-medium text-gray-900 dark:text-zinc-100">
                               {formatTimeDisplay(booking.startTime)} - {formatTimeDisplay(booking.endTime)}
                             </span>
                             <span className={`text-xs px-2 py-0.5 rounded-full ${
@@ -211,8 +211,8 @@ export default function BookingsPage() {
                               {booking.lessonType === 'group' ? `Group (${booking.groupSize})` : 'Private'}
                             </span>
                           </div>
-                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{booking.clientName}</p>
-                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{booking.locationName}</p>
+                          <p className="text-sm text-gray-600 dark:text-zinc-400 mt-1">{booking.clientName}</p>
+                          <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{booking.locationName}</p>
                         </div>
                         <Button
                           variant="ghost"
@@ -234,22 +234,22 @@ export default function BookingsPage() {
 
       {/* Cancelled bookings */}
       {cancelledBookings.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-          <div className="p-6 border-b border-gray-100 dark:border-gray-700">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Cancelled Bookings</h2>
+        <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-800">
+          <div className="p-6 border-b border-gray-100 dark:border-zinc-800">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">Cancelled Bookings</h2>
           </div>
           <div className="p-6">
             <div className="space-y-3">
               {cancelledBookings.map((booking) => (
-                <div key={booking.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg opacity-60">
+                <div key={booking.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-zinc-800/50 rounded-lg opacity-60">
                   <div>
-                    <span className="text-sm text-gray-600 dark:text-gray-400">
+                    <span className="text-sm text-gray-600 dark:text-zinc-400">
                       {getDayDisplayName(booking.dayOfWeek)} {formatTimeDisplay(booking.startTime)}
                     </span>
-                    <span className="mx-2 text-gray-400 dark:text-gray-500">·</span>
-                    <span className="text-sm text-gray-900 dark:text-gray-100">{booking.clientName}</span>
-                    <span className="mx-2 text-gray-400 dark:text-gray-500">·</span>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">{booking.locationName}</span>
+                    <span className="mx-2 text-gray-400 dark:text-zinc-500">·</span>
+                    <span className="text-sm text-gray-900 dark:text-zinc-100">{booking.clientName}</span>
+                    <span className="mx-2 text-gray-400 dark:text-zinc-500">·</span>
+                    <span className="text-sm text-gray-500 dark:text-zinc-400">{booking.locationName}</span>
                   </div>
                   <span className="text-xs text-red-600 bg-red-50 dark:bg-red-900/30 dark:text-red-400 px-2 py-1 rounded">Cancelled</span>
                 </div>
@@ -265,7 +265,7 @@ export default function BookingsPage() {
         onClose={() => setConfirmCancelId(null)}
         title="Cancel Booking"
       >
-        <p className="text-gray-600 dark:text-gray-400 mb-6">Are you sure you want to cancel this booking?</p>
+        <p className="text-gray-600 dark:text-zinc-400 mb-6">Are you sure you want to cancel this booking?</p>
         <div className="flex justify-end gap-3">
           <Button variant="secondary" onClick={() => setConfirmCancelId(null)}>
             No, Keep It
@@ -349,7 +349,7 @@ export default function BookingsPage() {
           </div>
 
           <div>
-            <label htmlFor="notes" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="notes" className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
               Notes (optional)
             </label>
             <textarea
@@ -358,7 +358,7 @@ export default function BookingsPage() {
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               placeholder="Additional notes..."
               rows={2}
-              className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-700 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100"
             />
           </div>
 

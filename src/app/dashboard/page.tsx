@@ -50,13 +50,13 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Welcome, {coach.displayName}!</h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-1">Here&apos;s an overview of your schedule</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100">Welcome, {coach.displayName}!</h1>
+        <p className="text-gray-600 dark:text-zinc-400 mt-1">Here&apos;s an overview of your schedule</p>
       </div>
 
       {/* Stats cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+        <div className="bg-white dark:bg-zinc-900 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-zinc-800">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
               <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -64,13 +64,13 @@ export default function DashboardPage() {
               </svg>
             </div>
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Active Bookings</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{bookings.length}</p>
+              <p className="text-sm text-gray-600 dark:text-zinc-400">Active Bookings</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-zinc-100">{bookings.length}</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+        <div className="bg-white dark:bg-zinc-900 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-zinc-800">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
               <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -78,13 +78,13 @@ export default function DashboardPage() {
               </svg>
             </div>
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Locations</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{locations.length}</p>
+              <p className="text-sm text-gray-600 dark:text-zinc-400">Locations</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-zinc-100">{locations.length}</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+        <div className="bg-white dark:bg-zinc-900 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-zinc-800">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
               <svg className="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -92,7 +92,7 @@ export default function DashboardPage() {
               </svg>
             </div>
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Public Link</p>
+              <p className="text-sm text-gray-600 dark:text-zinc-400">Public Link</p>
               <Button variant="ghost" size="sm" onClick={copyLink} className="-ml-3">
                 {copied ? 'Copied!' : 'Copy Link'}
               </Button>
@@ -102,35 +102,35 @@ export default function DashboardPage() {
       </div>
 
       {/* Weekly schedule */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-        <div className="p-6 border-b border-gray-100 dark:border-gray-700">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">This Week&apos;s Schedule</h2>
+      <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-800">
+        <div className="p-6 border-b border-gray-100 dark:border-zinc-800">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">This Week&apos;s Schedule</h2>
         </div>
         <div className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
             {DAYS.map((day) => (
               <div
                 key={day}
-                className={`p-4 rounded-lg ${day === today ? 'bg-blue-50 dark:bg-blue-900/30 ring-2 ring-blue-200 dark:ring-blue-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}
+                className={`p-4 rounded-lg ${day === today ? 'bg-blue-50 dark:bg-blue-900/30 ring-2 ring-blue-200 dark:ring-blue-700' : 'bg-gray-50 dark:bg-zinc-800/50'}`}
               >
-                <h3 className={`text-sm font-medium mb-3 ${day === today ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-300'}`}>
+                <h3 className={`text-sm font-medium mb-3 ${day === today ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-zinc-300'}`}>
                   {getDayDisplayName(day)}
                   {day === today && <span className="ml-2 text-xs">(Today)</span>}
                 </h3>
                 {bookingsByDay[day].length === 0 ? (
-                  <p className="text-xs text-gray-400 dark:text-gray-500">No bookings</p>
+                  <p className="text-xs text-gray-400 dark:text-zinc-500">No bookings</p>
                 ) : (
                   <div className="space-y-2">
                     {bookingsByDay[day].map((booking) => (
                       <div
                         key={booking.id}
-                        className="text-xs p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600"
+                        className="text-xs p-2 bg-white dark:bg-zinc-900 rounded border border-gray-200 dark:border-zinc-700"
                       >
-                        <p className="font-medium text-gray-900 dark:text-gray-100">
+                        <p className="font-medium text-gray-900 dark:text-zinc-100">
                           {formatTimeDisplay(booking.startTime)}
                         </p>
-                        <p className="text-gray-600 dark:text-gray-400 truncate">{booking.clientName}</p>
-                        <p className="text-gray-400 dark:text-gray-500 truncate">{booking.locationName}</p>
+                        <p className="text-gray-600 dark:text-zinc-400 truncate">{booking.clientName}</p>
+                        <p className="text-gray-400 dark:text-zinc-500 truncate">{booking.locationName}</p>
                       </div>
                     ))}
                   </div>

@@ -217,13 +217,13 @@ export default function SettingsPage() {
   return (
     <div className="space-y-8 max-w-2xl">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Settings</h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-1">Configure your lesson settings and schedule</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100">Settings</h1>
+        <p className="text-gray-600 dark:text-zinc-400 mt-1">Configure your lesson settings and schedule</p>
       </div>
 
       {/* Lesson Settings */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-6">Lesson Settings</h2>
+      <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-800 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100 mb-6">Lesson Settings</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Select
             id="lessonDuration"
@@ -240,14 +240,14 @@ export default function SettingsPage() {
             options={BUFFER_OPTIONS}
           />
         </div>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
+        <p className="text-sm text-gray-500 dark:text-zinc-400 mt-4">
           Travel buffer is the time added between lessons at different locations.
         </p>
       </div>
 
       {/* Contact Settings */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-6">Contact Settings</h2>
+      <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-800 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100 mb-6">Contact Settings</h2>
         <Input
           id="whatsappNumber"
           label="WhatsApp Number"
@@ -255,17 +255,17 @@ export default function SettingsPage() {
           onChange={(e) => setFormData({ ...formData, whatsappNumber: e.target.value })}
           placeholder="+60123456789"
         />
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+        <p className="text-sm text-gray-500 dark:text-zinc-400 mt-2">
           Clients will use this number to contact you via WhatsApp.
         </p>
       </div>
 
       {/* Weekly Schedule */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-6">Weekly Schedule</h2>
+      <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-800 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100 mb-6">Weekly Schedule</h2>
         <div className="space-y-4">
           {DAYS.map((day) => (
-            <div key={day} className="py-3 border-b border-gray-100 dark:border-gray-700 last:border-0">
+            <div key={day} className="py-3 border-b border-gray-100 dark:border-zinc-800 last:border-0">
               <div className="flex items-start gap-4">
                 {/* Checkbox + day label */}
                 <label className="flex items-center gap-3 w-32 pt-2 cursor-pointer shrink-0">
@@ -278,9 +278,9 @@ export default function SettingsPage() {
                         [day]: { ...schedule[day], enabled: e.target.checked },
                       })
                     }
-                    className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                    className="w-4 h-4 rounded border-gray-300 dark:border-zinc-700 text-blue-600 focus:ring-blue-500"
                   />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{getDayDisplayName(day)}</span>
+                  <span className="text-sm font-medium text-gray-700 dark:text-zinc-300">{getDayDisplayName(day)}</span>
                 </label>
 
                 {schedule[day].enabled ? (
@@ -306,23 +306,23 @@ export default function SettingsPage() {
                         const hasError = errorIndices.has(idx);
                         const borderClass = hasError
                           ? 'border-red-400 ring-1 ring-red-400'
-                          : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500';
+                          : 'border-gray-300 dark:border-zinc-700 focus:ring-blue-500 focus:border-blue-500';
                         return (
                           <div key={idx} className="flex items-center gap-2">
                             <select
                               value={range.startTime}
                               onChange={(e) => updateTimeRange(day, idx, 'startTime', e.target.value)}
-                              className={`text-sm border rounded-lg px-3 py-2 focus:ring-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 ${borderClass}`}
+                              className={`text-sm border rounded-lg px-3 py-2 focus:ring-2 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 ${borderClass}`}
                             >
                               {TIME_OPTIONS.map((opt) => (
                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
                               ))}
                             </select>
-                            <span className="text-gray-400 dark:text-gray-500 text-sm">to</span>
+                            <span className="text-gray-400 dark:text-zinc-500 text-sm">to</span>
                             <select
                               value={range.endTime}
                               onChange={(e) => updateTimeRange(day, idx, 'endTime', e.target.value)}
-                              className={`text-sm border rounded-lg px-3 py-2 focus:ring-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 ${borderClass}`}
+                              className={`text-sm border rounded-lg px-3 py-2 focus:ring-2 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 ${borderClass}`}
                             >
                               {TIME_OPTIONS.map((opt) => (
                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -363,7 +363,7 @@ export default function SettingsPage() {
                     </button>
                   </div>
                 ) : (
-                  <span className="text-sm text-gray-400 dark:text-gray-500 pt-2">Day off</span>
+                  <span className="text-sm text-gray-400 dark:text-zinc-500 pt-2">Day off</span>
                 )}
               </div>
             </div>

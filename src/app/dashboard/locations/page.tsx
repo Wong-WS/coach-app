@@ -75,22 +75,22 @@ export default function LocationsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Locations</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">Manage your lesson locations</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100">Locations</h1>
+          <p className="text-gray-600 dark:text-zinc-400 mt-1">Manage your lesson locations</p>
         </div>
         <Button onClick={() => setIsModalOpen(true)}>Add Location</Button>
       </div>
 
       {/* Locations list */}
       {locations.length === 0 ? (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-12 text-center">
-          <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-800 p-12 text-center">
+          <div className="w-16 h-16 bg-gray-100 dark:bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-gray-400 dark:text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
             </svg>
           </div>
-          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">No locations yet</h3>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">Add your first location to get started.</p>
+          <h3 className="text-lg font-medium text-gray-900 dark:text-zinc-100 mb-2">No locations yet</h3>
+          <p className="text-gray-600 dark:text-zinc-400 mb-6">Add your first location to get started.</p>
           <Button onClick={() => setIsModalOpen(true)}>Add Location</Button>
         </div>
       ) : (
@@ -98,7 +98,7 @@ export default function LocationsPage() {
           {locations.map((location) => (
             <div
               key={location.id}
-              className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6"
+              className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-800 p-6"
             >
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-4">
@@ -109,12 +109,12 @@ export default function LocationsPage() {
                     </svg>
                   </div>
                   <div>
-                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">{location.name}</h3>
+                    <h3 className="font-semibold text-gray-900 dark:text-zinc-100">{location.name}</h3>
                     {location.address && (
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{location.address}</p>
+                      <p className="text-sm text-gray-600 dark:text-zinc-400 mt-1">{location.address}</p>
                     )}
                     {location.notes && (
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">{location.notes}</p>
+                      <p className="text-sm text-gray-500 dark:text-zinc-400 mt-2">{location.notes}</p>
                     )}
                   </div>
                 </div>
@@ -138,7 +138,7 @@ export default function LocationsPage() {
         onClose={() => setConfirmDeleteId(null)}
         title="Delete Location"
       >
-        <p className="text-gray-600 dark:text-gray-400 mb-6">Are you sure you want to delete this location?</p>
+        <p className="text-gray-600 dark:text-zinc-400 mb-6">Are you sure you want to delete this location?</p>
         <div className="flex justify-end gap-3">
           <Button variant="secondary" onClick={() => setConfirmDeleteId(null)}>
             No, Keep It
@@ -172,7 +172,7 @@ export default function LocationsPage() {
             placeholder="Full address"
           />
           <div>
-            <label htmlFor="notes" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="notes" className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
               Notes (optional)
             </label>
             <textarea
@@ -181,7 +181,7 @@ export default function LocationsPage() {
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               placeholder="e.g., Pool on 7th floor, parking available"
               rows={3}
-              className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-700 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100"
             />
           </div>
           <div className="flex justify-end gap-3 pt-4">
