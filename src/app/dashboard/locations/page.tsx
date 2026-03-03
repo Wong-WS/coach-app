@@ -83,7 +83,7 @@ export default function LocationsPage() {
 
       {/* Locations list */}
       {locations.length === 0 ? (
-        <div className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-12 text-center">
+        <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-12 text-center">
           <div className="w-16 h-16 bg-gray-100 dark:bg-[#1a1a1a] rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-gray-400 dark:text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -98,7 +98,7 @@ export default function LocationsPage() {
           {locations.map((location) => (
             <div
               key={location.id}
-              className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-6"
+              className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-6"
             >
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-4">

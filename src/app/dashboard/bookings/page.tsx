@@ -178,7 +178,7 @@ export default function BookingsPage() {
       )}
 
       {/* Weekly schedule view */}
-      <div className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333]">
+      <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333]">
         <div className="p-6 border-b border-gray-100 dark:border-[#333333]">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">Weekly Schedule</h2>
         </div>
@@ -234,7 +234,7 @@ export default function BookingsPage() {
 
       {/* Cancelled bookings */}
       {cancelledBookings.length > 0 && (
-        <div className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333]">
+        <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333]">
           <div className="p-6 border-b border-gray-100 dark:border-[#333333]">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">Cancelled Bookings</h2>
           </div>

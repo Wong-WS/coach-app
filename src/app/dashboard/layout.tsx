@@ -33,7 +33,7 @@ export default function DashboardLayout({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center dark:bg-[#1f1f1f]">
+      <div className="min-h-screen flex items-center justify-center dark:bg-[#262626]">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     );
@@ -49,9 +49,9 @@ export default function DashboardLayout({
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-[#1f1f1f]">
+    <div className="min-h-screen bg-gray-50 dark:bg-[#262626]">
       {/* Top nav bar */}
-      <nav className="bg-white dark:bg-[#262626] border-b border-gray-200 dark:border-[#333333] fixed w-full z-30">
+      <nav className="bg-white dark:bg-[#1f1f1f] border-b border-gray-200 dark:border-[#333333] fixed w-full z-30">
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
@@ -96,7 +96,7 @@ export default function DashboardLayout({
       <div className="flex pt-16">
         {/* Sidebar */}
         <aside className="hidden md:flex md:flex-shrink-0">
-          <div className="w-64 bg-white dark:bg-[#262626] border-r border-gray-200 dark:border-[#333333] min-h-[calc(100vh-4rem)]">
+          <div className="w-64 bg-white dark:bg-[#1f1f1f] border-r border-gray-200 dark:border-[#333333] min-h-[calc(100vh-4rem)]">
             <nav className="p-4 space-y-1">
               {navItems.map((item) => {
                 const isActive = pathname === item.href;
@@ -132,7 +132,7 @@ export default function DashboardLayout({
         </aside>
 
         {/* Mobile bottom nav */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#262626] border-t border-gray-200 dark:border-[#333333] z-30">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#1f1f1f] border-t border-gray-200 dark:border-[#333333] z-30">
           <div className="flex justify-around py-2">
             {navItems.map((item) => {
               const isActive = pathname === item.href;

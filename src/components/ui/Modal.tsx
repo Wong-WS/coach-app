@@ -18,7 +18,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
       <div className="fixed inset-0 bg-black bg-opacity-50 z-40" onClick={onClose} />
       <div className="fixed inset-0 z-50 overflow-y-auto">
         <div className="flex min-h-full items-center justify-center p-4">
-          <div className="relative bg-white dark:bg-[#262626] rounded-lg shadow-xl max-w-md w-full p-6">
+          <div className="relative bg-white dark:bg-[#1f1f1f] rounded-lg shadow-xl max-w-md w-full p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">{title}</h3>
               <Button variant="ghost" size="sm" onClick={onClose}>

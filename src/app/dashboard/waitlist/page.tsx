@@ -119,7 +119,7 @@ export default function WaitlistPage() {
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               activeTab === tab.value
                 ? 'bg-purple-600 text-white'
-                : 'bg-white dark:bg-[#262626] text-gray-700 dark:text-zinc-300 border border-gray-200 dark:border-[#333333] hover:bg-gray-50 dark:hover:bg-[#303030]'
+                : 'bg-white dark:bg-[#1f1f1f] text-gray-700 dark:text-zinc-300 border border-gray-200 dark:border-[#333333] hover:bg-gray-50 dark:hover:bg-[#303030]'
             }`}
           >
             {tab.label}
@@ -136,7 +136,7 @@ export default function WaitlistPage() {
 
       {/* Entries */}
       {filteredEntries.length === 0 ? (
-        <div className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-8 text-center">
+        <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-8 text-center">
           <svg className="w-12 h-12 text-gray-300 dark:text-zinc-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
           </svg>
@@ -152,7 +152,7 @@ export default function WaitlistPage() {
           {filteredEntries.map((entry) => (
             <div
               key={entry.id}
-              className="bg-white dark:bg-[#262626] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-5 flex flex-col"
+              className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-5 flex flex-col"
             >
               {/* Header */}
               <div className="flex items-start justify-between mb-3">
