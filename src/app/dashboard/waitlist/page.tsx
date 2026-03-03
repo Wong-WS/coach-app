@@ -25,9 +25,9 @@ const PREFERRED_TIME_LABELS: Record<string, string> = {
 };
 
 const STATUS_BADGE_STYLES: Record<WaitlistStatus, string> = {
-  waiting: 'bg-yellow-100 text-yellow-800',
-  contacted: 'bg-purple-100 text-purple-800',
-  booked: 'bg-green-100 text-green-800',
+  waiting: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
+  contacted: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
+  booked: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
 };
 
 export default function WaitlistPage() {
@@ -106,8 +106,8 @@ export default function WaitlistPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Waitlist</h1>
-        <p className="text-gray-600 mt-1">Manage clients waiting for available slots</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Waitlist</h1>
+        <p className="text-gray-600 dark:text-gray-400 mt-1">Manage clients waiting for available slots</p>
       </div>
 
       {/* Filter tabs */}
@@ -119,14 +119,14 @@ export default function WaitlistPage() {
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               activeTab === tab.value
                 ? 'bg-purple-600 text-white'
-                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
             }`}
           >
             {tab.label}
             <span className={`ml-2 px-1.5 py-0.5 rounded-full text-xs ${
               activeTab === tab.value
                 ? 'bg-purple-500 text-white'
-                : 'bg-gray-100 text-gray-600'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
             }`}>
               {counts[tab.value]}
             </span>
@@ -136,12 +136,12 @@ export default function WaitlistPage() {
 
       {/* Entries */}
       {filteredEntries.length === 0 ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
-          <svg className="w-12 h-12 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-8 text-center">
+          <svg className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
           </svg>
-          <h3 className="text-lg font-medium text-gray-900 mb-1">No waitlist entries</h3>
-          <p className="text-gray-500">
+          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-1">No waitlist entries</h3>
+          <p className="text-gray-500 dark:text-gray-400">
             {activeTab === 'all'
               ? 'When clients join your waitlist from your public page, they\'ll appear here.'
               : `No entries with status "${activeTab}".`}
@@ -152,13 +152,13 @@ export default function WaitlistPage() {
           {filteredEntries.map((entry) => (
             <div
               key={entry.id}
-              className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col"
+              className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 flex flex-col"
             >
               {/* Header */}
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <h3 className="font-semibold text-gray-900">{entry.clientName}</h3>
-                  <p className="text-sm text-gray-500">{entry.clientPhone}</p>
+                  <h3 className="font-semibold text-gray-900 dark:text-gray-100">{entry.clientName}</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{entry.clientPhone}</p>
                 </div>
                 <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_BADGE_STYLES[entry.status]}`}>
                   {entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
@@ -166,34 +166,34 @@ export default function WaitlistPage() {
               </div>
 
               {/* Details */}
-              <div className="space-y-1.5 text-sm text-gray-600 mb-4 flex-1">
+              <div className="space-y-1.5 text-sm text-gray-600 dark:text-gray-400 mb-4 flex-1">
                 <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                   {getDayDisplayName(entry.dayOfWeek)} &middot; {PREFERRED_TIME_LABELS[entry.preferredTime]}
                 </div>
                 <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   </svg>
                   {entry.locationName}
                 </div>
                 {entry.notes && (
                   <div className="flex items-start gap-2">
-                    <svg className="w-4 h-4 text-gray-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 text-gray-400 dark:text-gray-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
                     </svg>
-                    <span className="text-gray-500">{entry.notes}</span>
+                    <span className="text-gray-500 dark:text-gray-400">{entry.notes}</span>
                   </div>
                 )}
-                <p className="text-xs text-gray-400 mt-2">
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
                   Joined {entry.createdAt.toLocaleDateString()}
                 </p>
               </div>
 
               {/* Actions */}
-              <div className="border-t border-gray-100 pt-3 space-y-2">
+              <div className="border-t border-gray-100 dark:border-gray-700 pt-3 space-y-2">
                 {/* WhatsApp button */}
                 <button
                   onClick={() => handleWhatsApp(entry)}
@@ -216,10 +216,10 @@ export default function WaitlistPage() {
                         disabled={updatingId === entry.id}
                         className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
                           status === 'waiting'
-                            ? 'border-yellow-200 text-yellow-700 hover:bg-yellow-50'
+                            ? 'border-yellow-200 dark:border-yellow-700 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-900/30'
                             : status === 'contacted'
-                            ? 'border-purple-200 text-purple-700 hover:bg-purple-50'
-                            : 'border-green-200 text-green-700 hover:bg-green-50'
+                            ? 'border-purple-200 dark:border-purple-700 text-purple-700 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30'
+                            : 'border-green-200 dark:border-green-700 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30'
                         } disabled:opacity-50`}
                       >
                         {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -231,7 +231,7 @@ export default function WaitlistPage() {
                 <button
                   onClick={() => setConfirmDeleteId(entry.id)}
                   disabled={deletingId === entry.id}
-                  className="w-full px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                  className="w-full px-2 py-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors disabled:opacity-50"
                 >
                   {deletingId === entry.id ? 'Removing...' : 'Remove from waitlist'}
                 </button>
@@ -247,7 +247,7 @@ export default function WaitlistPage() {
         onClose={() => setConfirmDeleteId(null)}
         title="Remove from Waitlist"
       >
-        <p className="text-gray-600 mb-6">
+        <p className="text-gray-600 dark:text-gray-400 mb-6">
           Are you sure you want to remove this entry from the waitlist? This action cannot be undone.
         </p>
         <div className="flex justify-end gap-3">
