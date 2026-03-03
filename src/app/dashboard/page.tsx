@@ -113,10 +113,14 @@ export default function DashboardPage() {
                 key={day}
                 className={`p-4 rounded-lg ${day === today ? 'bg-blue-50 dark:bg-blue-900/30 ring-2 ring-blue-200 dark:ring-blue-700' : 'bg-gray-50 dark:bg-[#1a1a1a]/50'}`}
               >
-                <h3 className={`text-sm font-medium mb-3 ${day === today ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-zinc-300'}`}>
-                  {getDayDisplayName(day)}
-                  {day === today && <span className="ml-2 text-xs">(Today)</span>}
-                </h3>
+                <div className="mb-3">
+                  {day === today && (
+                    <span className="block text-xs font-medium text-blue-600 dark:text-blue-400 mb-0.5">Today</span>
+                  )}
+                  <h3 className={`text-sm font-medium ${day === today ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-zinc-300'}`}>
+                    {getDayDisplayName(day)}
+                  </h3>
+                </div>
                 {bookingsByDay[day].length === 0 ? (
                   <p className="text-xs text-gray-400 dark:text-zinc-500">No bookings</p>
                 ) : (
