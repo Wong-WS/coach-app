@@ -33,7 +33,7 @@ export default function DashboardLayout({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center dark:bg-zinc-900">
+      <div className="min-h-screen flex items-center justify-center dark:bg-zinc-800">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     );
@@ -49,9 +49,9 @@ export default function DashboardLayout({
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-zinc-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-zinc-800">
       {/* Top nav bar */}
-      <nav className="bg-white dark:bg-zinc-800 border-b border-gray-200 dark:border-zinc-700 fixed w-full z-30">
+      <nav className="bg-white dark:bg-zinc-700 border-b border-gray-200 dark:border-zinc-600 fixed w-full z-30">
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
@@ -72,7 +72,7 @@ export default function DashboardLayout({
               <span className="text-sm text-gray-600 dark:text-zinc-400">{coach?.displayName || user.email}</span>
               <button
                 onClick={toggle}
-                className="p-2 rounded-lg text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors"
+                className="p-2 rounded-lg text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-600 transition-colors"
                 aria-label="Toggle dark mode"
               >
                 {isDark ? (
@@ -96,7 +96,7 @@ export default function DashboardLayout({
       <div className="flex pt-16">
         {/* Sidebar */}
         <aside className="hidden md:flex md:flex-shrink-0">
-          <div className="w-64 bg-white dark:bg-zinc-800 border-r border-gray-200 dark:border-zinc-700 min-h-[calc(100vh-4rem)]">
+          <div className="w-64 bg-white dark:bg-zinc-700 border-r border-gray-200 dark:border-zinc-600 min-h-[calc(100vh-4rem)]">
             <nav className="p-4 space-y-1">
               {navItems.map((item) => {
                 const isActive = pathname === item.href;
@@ -107,7 +107,7 @@ export default function DashboardLayout({
                     className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                       isActive
                         ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                        : 'text-gray-700 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-700'
+                        : 'text-gray-700 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-600'
                     }`}
                   >
                     <svg
@@ -132,7 +132,7 @@ export default function DashboardLayout({
         </aside>
 
         {/* Mobile bottom nav */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-800 border-t border-gray-200 dark:border-zinc-700 z-30">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-700 border-t border-gray-200 dark:border-zinc-600 z-30">
           <div className="flex justify-around py-2">
             {navItems.map((item) => {
               const isActive = pathname === item.href;

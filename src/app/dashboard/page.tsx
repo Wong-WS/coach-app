@@ -56,7 +56,7 @@ export default function DashboardPage() {
 
       {/* Stats cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white dark:bg-zinc-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-zinc-700">
+        <div className="bg-white dark:bg-zinc-700 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-zinc-600">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
               <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -70,7 +70,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-zinc-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-zinc-700">
+        <div className="bg-white dark:bg-zinc-700 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-zinc-600">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
               <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -84,7 +84,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-zinc-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-zinc-700">
+        <div className="bg-white dark:bg-zinc-700 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-zinc-600">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
               <svg className="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -102,8 +102,8 @@ export default function DashboardPage() {
       </div>
 
       {/* Weekly schedule */}
-      <div className="bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-700">
-        <div className="p-6 border-b border-gray-100 dark:border-zinc-700">
+      <div className="bg-white dark:bg-zinc-700 rounded-xl shadow-sm border border-gray-100 dark:border-zinc-600">
+        <div className="p-6 border-b border-gray-100 dark:border-zinc-600">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">This Week&apos;s Schedule</h2>
         </div>
         <div className="p-6">
@@ -111,7 +111,7 @@ export default function DashboardPage() {
             {DAYS.map((day) => (
               <div
                 key={day}
-                className={`p-4 rounded-lg ${day === today ? 'bg-blue-50 dark:bg-blue-900/30 ring-2 ring-blue-200 dark:ring-blue-700' : 'bg-gray-50 dark:bg-zinc-700/50'}`}
+                className={`p-4 rounded-lg ${day === today ? 'bg-blue-50 dark:bg-blue-900/30 ring-2 ring-blue-200 dark:ring-blue-700' : 'bg-gray-50 dark:bg-zinc-600/50'}`}
               >
                 <h3 className={`text-sm font-medium mb-3 ${day === today ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-zinc-300'}`}>
                   {getDayDisplayName(day)}
@@ -124,7 +124,7 @@ export default function DashboardPage() {
                     {bookingsByDay[day].map((booking) => (
                       <div
                         key={booking.id}
-                        className="text-xs p-2 bg-white dark:bg-zinc-800 rounded border border-gray-200 dark:border-zinc-600"
+                        className="text-xs p-2 bg-white dark:bg-zinc-700 rounded border border-gray-200 dark:border-zinc-500"
                       >
                         <p className="font-medium text-gray-900 dark:text-zinc-100">
                           {formatTimeDisplay(booking.startTime)}
