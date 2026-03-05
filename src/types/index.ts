@@ -54,6 +54,7 @@ export interface Booking {
   lessonType: LessonType;
   groupSize: number;
   notes: string;
+  price?: number;
   createdAt: Date;
   cancelledAt?: Date;
 }

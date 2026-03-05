@@ -103,6 +103,7 @@ export function useBookings(coachId: string | undefined, statusFilter?: 'confirm
         lessonType: d.data().lessonType,
         groupSize: d.data().groupSize,
         notes: d.data().notes,
+        price: d.data().price,
         createdAt: d.data().createdAt?.toDate() || new Date(),
         cancelledAt: d.data().cancelledAt?.toDate(),
       }));

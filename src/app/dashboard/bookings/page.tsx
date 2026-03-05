@@ -42,6 +42,7 @@ const EMPTY_FORM = {
   lessonType: 'private' as LessonType,
   groupSize: 1,
   notes: '',
+  price: 0,
 };
 
 export default function BookingsPage() {
@@ -94,6 +95,7 @@ export default function BookingsPage() {
       lessonType: booking.lessonType,
       groupSize: booking.groupSize || 1,
       notes: booking.notes || '',
+      price: booking.price ?? 0,
     });
     setEditingBookingId(booking.id);
     setIsModalOpen(true);
@@ -122,6 +124,7 @@ export default function BookingsPage() {
       lessonType: formData.lessonType,
       groupSize: formData.lessonType === 'group' ? formData.groupSize : 1,
       notes: formData.notes.trim(),
+      price: formData.price,
     };
 
     try {
@@ -236,6 +239,9 @@ export default function BookingsPage() {
                           </div>
                           <p className="text-sm text-gray-600 dark:text-zinc-400 mt-1">{booking.clientName}</p>
                           <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{booking.locationName}</p>
+                          {(booking.price ?? 0) > 0 && (
+                            <p className="text-xs font-medium text-green-600 dark:text-green-400 mt-1">RM {booking.price}</p>
+                          )}
                         </div>
                         <div className="flex flex-col gap-1 ml-2">
                           <Button
@@ -360,6 +366,17 @@ export default function BookingsPage() {
               />
             )}
           </div>
+
+          <Input
+            id="price"
+            type="number"
+            label="Price per session (RM)"
+            value={formData.price.toString()}
+            onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
+            min={0}
+            step={0.01}
+            placeholder="0"
+          />
 
           <div>
             <label htmlFor="notes" className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
