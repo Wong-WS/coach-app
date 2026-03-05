@@ -32,6 +32,18 @@ const TIME_OPTIONS = Array.from({ length: 24 * 12 }, (_, i) => {
   return { value: time, label };
 });
 
+const EMPTY_FORM = {
+  locationId: '',
+  dayOfWeek: 'monday' as DayOfWeek,
+  startTime: '09:00',
+  endTime: '10:00',
+  clientName: '',
+  clientPhone: '',
+  lessonType: 'private' as LessonType,
+  groupSize: 1,
+  notes: '',
+};
+
 export default function BookingsPage() {
   const { coach } = useAuth();
   const { locations } = useLocations(coach?.id);
@@ -39,25 +51,55 @@ export default function BookingsPage() {
   const { showToast } = useToast();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    locationId: '',
-    dayOfWeek: 'monday' as DayOfWeek,
-    startTime: '09:00',
-    endTime: '10:00',
-    clientName: '',
-    clientPhone: '',
-    lessonType: 'private' as LessonType,
-    groupSize: 1,
-    notes: '',
-  });
+  const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
+  const [formData, setFormData] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
 
   const confirmedBookings = bookings.filter((b) => b.status === 'confirmed');
-  const cancelledBookings = bookings.filter((b) => b.status === 'cancelled');
 
-  const handleAdd = async (e: React.FormEvent) => {
+  const calcEndTime = (start: string, durationMinutes: number) => {
+    const [h, m] = start.split(':').map(Number);
+    const totalMins = h * 60 + m + durationMinutes;
+    const endH = Math.floor(totalMins / 60) % 24;
+    const endM = totalMins % 60;
+    return `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
+  };
+
+  const handleStartTimeChange = (start: string) => {
+    const duration = coach?.lessonDurationMinutes ?? 60;
+    setFormData((prev) => ({ ...prev, startTime: start, endTime: calcEndTime(start, duration) }));
+  };
+
+  const openAddModal = () => {
+    const duration = coach?.lessonDurationMinutes ?? 60;
+    setFormData({
+      ...EMPTY_FORM,
+      locationId: locations[0]?.id || '',
+      endTime: calcEndTime(EMPTY_FORM.startTime, duration),
+    });
+    setEditingBookingId(null);
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (booking: Booking) => {
+    setFormData({
+      locationId: booking.locationId,
+      dayOfWeek: booking.dayOfWeek,
+      startTime: booking.startTime,
+      endTime: booking.endTime,
+      clientName: booking.clientName,
+      clientPhone: booking.clientPhone || '',
+      lessonType: booking.lessonType,
+      groupSize: booking.groupSize || 1,
+      notes: booking.notes || '',
+    });
+    setEditingBookingId(booking.id);
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!coach || !db || !formData.locationId || !formData.clientName.trim()) return;
     setSaving(true);
@@ -69,38 +111,35 @@ export default function BookingsPage() {
       return;
     }
 
-    try {
-      await addDoc(collection(db, 'coaches', coach.id, 'bookings'), {
-        locationId: formData.locationId,
-        locationName: location.name,
-        dayOfWeek: formData.dayOfWeek,
-        startTime: formData.startTime,
-        endTime: formData.endTime,
-        status: 'confirmed',
-        clientName: formData.clientName.trim(),
-        clientPhone: formData.clientPhone.trim(),
-        lessonType: formData.lessonType,
-        groupSize: formData.lessonType === 'group' ? formData.groupSize : 1,
-        notes: formData.notes.trim(),
-        createdAt: serverTimestamp(),
-      });
+    const payload = {
+      locationId: formData.locationId,
+      locationName: location.name,
+      dayOfWeek: formData.dayOfWeek,
+      startTime: formData.startTime,
+      endTime: formData.endTime,
+      clientName: formData.clientName.trim(),
+      clientPhone: formData.clientPhone.trim(),
+      lessonType: formData.lessonType,
+      groupSize: formData.lessonType === 'group' ? formData.groupSize : 1,
+      notes: formData.notes.trim(),
+    };
 
-      setFormData({
-        locationId: locations[0]?.id || '',
-        dayOfWeek: 'monday',
-        startTime: '09:00',
-        endTime: '10:00',
-        clientName: '',
-        clientPhone: '',
-        lessonType: 'private',
-        groupSize: 1,
-        notes: '',
-      });
+    try {
+      if (editingBookingId) {
+        await updateDoc(doc(db, 'coaches', coach.id, 'bookings', editingBookingId), payload);
+        showToast('Booking updated!', 'success');
+      } else {
+        await addDoc(collection(db, 'coaches', coach.id, 'bookings'), {
+          ...payload,
+          status: 'confirmed',
+          createdAt: serverTimestamp(),
+        });
+        showToast('Booking created!', 'success');
+      }
       setIsModalOpen(false);
-      showToast('Booking created!', 'success');
     } catch (error) {
-      console.error('Error creating booking:', error);
-      showToast('Failed to create booking', 'error');
+      console.error('Error saving booking:', error);
+      showToast('Failed to save booking', 'error');
     } finally {
       setSaving(false);
     }
@@ -123,14 +162,6 @@ export default function BookingsPage() {
     } finally {
       setCancellingId(null);
     }
-  };
-
-  const openAddModal = () => {
-    setFormData((prev) => ({
-      ...prev,
-      locationId: locations[0]?.id || '',
-    }));
-    setIsModalOpen(true);
   };
 
   // Group bookings by day
@@ -206,14 +237,23 @@ export default function BookingsPage() {
                           <p className="text-sm text-gray-600 dark:text-zinc-400 mt-1">{booking.clientName}</p>
                           <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{booking.locationName}</p>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setConfirmCancelId(booking.id)}
-                          loading={cancellingId === booking.id}
-                        >
-                          Cancel
-                        </Button>
+                        <div className="flex flex-col gap-1 ml-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEditModal(booking)}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setConfirmCancelId(booking.id)}
+                            loading={cancellingId === booking.id}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -223,33 +263,6 @@ export default function BookingsPage() {
           </div>
         </div>
       </div>
-
-      {/* Cancelled bookings */}
-      {cancelledBookings.length > 0 && (
-        <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333]">
-          <div className="p-6 border-b border-gray-100 dark:border-[#333333]">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">Cancelled Bookings</h2>
-          </div>
-          <div className="p-6">
-            <div className="space-y-3">
-              {cancelledBookings.map((booking) => (
-                <div key={booking.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#1a1a1a]/50 rounded-lg opacity-60">
-                  <div>
-                    <span className="text-sm text-gray-600 dark:text-zinc-400">
-                      {getDayDisplayName(booking.dayOfWeek)} {formatTimeDisplay(booking.startTime)}
-                    </span>
-                    <span className="mx-2 text-gray-400 dark:text-zinc-500">·</span>
-                    <span className="text-sm text-gray-900 dark:text-zinc-100">{booking.clientName}</span>
-                    <span className="mx-2 text-gray-400 dark:text-zinc-500">·</span>
-                    <span className="text-sm text-gray-500 dark:text-zinc-400">{booking.locationName}</span>
-                  </div>
-                  <span className="text-xs text-red-600 bg-red-50 dark:bg-red-900/30 dark:text-red-400 px-2 py-1 rounded">Cancelled</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Cancel Booking Confirmation Modal */}
       <Modal
@@ -268,13 +281,13 @@ export default function BookingsPage() {
         </div>
       </Modal>
 
-      {/* Add Booking Modal */}
+      {/* Add / Edit Booking Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title="Add Booking"
+        title={editingBookingId ? 'Edit Booking' : 'Add Booking'}
       >
-        <form onSubmit={handleAdd} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <Select
             id="locationId"
             label="Location"
@@ -293,12 +306,13 @@ export default function BookingsPage() {
             onChange={(e) => setFormData({ ...formData, dayOfWeek: e.target.value as DayOfWeek })}
             options={DAY_OPTIONS}
           />
+
           <div className="grid grid-cols-2 gap-4">
             <Select
               id="startTime"
               label="Start Time"
               value={formData.startTime}
-              onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+              onChange={(e) => handleStartTimeChange(e.target.value)}
               options={TIME_OPTIONS}
             />
             <Select
@@ -366,7 +380,7 @@ export default function BookingsPage() {
               Cancel
             </Button>
             <Button type="submit" loading={saving}>
-              Create Booking
+              {editingBookingId ? 'Save Changes' : 'Create Booking'}
             </Button>
           </div>
         </form>
