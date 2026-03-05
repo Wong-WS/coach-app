@@ -22,6 +22,17 @@ const LESSON_TYPE_OPTIONS = [
   { value: 'group', label: 'Group' },
 ];
 
+const DURATION_OPTIONS = [
+  { value: '30', label: '30 min' },
+  { value: '45', label: '45 min' },
+  { value: '60', label: '1 hr' },
+  { value: '75', label: '1 hr 15 min' },
+  { value: '90', label: '1 hr 30 min' },
+  { value: '120', label: '2 hr' },
+  { value: '150', label: '2 hr 30 min' },
+  { value: '180', label: '3 hr' },
+];
+
 const TIME_OPTIONS = Array.from({ length: 24 * 12 }, (_, i) => {
   const hours = Math.floor(i / 12);
   const minutes = (i % 12) * 5;
@@ -43,6 +54,7 @@ export default function BookingsPage() {
     locationId: '',
     dayOfWeek: 'monday' as DayOfWeek,
     startTime: '09:00',
+    duration: '60',
     clientName: '',
     clientPhone: '',
     lessonType: 'private' as LessonType,
@@ -56,11 +68,10 @@ export default function BookingsPage() {
   const confirmedBookings = bookings.filter((b) => b.status === 'confirmed');
   const cancelledBookings = bookings.filter((b) => b.status === 'cancelled');
 
-  // Calculate end time based on coach's lesson duration
-  const calculateEndTime = (startTime: string): string => {
-    const duration = coach?.lessonDurationMinutes || 60;
+  // Calculate end time based on selected duration
+  const calculateEndTime = (startTime: string, durationMinutes: number): string => {
     const [hours, minutes] = startTime.split(':').map(Number);
-    const totalMinutes = hours * 60 + minutes + duration;
+    const totalMinutes = hours * 60 + minutes + durationMinutes;
     const endHours = Math.floor(totalMinutes / 60) % 24;
     const endMins = totalMinutes % 60;
     return `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
@@ -84,7 +95,7 @@ export default function BookingsPage() {
         locationName: location.name,
         dayOfWeek: formData.dayOfWeek,
         startTime: formData.startTime,
-        endTime: calculateEndTime(formData.startTime),
+        endTime: calculateEndTime(formData.startTime, parseInt(formData.duration)),
         status: 'confirmed',
         clientName: formData.clientName.trim(),
         clientPhone: formData.clientPhone.trim(),
@@ -98,6 +109,7 @@ export default function BookingsPage() {
         locationId: locations[0]?.id || '',
         dayOfWeek: 'monday',
         startTime: '09:00',
+        duration: String(coach?.lessonDurationMinutes || 60),
         clientName: '',
         clientPhone: '',
         lessonType: 'private',
@@ -137,6 +149,7 @@ export default function BookingsPage() {
     setFormData((prev) => ({
       ...prev,
       locationId: locations[0]?.id || '',
+      duration: String(coach?.lessonDurationMinutes || 60),
     }));
     setIsModalOpen(true);
   };
@@ -294,20 +307,27 @@ export default function BookingsPage() {
             ]}
           />
 
+          <Select
+            id="dayOfWeek"
+            label="Day"
+            value={formData.dayOfWeek}
+            onChange={(e) => setFormData({ ...formData, dayOfWeek: e.target.value as DayOfWeek })}
+            options={DAY_OPTIONS}
+          />
           <div className="grid grid-cols-2 gap-4">
-            <Select
-              id="dayOfWeek"
-              label="Day"
-              value={formData.dayOfWeek}
-              onChange={(e) => setFormData({ ...formData, dayOfWeek: e.target.value as DayOfWeek })}
-              options={DAY_OPTIONS}
-            />
             <Select
               id="startTime"
               label="Start Time"
               value={formData.startTime}
               onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
               options={TIME_OPTIONS}
+            />
+            <Select
+              id="duration"
+              label="Duration"
+              value={formData.duration}
+              onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+              options={DURATION_OPTIONS}
             />
           </div>
 
