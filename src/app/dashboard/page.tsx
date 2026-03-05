@@ -104,7 +104,7 @@ export default function DashboardPage() {
       {/* Weekly schedule */}
       <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333]">
         <div className="p-6 border-b border-gray-100 dark:border-[#333333]">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">This Week&apos;s Schedule</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">Weekly Schedule</h2>
         </div>
         <div className="p-4 sm:p-6">
           <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
@@ -131,7 +131,7 @@ export default function DashboardPage() {
                         className="text-xs p-2 bg-white dark:bg-[#1f1f1f] rounded border border-gray-200 dark:border-zinc-500"
                       >
                         <p className="font-medium text-gray-900 dark:text-zinc-100">
-                          {formatTimeDisplay(booking.startTime)}
+                          {formatTimeDisplay(booking.startTime)} – {formatTimeDisplay(booking.endTime)}
                         </p>
                         <p className="text-gray-600 dark:text-zinc-400 truncate">{booking.clientName}</p>
                         <p className="text-gray-400 dark:text-zinc-500 truncate">{booking.locationName}</p>
