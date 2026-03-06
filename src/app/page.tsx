@@ -17,14 +17,9 @@ export default function Home() {
               <Button>Dashboard</Button>
             </Link>
           ) : (
-            <>
-              <Link href="/login">
-                <Button variant="ghost">Log in</Button>
-              </Link>
-              <Link href="/signup">
-                <Button>Get Started</Button>
-              </Link>
-            </>
+            <Link href="/login">
+              <Button variant="secondary">Log in</Button>
+            </Link>
           )}
         </div>
       </nav>
@@ -40,10 +35,7 @@ export default function Home() {
           </p>
           <div className="flex gap-4 justify-center">
             <Link href="/signup">
-              <Button size="lg">Start Free</Button>
-            </Link>
-            <Link href="/test-coach">
-              <Button variant="secondary" size="lg">View Demo</Button>
+              <Button size="lg">Get Started</Button>
             </Link>
           </div>
         </div>
