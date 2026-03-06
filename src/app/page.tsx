@@ -18,7 +18,7 @@ export default function Home() {
             </Link>
           ) : (
             <Link href="/login">
-              <Button variant="secondary">Log in</Button>
+              <Button>Log in</Button>
             </Link>
           )}
         </div>
