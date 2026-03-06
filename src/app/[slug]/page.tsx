@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, use } from 'react';
-import { doc, getDoc, collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Coach, Location, DayOfWeek, PreferredTime } from '@/types';
 import { getDayDisplayName, formatTimeDisplay, DayAvailability } from '@/lib/availability-engine';
@@ -34,60 +34,44 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
   });
   const { showToast } = useToast();
 
-  // Effect 1: Fetch coach profile + locations
+  // Effect 1: Fetch coach profile + locations from API
   useEffect(() => {
     const fetchCoachAndLocations = async () => {
-      if (!db) {
-        setError('Firebase not initialized');
-        setLoading(false);
-        return;
-      }
-
       try {
-        const slugDoc = await getDoc(doc(db, 'coachSlugs', slug));
-        if (!slugDoc.exists()) {
+        const res = await fetch(`/api/coach/${slug}`);
+        if (!res.ok) {
           setError('Coach not found');
           setLoading(false);
           return;
         }
 
-        const id = slugDoc.data().coachId;
-
-        const coachDoc = await getDoc(doc(db, 'coaches', id));
-        if (!coachDoc.exists()) {
-          setError('Coach profile not found');
-          setLoading(false);
-          return;
-        }
-
-        const coachData = coachDoc.data();
+        const data = await res.json();
         setCoach({
-          id: coachDoc.id,
-          displayName: coachData.displayName,
-          slug: coachData.slug,
-          email: coachData.email,
-          serviceType: coachData.serviceType,
-          lessonDurationMinutes: coachData.lessonDurationMinutes,
-          travelBufferMinutes: coachData.travelBufferMinutes,
-          whatsappNumber: coachData.whatsappNumber,
-          createdAt: coachData.createdAt?.toDate() || new Date(),
-          updatedAt: coachData.updatedAt?.toDate() || new Date(),
+          id: data.coachId,
+          displayName: data.coach.displayName,
+          slug: data.coach.slug,
+          email: '',
+          serviceType: data.coach.serviceType,
+          lessonDurationMinutes: data.coach.lessonDurationMinutes,
+          travelBufferMinutes: data.coach.travelBufferMinutes,
+          whatsappNumber: data.coach.whatsappNumber,
+          createdAt: new Date(),
+          updatedAt: new Date(),
         });
 
-        const locationsSnapshot = await getDocs(collection(db, 'coaches', id, 'locations'));
-        const locs: Location[] = locationsSnapshot.docs.map((docSnap) => ({
-          id: docSnap.id,
-          name: docSnap.data().name,
-          address: docSnap.data().address,
-          notes: docSnap.data().notes,
-          createdAt: docSnap.data().createdAt?.toDate() || new Date(),
+        const locs: Location[] = data.locations.map((loc: { id: string; name: string; address: string; notes: string }) => ({
+          id: loc.id,
+          name: loc.name,
+          address: loc.address,
+          notes: loc.notes,
+          createdAt: new Date(),
         }));
         setLocations(locs);
         if (locs.length > 0) {
           setSelectedLocation(locs[0].id);
         }
 
-        setCoachId(id);
+        setCoachId(data.coachId);
         setLoading(false);
       } catch (err) {
         console.error('Error fetching coach data:', err);

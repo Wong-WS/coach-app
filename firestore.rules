@@ -14,31 +14,26 @@ service cloud.firestore {
       return time in ['morning', 'afternoon', 'evening', 'any'];
     }
 
-    // Coach slugs - public read, authenticated create (own uid only)
+    // Coach slugs - authenticated create (own uid only), no public read (served via API)
     match /coachSlugs/{slug} {
-      allow read: if true;
+      allow read: if request.auth != null;
       allow create: if request.auth != null
         && request.resource.data.coachId == request.auth.uid;
       allow update, delete: if false;
     }
 
-    // Coach profiles - public read, owner write
+    // Coach profiles - owner only (public page served via API route using admin SDK)
     match /coaches/{coachId} {
-      allow read: if true;
-      allow create: if isOwner(coachId);
-      allow update: if isOwner(coachId);
-      allow delete: if isOwner(coachId);
+      allow read, write: if isOwner(coachId);
 
-      // Working hours - public read, owner write
+      // Working hours - owner only (served via API route)
       match /workingHours/{day} {
-        allow read: if true;
-        allow write: if isOwner(coachId);
+        allow read, write: if isOwner(coachId);
       }
 
-      // Locations - public read, owner write
+      // Locations - owner only (served via API route)
       match /locations/{locationId} {
-        allow read: if true;
-        allow write: if isOwner(coachId);
+        allow read, write: if isOwner(coachId);
       }
 
       // Bookings - owner only (availability served via API route using admin SDK)
