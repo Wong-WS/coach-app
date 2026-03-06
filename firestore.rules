@@ -1,44 +1,70 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function isOwner(coachId) {
+      return request.auth != null && request.auth.uid == coachId;
+    }
+
+    function isValidDay(day) {
+      return day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    }
+
+    function isValidPreferredTime(time) {
+      return time in ['morning', 'afternoon', 'evening', 'any'];
+    }
+
     // Coach slugs - public read, authenticated create (own uid only)
     match /coachSlugs/{slug} {
       allow read: if true;
       allow create: if request.auth != null
         && request.resource.data.coachId == request.auth.uid;
-      allow update, delete: if false; // Slugs cannot be changed once created
+      allow update, delete: if false;
     }
 
     // Coach profiles - public read, owner write
     match /coaches/{coachId} {
       allow read: if true;
-      allow create: if request.auth != null && request.auth.uid == coachId;
-      allow update: if request.auth != null && request.auth.uid == coachId;
-      allow delete: if request.auth != null && request.auth.uid == coachId;
+      allow create: if isOwner(coachId);
+      allow update: if isOwner(coachId);
+      allow delete: if isOwner(coachId);
 
       // Working hours - public read, owner write
       match /workingHours/{day} {
         allow read: if true;
-        allow write: if request.auth != null && request.auth.uid == coachId;
+        allow write: if isOwner(coachId);
       }
 
       // Locations - public read, owner write
       match /locations/{locationId} {
         allow read: if true;
-        allow write: if request.auth != null && request.auth.uid == coachId;
+        allow write: if isOwner(coachId);
       }
 
-      // Bookings - public read (for availability engine), owner create/update/delete
+      // Bookings - owner only (availability served via API route using admin SDK)
       match /bookings/{bookingId} {
-        allow read: if true;
-        allow write: if request.auth != null && request.auth.uid == coachId;
+        allow read, write: if isOwner(coachId);
       }
 
-      // Waitlist - public read + create (clients can join), owner update/delete
+      // Waitlist - owner read/update/delete, public create with validation
       match /waitlist/{waitlistId} {
-        allow read: if true;
-        allow create: if true;
-        allow update, delete: if request.auth != null && request.auth.uid == coachId;
+        allow read: if isOwner(coachId);
+        allow create: if
+          request.resource.data.keys().hasOnly(['locationId', 'locationName', 'dayOfWeek', 'preferredTime', 'clientName', 'clientPhone', 'notes', 'status', 'createdAt'])
+          && request.resource.data.clientName is string
+          && request.resource.data.clientName.size() >= 1
+          && request.resource.data.clientName.size() <= 100
+          && request.resource.data.clientPhone is string
+          && request.resource.data.clientPhone.size() >= 1
+          && request.resource.data.clientPhone.size() <= 30
+          && request.resource.data.locationId is string
+          && request.resource.data.locationId.size() > 0
+          && request.resource.data.locationName is string
+          && isValidDay(request.resource.data.dayOfWeek)
+          && isValidPreferredTime(request.resource.data.preferredTime)
+          && request.resource.data.status == 'waiting'
+          && (!('notes' in request.resource.data) || (request.resource.data.notes is string && request.resource.data.notes.size() <= 500));
+        allow update, delete: if isOwner(coachId);
       }
     }
   }

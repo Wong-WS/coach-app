@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, use } from 'react';
-import { doc, getDoc, collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Coach, Location, Booking, WorkingHours, DayOfWeek, PreferredTime } from '@/types';
-import { calculateAvailability, getDayDisplayName, formatTimeDisplay } from '@/lib/availability-engine';
+import { Coach, Location, DayOfWeek, PreferredTime } from '@/types';
+import { getDayDisplayName, formatTimeDisplay, DayAvailability } from '@/lib/availability-engine';
 import { Button } from '@/components/ui/Button';
 import { Modal, Input, Select } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
@@ -16,8 +16,8 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
   const { slug } = use(params);
   const [coach, setCoach] = useState<Coach | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [workingHours, setWorkingHours] = useState<WorkingHours[]>([]);
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [coachId, setCoachId] = useState<string | null>(null);
+  const [availability, setAvailability] = useState<DayAvailability[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,8 +34,9 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
   });
   const { showToast } = useToast();
 
+  // Effect 1: Fetch coach profile + locations
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchCoachAndLocations = async () => {
       if (!db) {
         setError('Firebase not initialized');
         setLoading(false);
@@ -43,7 +44,6 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
       }
 
       try {
-        // Get coach ID from slug
         const slugDoc = await getDoc(doc(db, 'coachSlugs', slug));
         if (!slugDoc.exists()) {
           setError('Coach not found');
@@ -51,10 +51,9 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
           return;
         }
 
-        const coachId = slugDoc.data().coachId;
+        const id = slugDoc.data().coachId;
 
-        // Fetch coach profile
-        const coachDoc = await getDoc(doc(db, 'coaches', coachId));
+        const coachDoc = await getDoc(doc(db, 'coaches', id));
         if (!coachDoc.exists()) {
           setError('Coach profile not found');
           setLoading(false);
@@ -75,8 +74,7 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
           updatedAt: coachData.updatedAt?.toDate() || new Date(),
         });
 
-        // Fetch locations
-        const locationsSnapshot = await getDocs(collection(db, 'coaches', coachId, 'locations'));
+        const locationsSnapshot = await getDocs(collection(db, 'coaches', id, 'locations'));
         const locs: Location[] = locationsSnapshot.docs.map((docSnap) => ({
           id: docSnap.id,
           name: docSnap.data().name,
@@ -89,44 +87,7 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
           setSelectedLocation(locs[0].id);
         }
 
-        // Fetch working hours
-        const hoursSnapshot = await getDocs(collection(db, 'coaches', coachId, 'workingHours'));
-        const hours: WorkingHours[] = hoursSnapshot.docs.map((docSnap) => {
-          const data = docSnap.data();
-          // Backward compat: migrate old { startTime, endTime } format
-          const timeRanges = data.timeRanges
-            ?? (data.startTime ? [{ startTime: data.startTime, endTime: data.endTime }] : [{ startTime: '09:00', endTime: '17:00' }]);
-          return {
-            day: docSnap.id as DayOfWeek,
-            enabled: data.enabled,
-            timeRanges,
-          };
-        });
-        setWorkingHours(hours);
-
-        // Fetch confirmed bookings
-        const bookingsQuery = query(
-          collection(db, 'coaches', coachId, 'bookings'),
-          where('status', '==', 'confirmed')
-        );
-        const bookingsSnapshot = await getDocs(bookingsQuery);
-        const books: Booking[] = bookingsSnapshot.docs.map((docSnap) => ({
-          id: docSnap.id,
-          locationId: docSnap.data().locationId,
-          locationName: docSnap.data().locationName,
-          dayOfWeek: docSnap.data().dayOfWeek,
-          startTime: docSnap.data().startTime,
-          endTime: docSnap.data().endTime,
-          status: docSnap.data().status,
-          clientName: docSnap.data().clientName,
-          clientPhone: docSnap.data().clientPhone,
-          lessonType: docSnap.data().lessonType,
-          groupSize: docSnap.data().groupSize,
-          notes: docSnap.data().notes,
-          createdAt: docSnap.data().createdAt?.toDate() || new Date(),
-        }));
-        setBookings(books);
-
+        setCoachId(id);
         setLoading(false);
       } catch (err) {
         console.error('Error fetching coach data:', err);
@@ -135,8 +96,27 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
       }
     };
 
-    fetchData();
+    fetchCoachAndLocations();
   }, [slug]);
+
+  // Effect 2: Fetch availability from API
+  useEffect(() => {
+    if (!coachId || !selectedLocation) return;
+
+    const fetchAvailability = async () => {
+      try {
+        const res = await fetch(`/api/availability/${coachId}?locationId=${selectedLocation}`);
+        if (res.ok) {
+          const data = await res.json();
+          setAvailability(data.availability);
+        }
+      } catch (err) {
+        console.error('Error fetching availability:', err);
+      }
+    };
+
+    fetchAvailability();
+  }, [coachId, selectedLocation]);
 
   if (loading) {
     return (
@@ -159,17 +139,6 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
       </div>
     );
   }
-
-  // Calculate availability for selected location
-  const availability = selectedLocation
-    ? calculateAvailability({
-        workingHours,
-        lessonDurationMinutes: coach.lessonDurationMinutes,
-        travelBufferMinutes: coach.travelBufferMinutes,
-        confirmedBookings: bookings,
-        clientLocationId: selectedLocation,
-      })
-    : [];
 
   const openWaitlistModal = () => {
     setWaitlistForm((prev) => ({

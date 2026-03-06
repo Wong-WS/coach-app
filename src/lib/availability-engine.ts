@@ -8,7 +8,7 @@ interface AvailabilityInput {
   clientLocationId: string;
 }
 
-interface DayAvailability {
+export interface DayAvailability {
   dayOfWeek: DayOfWeek;
   slots: TimeSlot[];
 }
