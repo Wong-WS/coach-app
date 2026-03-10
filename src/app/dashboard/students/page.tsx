@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { doc, updateDoc, serverTimestamp, increment, Firestore } from 'firebase/firestore';
+import { collection, doc, updateDoc, writeBatch, serverTimestamp, increment, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
-import { useStudents, useLessonLogs } from '@/hooks/useCoachData';
+import { useStudents, useLessonLogs, useLocations } from '@/hooks/useCoachData';
 import { Button, Input, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { Student, LessonLog } from '@/types';
@@ -14,6 +14,7 @@ export default function StudentsPage() {
   const { coach } = useAuth();
   const { students, loading } = useStudents(coach?.id);
   const { lessonLogs: allLogs } = useLessonLogs(coach?.id);
+  const { locations } = useLocations(coach?.id);
   const { showToast } = useToast();
 
   const [search, setSearch] = useState('');
@@ -23,6 +24,18 @@ export default function StudentsPage() {
   const [editNotes, setEditNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Add Lesson form state
+  const [showAddLesson, setShowAddLesson] = useState(false);
+  const [lessonDate, setLessonDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
+  const [lessonLocationName, setLessonLocationName] = useState('');
+  const [lessonStartTime, setLessonStartTime] = useState('09:00');
+  const [lessonEndTime, setLessonEndTime] = useState('10:00');
+  const [lessonPrice, setLessonPrice] = useState(0);
+  const [addingLesson, setAddingLesson] = useState(false);
 
   // Count lessons per student
   const lessonCounts = useMemo(() => {
@@ -56,6 +69,7 @@ export default function StudentsPage() {
     setEditName(student.clientName);
     setEditPhone(student.clientPhone);
     setEditNotes(student.notes);
+    setShowAddLesson(false);
   };
 
   const handleSave = async () => {
@@ -99,6 +113,43 @@ export default function StudentsPage() {
     } catch (error) {
       console.error('Error adding prepaid:', error);
       showToast('Failed to add prepaid lessons', 'error');
+    }
+  };
+
+  const handleAddLesson = async () => {
+    if (!coach || !db || !selectedStudent || !lessonLocationName) return;
+    setAddingLesson(true);
+    try {
+      const firestore = db as Firestore;
+      const batch = writeBatch(firestore);
+      const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
+      batch.set(logRef, {
+        date: lessonDate,
+        studentId: selectedStudent.id,
+        studentName: selectedStudent.clientName,
+        locationName: lessonLocationName,
+        startTime: lessonStartTime,
+        endTime: lessonEndTime,
+        price: lessonPrice,
+        createdAt: serverTimestamp(),
+      });
+      const studentRef = doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id);
+      batch.update(studentRef, {
+        prepaidUsed: increment(1),
+        updatedAt: serverTimestamp(),
+      });
+      await batch.commit();
+      // Update local state
+      setSelectedStudent((prev) =>
+        prev ? { ...prev, prepaidUsed: prev.prepaidUsed + 1 } : null
+      );
+      setShowAddLesson(false);
+      showToast('Lesson added!', 'success');
+    } catch (error) {
+      console.error('Error adding lesson:', error);
+      showToast('Failed to add lesson', 'error');
+    } finally {
+      setAddingLesson(false);
     }
   };
 
@@ -328,6 +379,77 @@ export default function StudentsPage() {
                       )}
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+
+            {/* Add Lesson */}
+            <div className="border-t border-gray-100 dark:border-[#333333] pt-4">
+              <button
+                onClick={() => setShowAddLesson(!showAddLesson)}
+                className="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                <svg className={`w-4 h-4 transition-transform ${showAddLesson ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                Add Lesson
+              </button>
+              {showAddLesson && (
+                <div className="mt-3 space-y-3">
+                  <Input
+                    id="lessonDate"
+                    label="Date"
+                    type="date"
+                    value={lessonDate}
+                    onChange={(e) => setLessonDate(e.target.value)}
+                  />
+                  <div>
+                    <label htmlFor="lessonLocation" className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
+                      Location
+                    </label>
+                    <select
+                      id="lessonLocation"
+                      value={lessonLocationName}
+                      onChange={(e) => setLessonLocationName(e.target.value)}
+                      className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
+                    >
+                      <option value="">Select location</option>
+                      {locations.map((loc) => (
+                        <option key={loc.id} value={loc.name}>{loc.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      id="lessonStart"
+                      label="Start Time"
+                      type="time"
+                      value={lessonStartTime}
+                      onChange={(e) => setLessonStartTime(e.target.value)}
+                    />
+                    <Input
+                      id="lessonEnd"
+                      label="End Time"
+                      type="time"
+                      value={lessonEndTime}
+                      onChange={(e) => setLessonEndTime(e.target.value)}
+                    />
+                  </div>
+                  <Input
+                    id="lessonPrice"
+                    label="Price (RM)"
+                    type="number"
+                    value={String(lessonPrice)}
+                    onChange={(e) => setLessonPrice(Number(e.target.value) || 0)}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleAddLesson}
+                    loading={addingLesson}
+                    disabled={!lessonLocationName || !lessonDate}
+                  >
+                    Add Lesson
+                  </Button>
                 </div>
               )}
             </div>

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { collection, doc, onSnapshot, query, where, orderBy, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Booking, Location, WorkingHours, DayOfWeek, WaitlistEntry, WaitlistStatus, Student, LessonLog } from '@/types';
+import { Booking, Location, WorkingHours, DayOfWeek, WaitlistEntry, WaitlistStatus, Student, LessonLog, ClassException } from '@/types';
 
 export function useWorkingHours(coachId: string | undefined) {
   const [workingHours, setWorkingHours] = useState<WorkingHours[]>([]);
@@ -234,6 +234,39 @@ export function useLessonLogs(coachId: string | undefined, dateFilter?: string, 
   }, [coachId, dateFilter, studentIdFilter]);
 
   return { lessonLogs, loading };
+}
+
+export function useClassExceptions(coachId: string | undefined) {
+  const [classExceptions, setClassExceptions] = useState<ClassException[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!coachId || !db) {
+      setLoading(false);
+      return;
+    }
+
+    const firestore = db as Firestore;
+    const unsubscribe = onSnapshot(
+      collection(firestore, 'coaches', coachId, 'classExceptions'),
+      (snapshot) => {
+        const items: ClassException[] = snapshot.docs.map((d) => ({
+          id: d.id,
+          bookingId: d.data().bookingId,
+          originalDate: d.data().originalDate,
+          type: d.data().type,
+          newDate: d.data().newDate,
+          createdAt: d.data().createdAt?.toDate() || new Date(),
+        }));
+        setClassExceptions(items);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [coachId]);
+
+  return { classExceptions, loading };
 }
 
 // Hook for public page - fetches coach by slug

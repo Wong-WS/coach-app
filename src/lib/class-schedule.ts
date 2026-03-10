@@ -1,0 +1,52 @@
+import { Booking, ClassException, DayOfWeek } from '@/types';
+
+const DAY_NAMES: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+export function getDayOfWeekForDate(dateStr: string): DayOfWeek {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return DAY_NAMES[date.getDay()];
+}
+
+export function getClassesForDate(
+  date: string,
+  bookings: Booking[],
+  exceptions: ClassException[]
+): Booking[] {
+  const dayOfWeek = getDayOfWeekForDate(date);
+
+  // Start with bookings for this day of week
+  let classes = bookings.filter((b) => b.dayOfWeek === dayOfWeek);
+
+  // Remove bookings that have a cancelled or rescheduled exception for this date
+  const cancelledOrMovedIds = new Set(
+    exceptions
+      .filter((e) => e.originalDate === date && (e.type === 'cancelled' || e.type === 'rescheduled'))
+      .map((e) => e.bookingId)
+  );
+  classes = classes.filter((b) => !cancelledOrMovedIds.has(b.id));
+
+  // Add bookings rescheduled TO this date
+  const rescheduledToThisDate = exceptions.filter(
+    (e) => e.type === 'rescheduled' && e.newDate === date
+  );
+  for (const exception of rescheduledToThisDate) {
+    const originalBooking = bookings.find((b) => b.id === exception.bookingId);
+    if (originalBooking && !classes.some((c) => c.id === originalBooking.id)) {
+      classes.push(originalBooking);
+    }
+  }
+
+  // Sort by start time
+  return classes.sort((a, b) => a.startTime.localeCompare(b.startTime));
+}
+
+export function isRescheduledToDate(
+  bookingId: string,
+  date: string,
+  exceptions: ClassException[]
+): boolean {
+  return exceptions.some(
+    (e) => e.bookingId === bookingId && e.type === 'rescheduled' && e.newDate === date
+  );
+}

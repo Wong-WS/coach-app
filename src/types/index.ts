@@ -112,13 +112,22 @@ export interface Student {
 export interface LessonLog {
   id: string;
   date: string;             // "YYYY-MM-DD"
-  bookingId: string;
+  bookingId?: string;
   studentId: string;
   studentName: string;
   locationName: string;
   startTime: string;
   endTime: string;
   price: number;
+  createdAt: Date;
+}
+
+export interface ClassException {
+  id: string;
+  bookingId: string;
+  originalDate: string;       // "YYYY-MM-DD"
+  type: 'cancelled' | 'rescheduled';
+  newDate?: string;           // only for rescheduled
   createdAt: Date;
 }
 
