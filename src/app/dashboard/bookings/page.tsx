@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, serverTimestamp, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useLocations, useBookings } from '@/hooks/useCoachData';
@@ -9,6 +9,7 @@ import { Button, Input, Select, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { DayOfWeek, LessonType, Booking } from '@/types';
 import { getDayDisplayName, formatTimeDisplay } from '@/lib/availability-engine';
+import { findOrCreateStudent } from '@/lib/students';
 
 const DAYS: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -137,6 +138,7 @@ export default function BookingsPage() {
           status: 'confirmed',
           createdAt: serverTimestamp(),
         });
+        await findOrCreateStudent(db as Firestore, coach.id, payload.clientName, payload.clientPhone);
         showToast('Booking created!', 'success');
       }
       setIsModalOpen(false);

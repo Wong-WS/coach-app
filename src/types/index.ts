@@ -97,6 +97,31 @@ export interface WaitlistEntry {
   bookedAt?: Date;
 }
 
+export interface Student {
+  id: string;
+  clientName: string;
+  clientPhone: string;
+  linkToken: string;
+  prepaidTotal: number;
+  prepaidUsed: number;
+  notes: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface LessonLog {
+  id: string;
+  date: string;             // "YYYY-MM-DD"
+  bookingId: string;
+  studentId: string;
+  studentName: string;
+  locationName: string;
+  startTime: string;
+  endTime: string;
+  price: number;
+  createdAt: Date;
+}
+
 export interface BookingFormData {
   locationId: string;
   dayOfWeek: DayOfWeek;

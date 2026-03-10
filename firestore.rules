@@ -22,6 +22,14 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Student portal token lookup - authenticated create, no update/delete
+    match /studentTokens/{token} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.coachId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
     // Coach profiles - owner only (public page served via API route using admin SDK)
     match /coaches/{coachId} {
       allow read, write: if isOwner(coachId);
@@ -38,6 +46,16 @@ service cloud.firestore {
 
       // Bookings - owner only (availability served via API route using admin SDK)
       match /bookings/{bookingId} {
+        allow read, write: if isOwner(coachId);
+      }
+
+      // Students - owner only
+      match /students/{studentId} {
+        allow read, write: if isOwner(coachId);
+      }
+
+      // Lesson logs - owner only
+      match /lessonLogs/{logId} {
         allow read, write: if isOwner(coachId);
       }
 

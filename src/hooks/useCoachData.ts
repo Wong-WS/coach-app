@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { collection, doc, onSnapshot, query, where, orderBy, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Booking, Location, WorkingHours, DayOfWeek, WaitlistEntry, WaitlistStatus } from '@/types';
+import { Booking, Location, WorkingHours, DayOfWeek, WaitlistEntry, WaitlistStatus, Student, LessonLog } from '@/types';
 
 export function useWorkingHours(coachId: string | undefined) {
   const [workingHours, setWorkingHours] = useState<WorkingHours[]>([]);
@@ -156,6 +156,84 @@ export function useWaitlist(coachId: string | undefined, statusFilter?: Waitlist
   }, [coachId, statusFilter]);
 
   return { waitlist, loading };
+}
+
+export function useStudents(coachId: string | undefined) {
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!coachId || !db) {
+      setLoading(false);
+      return;
+    }
+
+    const firestore = db as Firestore;
+    const unsubscribe = onSnapshot(
+      query(collection(firestore, 'coaches', coachId, 'students'), orderBy('clientName', 'asc')),
+      (snapshot) => {
+        const items: Student[] = snapshot.docs.map((d) => ({
+          id: d.id,
+          clientName: d.data().clientName,
+          clientPhone: d.data().clientPhone,
+          linkToken: d.data().linkToken,
+          prepaidTotal: d.data().prepaidTotal ?? 0,
+          prepaidUsed: d.data().prepaidUsed ?? 0,
+          notes: d.data().notes ?? '',
+          createdAt: d.data().createdAt?.toDate() || new Date(),
+          updatedAt: d.data().updatedAt?.toDate() || new Date(),
+        }));
+        setStudents(items);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [coachId]);
+
+  return { students, loading };
+}
+
+export function useLessonLogs(coachId: string | undefined, dateFilter?: string, studentIdFilter?: string) {
+  const [lessonLogs, setLessonLogs] = useState<LessonLog[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!coachId || !db) {
+      setLoading(false);
+      return;
+    }
+
+    const firestore = db as Firestore;
+    let q = query(collection(firestore, 'coaches', coachId, 'lessonLogs'), orderBy('date', 'desc'));
+
+    if (dateFilter) {
+      q = query(collection(firestore, 'coaches', coachId, 'lessonLogs'), where('date', '==', dateFilter));
+    } else if (studentIdFilter) {
+      q = query(collection(firestore, 'coaches', coachId, 'lessonLogs'), where('studentId', '==', studentIdFilter), orderBy('date', 'desc'));
+    }
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items: LessonLog[] = snapshot.docs.map((d) => ({
+        id: d.id,
+        date: d.data().date,
+        bookingId: d.data().bookingId,
+        studentId: d.data().studentId,
+        studentName: d.data().studentName,
+        locationName: d.data().locationName,
+        startTime: d.data().startTime,
+        endTime: d.data().endTime,
+        price: d.data().price ?? 0,
+        createdAt: d.data().createdAt?.toDate() || new Date(),
+      }));
+      setLessonLogs(items);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [coachId, dateFilter, studentIdFilter]);
+
+  return { lessonLogs, loading };
 }
 
 // Hook for public page - fetches coach by slug
