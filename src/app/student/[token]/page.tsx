@@ -113,7 +113,7 @@ export default function StudentPortalPage({ params }: { params: Promise<{ token:
 
         {/* Lesson history */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-          <div className="p-6 border-b border-gray-100">
+          <div className="px-4 sm:px-6 py-4 sm:py-6 border-b border-gray-100">
             <h2 className="text-lg font-semibold text-gray-900">
               Lesson History ({data.lessons.length})
             </h2>
@@ -125,14 +125,14 @@ export default function StudentPortalPage({ params }: { params: Promise<{ token:
           ) : (
             <div className="divide-y divide-gray-100">
               {data.lessons.map((lesson, i) => (
-                <div key={i} className="px-6 py-3 flex items-center justify-between">
-                  <div>
+                <div key={i} className="px-4 sm:px-6 py-3">
+                  <div className="flex items-start justify-between gap-2">
                     <p className="text-sm font-medium text-gray-900">{lesson.date}</p>
-                    <p className="text-xs text-gray-500">
-                      {getDayName(lesson.date)} &middot; {formatTime(lesson.startTime)} &ndash; {formatTime(lesson.endTime)}
-                    </p>
+                    <p className="text-xs text-gray-400 text-right shrink-0">{lesson.locationName}</p>
                   </div>
-                  <p className="text-xs text-gray-400">{lesson.locationName}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {getDayName(lesson.date)} &middot; {formatTime(lesson.startTime)} &ndash; {formatTime(lesson.endTime)}
+                  </p>
                 </div>
               ))}
             </div>
