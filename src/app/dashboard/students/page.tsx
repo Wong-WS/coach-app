@@ -4,18 +4,22 @@ import { useState, useMemo } from 'react';
 import { collection, doc, updateDoc, writeBatch, serverTimestamp, increment, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
-import { useStudents, useLessonLogs, useLocations } from '@/hooks/useCoachData';
+import { useStudents, useLessonLogs, useLocations, useBookings } from '@/hooks/useCoachData';
 import { Button, Input, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { Student, LessonLog } from '@/types';
 import { formatTimeDisplay } from '@/lib/availability-engine';
+import { findOrCreateStudent } from '@/lib/students';
 
 export default function StudentsPage() {
   const { coach } = useAuth();
   const { students, loading } = useStudents(coach?.id);
   const { lessonLogs: allLogs } = useLessonLogs(coach?.id);
   const { locations } = useLocations(coach?.id);
+  const { bookings } = useBookings(coach?.id, 'confirmed');
   const { showToast } = useToast();
+
+  const [syncing, setSyncing] = useState(false);
 
   const [search, setSearch] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
@@ -166,6 +170,32 @@ export default function StudentsPage() {
     }
   };
 
+  const handleSyncStudents = async () => {
+    if (!coach || !db) return;
+    setSyncing(true);
+    try {
+      const uniqueClients = new Map<string, { name: string; phone: string }>();
+      for (const booking of bookings) {
+        if (!booking.clientName || !booking.clientPhone) continue;
+        const key = `${booking.clientName}::${booking.clientPhone}`;
+        if (!uniqueClients.has(key)) {
+          uniqueClients.set(key, { name: booking.clientName, phone: booking.clientPhone });
+        }
+      }
+      let created = 0;
+      for (const client of uniqueClients.values()) {
+        await findOrCreateStudent(db as Firestore, coach.id, client.name, client.phone);
+        created++;
+      }
+      showToast(`Synced ${created} client${created !== 1 ? 's' : ''} from bookings!`, 'success');
+    } catch (error) {
+      console.error('Error syncing students:', error);
+      showToast('Failed to sync students', 'error');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -184,11 +214,18 @@ export default function StudentsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100">Students</h1>
-        <p className="text-gray-600 dark:text-zinc-400 mt-1">
-          {students.length} student{students.length !== 1 ? 's' : ''}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100">Students</h1>
+          <p className="text-gray-600 dark:text-zinc-400 mt-1">
+            {students.length} student{students.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+        {bookings.length > 0 && (
+          <Button variant="secondary" size="sm" onClick={handleSyncStudents} loading={syncing}>
+            Sync from Bookings
+          </Button>
+        )}
       </div>
 
       {/* Search */}
@@ -202,9 +239,20 @@ export default function StudentsPage() {
       {/* Student cards */}
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-gray-400 dark:text-zinc-500">
-          {students.length === 0
-            ? 'No students yet. Students are created automatically when you add bookings or mark classes as done.'
-            : 'No students match your search.'}
+          {students.length === 0 ? (
+            <div className="space-y-3">
+              <p>No students yet.</p>
+              {bookings.length > 0 ? (
+                <Button variant="secondary" size="sm" onClick={handleSyncStudents} loading={syncing}>
+                  Sync {bookings.length} booking{bookings.length !== 1 ? 's' : ''} into students
+                </Button>
+              ) : (
+                <p className="text-sm">Students are created automatically when you add bookings or mark classes as done.</p>
+              )}
+            </div>
+          ) : (
+            'No students match your search.'
+          )}
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
