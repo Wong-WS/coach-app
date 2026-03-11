@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useStudents, useLessonLogs, useLocations, useBookings } from '@/hooks/useCoachData';
 import { Button, Input, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
-import { Student, LessonLog } from '@/types';
+import { Student, LessonLog, DayOfWeek } from '@/types';
 import { formatTimeDisplay } from '@/lib/availability-engine';
 import { findOrCreateStudent } from '@/lib/students';
 
@@ -22,6 +22,7 @@ export default function StudentsPage() {
   const [syncing, setSyncing] = useState(false);
 
   const [search, setSearch] = useState('');
+  const [dayFilter, setDayFilter] = useState<DayOfWeek | 'all'>('all');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
@@ -58,15 +59,52 @@ export default function StudentsPage() {
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [allLogs, selectedStudent]);
 
+  // Map students to their booking days
+  const { dayToStudentIds, activeDays } = useMemo(() => {
+    const studentIdToDays = new Map<string, Set<DayOfWeek>>();
+    const dayMap = new Map<DayOfWeek, Set<string>>();
+
+    for (const booking of bookings) {
+      if (!booking.clientName) continue;
+      const matched = students.find(
+        (s) =>
+          s.clientName === booking.clientName &&
+          s.clientPhone === (booking.clientPhone || '')
+      );
+      if (!matched) continue;
+
+      if (!studentIdToDays.has(matched.id)) studentIdToDays.set(matched.id, new Set());
+      studentIdToDays.get(matched.id)!.add(booking.dayOfWeek);
+
+      if (!dayMap.has(booking.dayOfWeek)) dayMap.set(booking.dayOfWeek, new Set());
+      dayMap.get(booking.dayOfWeek)!.add(matched.id);
+    }
+
+    const allDays: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const active = allDays.filter((d) => dayMap.has(d));
+
+    return { dayToStudentIds: dayMap, activeDays: active };
+  }, [bookings, students]);
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return students;
-    const q = search.toLowerCase();
-    return students.filter(
-      (s) =>
-        s.clientName.toLowerCase().includes(q) ||
-        s.clientPhone.toLowerCase().includes(q)
-    );
-  }, [students, search]);
+    let result = students;
+
+    if (dayFilter !== 'all') {
+      const ids = dayToStudentIds.get(dayFilter);
+      result = ids ? result.filter((s) => ids.has(s.id)) : [];
+    }
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (s) =>
+          s.clientName.toLowerCase().includes(q) ||
+          s.clientPhone.toLowerCase().includes(q)
+      );
+    }
+
+    return result;
+  }, [students, search, dayFilter, dayToStudentIds]);
 
   const openDetail = (student: Student) => {
     setSelectedStudent(student);
@@ -176,10 +214,10 @@ export default function StudentsPage() {
     try {
       const uniqueClients = new Map<string, { name: string; phone: string }>();
       for (const booking of bookings) {
-        if (!booking.clientName || !booking.clientPhone) continue;
-        const key = `${booking.clientName}::${booking.clientPhone}`;
+        if (!booking.clientName) continue;
+        const key = `${booking.clientName}::${booking.clientPhone || ''}`;
         if (!uniqueClients.has(key)) {
-          uniqueClients.set(key, { name: booking.clientName, phone: booking.clientPhone });
+          uniqueClients.set(key, { name: booking.clientName, phone: booking.clientPhone || '' });
         }
       }
       let created = 0;
@@ -235,6 +273,35 @@ export default function StudentsPage() {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
+
+      {/* Day filter tabs */}
+      {activeDays.length > 0 && (
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => setDayFilter('all')}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              dayFilter === 'all'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 dark:bg-[#1f1f1f] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]'
+            }`}
+          >
+            All
+          </button>
+          {activeDays.map((day) => (
+            <button
+              key={day}
+              onClick={() => setDayFilter(day)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                dayFilter === day
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 dark:bg-[#1f1f1f] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]'
+              }`}
+            >
+              {day.charAt(0).toUpperCase() + day.slice(1, 3)}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Student cards */}
       {filtered.length === 0 ? (
