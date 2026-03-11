@@ -620,7 +620,7 @@ export default function StudentsPage() {
                       className="flex items-center justify-between text-sm p-2 bg-gray-50 dark:bg-[#1a1a1a]/50 rounded"
                     >
                       <div>
-                        <p className="text-gray-900 dark:text-zinc-100">{log.date}</p>
+                        <p className="text-gray-900 dark:text-zinc-100">{log.date.split('-').reverse().join('-')}</p>
                         <p className="text-xs text-gray-500 dark:text-zinc-400">
                           {formatTimeDisplay(log.startTime)} – {formatTimeDisplay(log.endTime)} &middot; {log.locationName}
                         </p>
