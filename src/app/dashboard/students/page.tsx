@@ -61,7 +61,7 @@ export default function StudentsPage() {
 
   // Map students to their booking days, tracking earliest startTime and locationName per day
   const { dayToStudents, activeDays } = useMemo(() => {
-    const dayMap = new Map<DayOfWeek, Map<string, { startTime: string; locationName: string }>>();
+    const dayMap = new Map<DayOfWeek, Map<string, { startTime: string; endTime: string; locationName: string }>>();
 
     for (const booking of bookings) {
       if (!booking.clientName) continue;
@@ -76,7 +76,7 @@ export default function StudentsPage() {
       const dayStudents = dayMap.get(booking.dayOfWeek)!;
       const existing = dayStudents.get(matched.id);
       if (!existing || booking.startTime < existing.startTime) {
-        dayStudents.set(matched.id, { startTime: booking.startTime, locationName: booking.locationName });
+        dayStudents.set(matched.id, { startTime: booking.startTime, endTime: booking.endTime, locationName: booking.locationName });
       }
     }
 
@@ -352,7 +352,7 @@ export default function StudentsPage() {
                     </p>
                     {dayInfo && (
                       <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                        {formatTimeDisplay(dayInfo.startTime)} &middot; {dayInfo.locationName}
+                        {formatTimeDisplay(dayInfo.startTime)} - {formatTimeDisplay(dayInfo.endTime)} &middot; {dayInfo.locationName}
                       </p>
                     )}
                   </div>
