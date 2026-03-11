@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { collection, doc, updateDoc, writeBatch, serverTimestamp, increment, Firestore } from 'firebase/firestore';
+import { collection, doc, updateDoc, deleteDoc, writeBatch, serverTimestamp, increment, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useStudents, useLessonLogs, useLocations, useBookings } from '@/hooks/useCoachData';
@@ -41,6 +41,13 @@ export default function StudentsPage() {
   const [lessonEndTime, setLessonEndTime] = useState('10:00');
   const [lessonPrice, setLessonPrice] = useState(0);
   const [addingLesson, setAddingLesson] = useState(false);
+  const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
+
+  // Editable prepaid state
+  const [editingPrepaid, setEditingPrepaid] = useState(false);
+  const [editPrepaidTotal, setEditPrepaidTotal] = useState(0);
+  const [editPrepaidUsed, setEditPrepaidUsed] = useState(0);
+  const [savingPrepaid, setSavingPrepaid] = useState(false);
 
   // Count lessons per student
   const lessonCounts = useMemo(() => {
@@ -118,6 +125,7 @@ export default function StudentsPage() {
     setEditPhone(student.clientPhone);
     setEditNotes(student.notes);
     setShowAddLesson(false);
+    setEditingPrepaid(false);
 
     // Auto-fill lesson form from student's earliest booking
     const studentBooking = bookings.find(
@@ -222,6 +230,55 @@ export default function StudentsPage() {
       showToast('Failed to add lesson', 'error');
     } finally {
       setAddingLesson(false);
+    }
+  };
+
+  const handleDeleteLog = async (logId: string) => {
+    if (!coach || !db || !selectedStudent) return;
+    setDeletingLogId(logId);
+    try {
+      const firestore = db as Firestore;
+      const batch = writeBatch(firestore);
+      batch.delete(doc(firestore, 'coaches', coach.id, 'lessonLogs', logId));
+      batch.update(doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id), {
+        prepaidUsed: increment(-1),
+        updatedAt: serverTimestamp(),
+      });
+      await batch.commit();
+      setSelectedStudent((prev) =>
+        prev ? { ...prev, prepaidUsed: Math.max(0, prev.prepaidUsed - 1) } : null
+      );
+      showToast('Lesson deleted', 'success');
+    } catch (error) {
+      console.error('Error deleting lesson:', error);
+      showToast('Failed to delete lesson', 'error');
+    } finally {
+      setDeletingLogId(null);
+    }
+  };
+
+  const handleSavePrepaid = async () => {
+    if (!coach || !db || !selectedStudent) return;
+    setSavingPrepaid(true);
+    try {
+      await updateDoc(
+        doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+        {
+          prepaidTotal: editPrepaidTotal,
+          prepaidUsed: editPrepaidUsed,
+          updatedAt: serverTimestamp(),
+        }
+      );
+      setSelectedStudent((prev) =>
+        prev ? { ...prev, prepaidTotal: editPrepaidTotal, prepaidUsed: editPrepaidUsed } : null
+      );
+      setEditingPrepaid(false);
+      showToast('Prepaid package updated!', 'success');
+    } catch (error) {
+      console.error('Error updating prepaid:', error);
+      showToast('Failed to update prepaid', 'error');
+    } finally {
+      setSavingPrepaid(false);
     }
   };
 
@@ -448,44 +505,89 @@ export default function StudentsPage() {
 
             {/* Prepaid section */}
             <div className="border-t border-gray-100 dark:border-[#333333] pt-4">
-              <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-3">
-                Prepaid Package
-              </h3>
-              {selectedStudent.prepaidTotal > 0 ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600 dark:text-zinc-400">
-                      {selectedStudent.prepaidUsed} of {selectedStudent.prepaidTotal} used
-                    </span>
-                    <span className={`font-medium ${remaining > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {remaining > 0 ? `${remaining} remaining` : 'Package used up'}
-                    </span>
-                  </div>
-                  <div className="w-full bg-gray-200 dark:bg-[#333333] rounded-full h-2.5">
-                    <div
-                      className={`h-2.5 rounded-full ${remaining > 0 ? 'bg-blue-600' : 'bg-red-500'}`}
-                      style={{
-                        width: `${Math.min(100, (selectedStudent.prepaidUsed / selectedStudent.prepaidTotal) * 100)}%`,
-                      }}
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300">
+                  Prepaid Package
+                </h3>
+                {!editingPrepaid && (
+                  <button
+                    onClick={() => {
+                      setEditPrepaidTotal(selectedStudent.prepaidTotal);
+                      setEditPrepaidUsed(selectedStudent.prepaidUsed);
+                      setEditingPrepaid(true);
+                    }}
+                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
+              {editingPrepaid ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      id="editPrepaidTotal"
+                      label="Total Lessons"
+                      type="number"
+                      value={String(editPrepaidTotal)}
+                      onChange={(e) => setEditPrepaidTotal(Math.max(0, Number(e.target.value) || 0))}
+                    />
+                    <Input
+                      id="editPrepaidUsed"
+                      label="Used Lessons"
+                      type="number"
+                      value={String(editPrepaidUsed)}
+                      onChange={(e) => setEditPrepaidUsed(Math.max(0, Number(e.target.value) || 0))}
                     />
                   </div>
-                  {needsRenewal && (
-                    <p className="text-xs font-medium text-red-600 dark:text-red-400">
-                      Time to renew!
-                    </p>
-                  )}
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={handleSavePrepaid} loading={savingPrepaid}>
+                      Save
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => setEditingPrepaid(false)}>
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
               ) : (
-                <p className="text-sm text-gray-400 dark:text-zinc-500">No prepaid package</p>
+                <>
+                  {selectedStudent.prepaidTotal > 0 ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600 dark:text-zinc-400">
+                          {selectedStudent.prepaidUsed} of {selectedStudent.prepaidTotal} used
+                        </span>
+                        <span className={`font-medium ${remaining > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'}`}>
+                          {remaining > 0 ? `${remaining} remaining` : 'Package used up'}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 dark:bg-[#333333] rounded-full h-2.5">
+                        <div
+                          className={`h-2.5 rounded-full ${remaining > 0 ? 'bg-blue-600' : 'bg-red-500'}`}
+                          style={{
+                            width: `${Math.min(100, (selectedStudent.prepaidUsed / selectedStudent.prepaidTotal) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                      {needsRenewal && (
+                        <p className="text-xs font-medium text-red-600 dark:text-red-400">
+                          Time to renew!
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400 dark:text-zinc-500">No prepaid package</p>
+                  )}
+                  <div className="flex gap-2 mt-3">
+                    <Button variant="secondary" size="sm" onClick={() => addPrepaid(5)}>
+                      + 5 Lessons
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => addPrepaid(10)}>
+                      + 10 Lessons
+                    </Button>
+                  </div>
+                </>
               )}
-              <div className="flex gap-2 mt-3">
-                <Button variant="secondary" size="sm" onClick={() => addPrepaid(5)}>
-                  + 5 Lessons
-                </Button>
-                <Button variant="secondary" size="sm" onClick={() => addPrepaid(10)}>
-                  + 10 Lessons
-                </Button>
-              </div>
             </div>
 
             {/* Portal link */}
@@ -523,11 +625,27 @@ export default function StudentsPage() {
                           {formatTimeDisplay(log.startTime)} – {formatTimeDisplay(log.endTime)} &middot; {log.locationName}
                         </p>
                       </div>
-                      {log.price > 0 && (
-                        <span className="text-green-600 dark:text-green-400 font-medium">
-                          RM {log.price}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {log.price > 0 && (
+                          <span className="text-green-600 dark:text-green-400 font-medium">
+                            RM {log.price}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => handleDeleteLog(log.id)}
+                          disabled={deletingLogId === log.id}
+                          className="text-red-400 hover:text-red-600 dark:text-red-500 dark:hover:text-red-300 disabled:opacity-50 p-0.5"
+                          title="Delete lesson"
+                        >
+                          {deletingLogId === log.id ? (
+                            <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
