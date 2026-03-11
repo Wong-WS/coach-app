@@ -118,6 +118,20 @@ export default function StudentsPage() {
     setEditPhone(student.clientPhone);
     setEditNotes(student.notes);
     setShowAddLesson(false);
+
+    // Auto-fill lesson form from student's earliest booking
+    const studentBooking = bookings.find(
+      (b) => b.clientName === student.clientName && b.clientPhone === (student.clientPhone || '')
+    );
+    if (studentBooking) {
+      setLessonLocationName(studentBooking.locationName);
+      setLessonStartTime(studentBooking.startTime);
+      setLessonEndTime(studentBooking.endTime);
+    } else {
+      setLessonLocationName('');
+      setLessonStartTime('09:00');
+      setLessonEndTime('10:00');
+    }
   };
 
   const handleSave = async () => {
