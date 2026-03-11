@@ -59,10 +59,9 @@ export default function StudentsPage() {
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [allLogs, selectedStudent]);
 
-  // Map students to their booking days
-  const { dayToStudentIds, activeDays } = useMemo(() => {
-    const studentIdToDays = new Map<string, Set<DayOfWeek>>();
-    const dayMap = new Map<DayOfWeek, Set<string>>();
+  // Map students to their booking days, tracking earliest startTime and locationName per day
+  const { dayToStudents, activeDays } = useMemo(() => {
+    const dayMap = new Map<DayOfWeek, Map<string, { startTime: string; locationName: string }>>();
 
     for (const booking of bookings) {
       if (!booking.clientName) continue;
@@ -73,25 +72,32 @@ export default function StudentsPage() {
       );
       if (!matched) continue;
 
-      if (!studentIdToDays.has(matched.id)) studentIdToDays.set(matched.id, new Set());
-      studentIdToDays.get(matched.id)!.add(booking.dayOfWeek);
-
-      if (!dayMap.has(booking.dayOfWeek)) dayMap.set(booking.dayOfWeek, new Set());
-      dayMap.get(booking.dayOfWeek)!.add(matched.id);
+      if (!dayMap.has(booking.dayOfWeek)) dayMap.set(booking.dayOfWeek, new Map());
+      const dayStudents = dayMap.get(booking.dayOfWeek)!;
+      const existing = dayStudents.get(matched.id);
+      if (!existing || booking.startTime < existing.startTime) {
+        dayStudents.set(matched.id, { startTime: booking.startTime, locationName: booking.locationName });
+      }
     }
 
     const allDays: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
     const active = allDays.filter((d) => dayMap.has(d));
 
-    return { dayToStudentIds: dayMap, activeDays: active };
+    return { dayToStudents: dayMap, activeDays: active };
   }, [bookings, students]);
 
   const filtered = useMemo(() => {
     let result = students;
 
     if (dayFilter !== 'all') {
-      const ids = dayToStudentIds.get(dayFilter);
-      result = ids ? result.filter((s) => ids.has(s.id)) : [];
+      const dayStudents = dayToStudents.get(dayFilter);
+      result = dayStudents ? result.filter((s) => dayStudents.has(s.id)) : [];
+      // Sort by earliest class time on this day
+      result = [...result].sort((a, b) => {
+        const aTime = dayStudents?.get(a.id)?.startTime || '';
+        const bTime = dayStudents?.get(b.id)?.startTime || '';
+        return aTime.localeCompare(bTime);
+      });
     }
 
     if (search.trim()) {
@@ -104,7 +110,7 @@ export default function StudentsPage() {
     }
 
     return result;
-  }, [students, search, dayFilter, dayToStudentIds]);
+  }, [students, search, dayFilter, dayToStudents]);
 
   const openDetail = (student: Student) => {
     setSelectedStudent(student);
@@ -328,6 +334,7 @@ export default function StudentsPage() {
             const hasPrepaid = student.prepaidTotal > 0;
             const prepaidRemaining = student.prepaidTotal - student.prepaidUsed;
             const expired = hasPrepaid && prepaidRemaining <= 0;
+            const dayInfo = dayFilter !== 'all' ? dayToStudents.get(dayFilter)?.get(student.id) : null;
 
             return (
               <button
@@ -343,6 +350,11 @@ export default function StudentsPage() {
                     <p className="text-sm text-gray-500 dark:text-zinc-400 mt-0.5">
                       {student.clientPhone}
                     </p>
+                    {dayInfo && (
+                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                        {formatTimeDisplay(dayInfo.startTime)} &middot; {dayInfo.locationName}
+                      </p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="text-sm text-gray-500 dark:text-zinc-400">
