@@ -127,10 +127,20 @@ export default function StudentsPage() {
       setLessonLocationName(studentBooking.locationName);
       setLessonStartTime(studentBooking.startTime);
       setLessonEndTime(studentBooking.endTime);
+      setLessonPrice(studentBooking.price || 0);
     } else {
       setLessonLocationName('');
       setLessonStartTime('09:00');
       setLessonEndTime('10:00');
+      setLessonPrice(0);
+    }
+
+    // If no price from booking, use most recent lesson log price
+    if (!studentBooking?.price) {
+      const lastLog = allLogs
+        .filter((l) => l.studentId === student.id)
+        .sort((a, b) => b.date.localeCompare(a.date))[0];
+      if (lastLog?.price) setLessonPrice(lastLog.price);
     }
   };
 
