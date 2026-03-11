@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useLocations, useBookings } from '@/hooks/useCoachData';
 import { Button, Input, Select, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
-import { DayOfWeek, LessonType, Booking } from '@/types';
+import { DayOfWeek, LessonType, Booking, LinkedStudent } from '@/types';
 import { getDayDisplayName, formatTimeDisplay } from '@/lib/availability-engine';
 import { findOrCreateStudent } from '@/lib/students';
 
@@ -55,6 +55,7 @@ export default function BookingsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
   const [formData, setFormData] = useState(EMPTY_FORM);
+  const [linkedStudentInputs, setLinkedStudentInputs] = useState<Array<{ name: string; phone: string; price: number }>>([]);
   const [saving, setSaving] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
@@ -81,6 +82,7 @@ export default function BookingsPage() {
       locationId: locations[0]?.id || '',
       endTime: calcEndTime(EMPTY_FORM.startTime, duration),
     });
+    setLinkedStudentInputs([]);
     setEditingBookingId(null);
     setIsModalOpen(true);
   };
@@ -98,6 +100,13 @@ export default function BookingsPage() {
       notes: booking.notes || '',
       price: booking.price ?? 0,
     });
+    setLinkedStudentInputs(
+      booking.linkedStudents?.map((ls) => ({
+        name: ls.studentName,
+        phone: ls.studentPhone,
+        price: ls.price,
+      })) ?? []
+    );
     setEditingBookingId(booking.id);
     setIsModalOpen(true);
   };
@@ -114,7 +123,30 @@ export default function BookingsPage() {
       return;
     }
 
-    const payload = {
+    const firestore = db as Firestore;
+
+    // Resolve primary student
+    const primaryStudentId = await findOrCreateStudent(
+      firestore, coach.id, formData.clientName.trim(), formData.clientPhone.trim()
+    );
+
+    // Resolve linked students (additional parents for group bookings)
+    const validLinkedInputs = formData.lessonType === 'group'
+      ? linkedStudentInputs.filter((ls) => ls.name.trim())
+      : [];
+
+    const resolvedLinked: LinkedStudent[] = [];
+    for (const ls of validLinkedInputs) {
+      const sid = await findOrCreateStudent(firestore, coach.id, ls.name.trim(), ls.phone.trim());
+      resolvedLinked.push({
+        studentId: sid,
+        studentName: ls.name.trim(),
+        studentPhone: ls.phone.trim(),
+        price: ls.price,
+      });
+    }
+
+    const payload: Record<string, unknown> = {
       locationId: formData.locationId,
       locationName: location.name,
       dayOfWeek: formData.dayOfWeek,
@@ -126,6 +158,8 @@ export default function BookingsPage() {
       groupSize: formData.lessonType === 'group' ? formData.groupSize : 1,
       notes: formData.notes.trim(),
       price: formData.price,
+      primaryStudentId,
+      linkedStudents: resolvedLinked.length > 0 ? resolvedLinked : [],
     };
 
     try {
@@ -138,7 +172,6 @@ export default function BookingsPage() {
           status: 'confirmed',
           createdAt: serverTimestamp(),
         });
-        await findOrCreateStudent(db as Firestore, coach.id, payload.clientName, payload.clientPhone);
         showToast('Booking created!', 'success');
       }
       setIsModalOpen(false);
@@ -240,6 +273,11 @@ export default function BookingsPage() {
                             </span>
                           </div>
                           <p className="text-sm text-gray-600 dark:text-zinc-400 mt-1">{booking.clientName}</p>
+                          {booking.linkedStudents && booking.linkedStudents.length > 0 && (
+                            <p className="text-xs text-gray-400 dark:text-zinc-500 mt-0.5">
+                              + {booking.linkedStudents.map((ls) => ls.studentName).join(', ')}
+                            </p>
+                          )}
                           <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{booking.locationName}</p>
                           {(booking.price ?? 0) > 0 && (
                             <p className="text-xs font-medium text-green-600 dark:text-green-400 mt-1">RM {booking.price}</p>
@@ -354,7 +392,11 @@ export default function BookingsPage() {
               id="lessonType"
               label="Lesson Type"
               value={formData.lessonType}
-              onChange={(e) => setFormData({ ...formData, lessonType: e.target.value as LessonType })}
+              onChange={(e) => {
+                const newType = e.target.value as LessonType;
+                setFormData({ ...formData, lessonType: newType });
+                if (newType === 'private') setLinkedStudentInputs([]);
+              }}
               options={LESSON_TYPE_OPTIONS}
             />
             {formData.lessonType === 'group' && (
@@ -379,6 +421,76 @@ export default function BookingsPage() {
             step={0.01}
             placeholder="0"
           />
+
+          {formData.lessonType === 'group' && (
+            <div className="border border-gray-200 dark:border-zinc-600 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-700 dark:text-zinc-300">
+                  Additional Parents
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setLinkedStudentInputs([...linkedStudentInputs, { name: '', phone: '', price: formData.price }])}
+                  className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  + Add Parent
+                </button>
+              </div>
+              {linkedStudentInputs.map((ls, idx) => (
+                <div key={idx} className="flex gap-2 items-start">
+                  <div className="flex-1 space-y-2">
+                    <Input
+                      id={`linked-name-${idx}`}
+                      placeholder="Parent name"
+                      value={ls.name}
+                      onChange={(e) => {
+                        const updated = [...linkedStudentInputs];
+                        updated[idx] = { ...updated[idx], name: e.target.value };
+                        setLinkedStudentInputs(updated);
+                      }}
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        id={`linked-phone-${idx}`}
+                        placeholder="Phone"
+                        value={ls.phone}
+                        onChange={(e) => {
+                          const updated = [...linkedStudentInputs];
+                          updated[idx] = { ...updated[idx], phone: e.target.value };
+                          setLinkedStudentInputs(updated);
+                        }}
+                      />
+                      <Input
+                        id={`linked-price-${idx}`}
+                        type="number"
+                        placeholder="Price (RM)"
+                        value={ls.price.toString()}
+                        onChange={(e) => {
+                          const updated = [...linkedStudentInputs];
+                          updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
+                          setLinkedStudentInputs(updated);
+                        }}
+                        min={0}
+                        step={0.01}
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLinkedStudentInputs(linkedStudentInputs.filter((_, i) => i !== idx))}
+                    className="mt-1 p-1.5 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+              {linkedStudentInputs.length === 0 && (
+                <p className="text-xs text-gray-400 dark:text-zinc-500">No additional parents added yet.</p>
+              )}
+            </div>
+          )}
 
           <div>
             <label htmlFor="notes" className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">

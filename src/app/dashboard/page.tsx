@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useLocations, useBookings, useLessonLogs, useClassExceptions } from '@/hooks/useCoachData';
 import { Button, Input, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
-import { Booking } from '@/types';
+import { Booking, LinkedStudent } from '@/types';
 import { formatTimeDisplay } from '@/lib/availability-engine';
 import { findOrCreateStudent } from '@/lib/students';
 import { getClassesForDate, isRescheduledToDate } from '@/lib/class-schedule';
@@ -50,6 +50,13 @@ export default function DashboardPage() {
   const [rescheduling, setRescheduling] = useState(false);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
 
+  // Attendance modal state for group bookings
+  const [attendanceBooking, setAttendanceBooking] = useState<Booking | null>(null);
+  const [attendanceChecked, setAttendanceChecked] = useState<Set<string>>(new Set());
+  const [attendancePrices, setAttendancePrices] = useState<Record<string, number>>({});
+  const [attendanceUsePackage, setAttendanceUsePackage] = useState<Record<string, boolean>>({});
+  const [submittingAttendance, setSubmittingAttendance] = useState(false);
+
   const selectedDateStr = getDateString(selectedDate);
   const todayStr = getDateString(new Date());
   const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
@@ -66,6 +73,27 @@ export default function DashboardPage() {
 
   const handleMarkDone = async (booking: Booking) => {
     if (!coach || !db) return;
+
+    // If group booking with linked students, open attendance modal
+    if (booking.linkedStudents && booking.linkedStudents.length > 0) {
+      // Build participant list: primary + linked
+      const primaryId = booking.primaryStudentId || '__primary__';
+      const allIds = new Set([primaryId, ...booking.linkedStudents.map((ls) => ls.studentId)]);
+      setAttendanceChecked(allIds);
+      setAttendancePrices({
+        [primaryId]: booking.price ?? 0,
+        ...Object.fromEntries(booking.linkedStudents.map((ls) => [ls.studentId, ls.price])),
+      });
+      setAttendanceUsePackage({
+        [primaryId]: true,
+        ...Object.fromEntries(booking.linkedStudents.map((ls) => [ls.studentId, true])),
+      });
+      setAttendanceBooking(booking);
+      setMenuOpen(null);
+      return;
+    }
+
+    // Single student path (unchanged)
     setMarking(booking.id);
     try {
       const firestore = db as Firestore;
@@ -98,6 +126,76 @@ export default function DashboardPage() {
     } finally {
       setMarking(null);
       setMenuOpen(null);
+    }
+  };
+
+  const handleConfirmAttendance = async () => {
+    if (!coach || !db || !attendanceBooking) return;
+    const checked = attendanceChecked;
+    if (checked.size === 0) return;
+
+    setSubmittingAttendance(true);
+    try {
+      const firestore = db as Firestore;
+      const batch = writeBatch(firestore);
+      const booking = attendanceBooking;
+
+      // Helper to process a participant
+      const processParticipant = async (
+        studentId: string,
+        studentName: string,
+        studentPhone: string,
+        resolveId: boolean
+      ) => {
+        if (!checked.has(studentId)) return;
+        const resolvedId = resolveId
+          ? await findOrCreateStudent(firestore, coach.id, studentName, studentPhone)
+          : studentId;
+
+        const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
+        batch.set(logRef, {
+          date: selectedDateStr,
+          bookingId: booking.id,
+          studentId: resolvedId,
+          studentName,
+          locationName: booking.locationName,
+          startTime: booking.startTime,
+          endTime: booking.endTime,
+          price: attendancePrices[studentId] ?? 0,
+          createdAt: serverTimestamp(),
+        });
+
+        if (attendanceUsePackage[studentId]) {
+          const studentRef = doc(firestore, 'coaches', coach.id, 'students', resolvedId);
+          batch.update(studentRef, {
+            prepaidUsed: increment(1),
+            updatedAt: serverTimestamp(),
+          });
+        }
+      };
+
+      // Primary participant
+      const primaryKey = booking.primaryStudentId || '__primary__';
+      await processParticipant(
+        primaryKey,
+        booking.clientName,
+        booking.clientPhone,
+        !booking.primaryStudentId // resolve if no primaryStudentId (old booking)
+      );
+
+      // Linked participants
+      for (const ls of booking.linkedStudents || []) {
+        await processParticipant(ls.studentId, ls.studentName, ls.studentPhone, false);
+      }
+
+      await batch.commit();
+      showToast(`Attendance recorded for ${checked.size} participant${checked.size !== 1 ? 's' : ''}!`, 'success');
+      setAttendanceBooking(null);
+    } catch (error) {
+      console.error('Error recording attendance:', error);
+      showToast('Failed to record attendance', 'error');
+    } finally {
+      setSubmittingAttendance(false);
     }
   };
 
@@ -304,6 +402,11 @@ export default function DashboardPage() {
                       )}
                     </div>
                     <p className="text-sm text-gray-600 dark:text-zinc-400 mt-0.5">{booking.clientName}</p>
+                    {booking.linkedStudents && booking.linkedStudents.length > 0 && (
+                      <p className="text-xs text-gray-400 dark:text-zinc-500">
+                        + {booking.linkedStudents.length} more
+                      </p>
+                    )}
                     <p className="text-xs text-gray-400 dark:text-zinc-500">{booking.locationName}</p>
                   </div>
 
@@ -432,6 +535,103 @@ export default function DashboardPage() {
           </Button>
         </div>
       )}
+
+      {/* Attendance modal for group bookings */}
+      <Modal
+        isOpen={attendanceBooking !== null}
+        onClose={() => setAttendanceBooking(null)}
+        title="Mark Attendance"
+      >
+        {attendanceBooking && (() => {
+          const booking = attendanceBooking;
+          const primaryKey = booking.primaryStudentId || '__primary__';
+          const participants: Array<{ id: string; name: string; isPrimary: boolean }> = [
+            { id: primaryKey, name: booking.clientName, isPrimary: true },
+            ...(booking.linkedStudents || []).map((ls) => ({
+              id: ls.studentId,
+              name: ls.studentName,
+              isPrimary: false,
+            })),
+          ];
+
+          return (
+            <div className="space-y-4">
+              <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3">
+                <p className="text-sm text-gray-500 dark:text-zinc-400">
+                  {formatTimeDisplay(booking.startTime)} – {formatTimeDisplay(booking.endTime)} &middot; {booking.locationName}
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                {participants.map((p) => (
+                  <div key={p.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 dark:border-[#333]">
+                    <input
+                      type="checkbox"
+                      checked={attendanceChecked.has(p.id)}
+                      onChange={(e) => {
+                        const next = new Set(attendanceChecked);
+                        if (e.target.checked) next.add(p.id);
+                        else next.delete(p.id);
+                        setAttendanceChecked(next);
+                      }}
+                      className="w-4 h-4 text-blue-600 rounded"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">
+                        {p.name}
+                        {p.isPrimary && (
+                          <span className="ml-1.5 text-xs text-gray-400 dark:text-zinc-500">(Primary)</span>
+                        )}
+                      </p>
+                      <div className="flex items-center gap-3 mt-1.5">
+                        <div className="flex items-center gap-1">
+                          <label className="text-xs text-gray-500 dark:text-zinc-400">RM</label>
+                          <input
+                            type="number"
+                            value={attendancePrices[p.id] ?? 0}
+                            onChange={(e) => setAttendancePrices({
+                              ...attendancePrices,
+                              [p.id]: parseFloat(e.target.value) || 0,
+                            })}
+                            className="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-zinc-500 rounded bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
+                            min={0}
+                            step={0.01}
+                          />
+                        </div>
+                        <label className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-zinc-400 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={attendanceUsePackage[p.id] ?? true}
+                            onChange={(e) => setAttendanceUsePackage({
+                              ...attendanceUsePackage,
+                              [p.id]: e.target.checked,
+                            })}
+                            className="w-3.5 h-3.5 text-blue-600 rounded"
+                          />
+                          Use package
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex gap-2 justify-end pt-2">
+                <Button variant="secondary" onClick={() => setAttendanceBooking(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleConfirmAttendance}
+                  loading={submittingAttendance}
+                  disabled={attendanceChecked.size === 0}
+                >
+                  Confirm ({attendanceChecked.size})
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
 
       {/* Reschedule modal */}
       <Modal
