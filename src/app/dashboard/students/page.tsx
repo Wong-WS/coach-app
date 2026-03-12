@@ -219,14 +219,24 @@ export default function StudentsPage() {
       }
       batch.set(logRef, logData);
       const studentRef = doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id);
-      batch.update(studentRef, {
+      const updateData: Record<string, unknown> = {
         prepaidUsed: increment(1),
         updatedAt: serverTimestamp(),
-      });
+      };
+
+      // Calculate credit: find booking price for this student and compare
+      const studentBooking = bookings.find((b) => b.clientName === selectedStudent.clientName);
+      const bookingPrice = studentBooking?.price ?? 0;
+      const creditDiff = bookingPrice > 0 && lessonPrice < bookingPrice ? bookingPrice - lessonPrice : 0;
+      if (creditDiff > 0) {
+        updateData.credit = increment(creditDiff);
+      }
+
+      batch.update(studentRef, updateData);
       await batch.commit();
       // Update local state
       setSelectedStudent((prev) =>
-        prev ? { ...prev, prepaidUsed: prev.prepaidUsed + 1 } : null
+        prev ? { ...prev, prepaidUsed: prev.prepaidUsed + 1, credit: (prev.credit ?? 0) + creditDiff } : null
       );
       setShowAddLesson(false);
       setLessonNote('');
