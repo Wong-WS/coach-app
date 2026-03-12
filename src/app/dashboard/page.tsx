@@ -254,7 +254,7 @@ export default function DashboardPage() {
       await deleteDoc(doc(firestore, 'coaches', coach.id, 'classExceptions', exceptionId));
       // Open reschedule modal pre-filled
       setRescheduleBooking(booking);
-      setRescheduleDate('');
+      setRescheduleDate(selectedDateStr);
       setRescheduleStartTime(booking.startTime);
       setRescheduleEndTime(booking.endTime);
     } catch (error) {
@@ -456,7 +456,7 @@ export default function DashboardPage() {
                             <button
                               onClick={() => {
                                 setRescheduleBooking(booking);
-                                setRescheduleDate('');
+                                setRescheduleDate(selectedDateStr);
                                 setRescheduleStartTime(booking.startTime);
                                 setRescheduleEndTime(booking.endTime);
                                 setMenuOpen(null);
