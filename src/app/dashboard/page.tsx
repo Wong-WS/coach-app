@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { collection, doc, writeBatch, serverTimestamp, increment, Firestore } from 'firebase/firestore';
+import { collection, doc, writeBatch, serverTimestamp, increment, getDoc, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
-import { useLocations, useBookings, useLessonLogs, useClassExceptions } from '@/hooks/useCoachData';
+import { useLocations, useBookings, useLessonLogs, useClassExceptions, useStudents } from '@/hooks/useCoachData';
 import { Button, Input, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { Booking } from '@/types';
@@ -39,6 +39,7 @@ export default function DashboardPage() {
   const { locations } = useLocations(coach?.id);
   const { bookings } = useBookings(coach?.id, 'confirmed');
   const { classExceptions } = useClassExceptions(coach?.id);
+  const { students } = useStudents(coach?.id);
   const { showToast } = useToast();
 
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -49,6 +50,12 @@ export default function DashboardPage() {
   const [rescheduleDate, setRescheduleDate] = useState('');
   const [rescheduling, setRescheduling] = useState(false);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [packageWarning, setPackageWarning] = useState<{
+    studentName: string;
+    remaining: number;
+    total: number;
+    lastPrice: number;
+  } | null>(null);
 
   const selectedDateStr = getDateString(selectedDate);
   const todayStr = getDateString(new Date());
@@ -92,6 +99,22 @@ export default function DashboardPage() {
       });
       await batch.commit();
       showToast('Class marked as done!', 'success');
+
+      // Check package status after marking done
+      const student = students.find((s) => s.id === studentId);
+      if (student && student.prepaidTotal > 0) {
+        const remainingAfter = student.prepaidTotal - (student.prepaidUsed + 1);
+        if (remainingAfter <= 0) {
+          const lastPrice = booking.price ?? 0;
+          const packagePrice = lastPrice * student.prepaidTotal;
+          setPackageWarning({
+            studentName: booking.clientName,
+            remaining: remainingAfter,
+            total: student.prepaidTotal,
+            lastPrice: packagePrice,
+          });
+        }
+      }
     } catch (error) {
       console.error('Error marking class done:', error);
       showToast('Failed to mark class as done', 'error');
@@ -471,6 +494,42 @@ export default function DashboardPage() {
                 disabled={!rescheduleDate || rescheduleDate === selectedDateStr}
               >
                 Reschedule
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Package warning modal */}
+      <Modal
+        isOpen={packageWarning !== null}
+        onClose={() => setPackageWarning(null)}
+        title="Package Finished"
+      >
+        {packageWarning && (
+          <div className="space-y-4">
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4">
+              <p className="text-sm text-amber-800 dark:text-amber-300">
+                <span className="font-medium">{packageWarning.studentName}</span>
+                {packageWarning.remaining === 0
+                  ? ' has used all lessons in their package.'
+                  : ` is ${Math.abs(packageWarning.remaining)} lesson${Math.abs(packageWarning.remaining) !== 1 ? 's' : ''} over their package.`}
+              </p>
+            </div>
+            {packageWarning.lastPrice > 0 && (
+              <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-4">
+                <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Next payment</p>
+                <p className="text-xl font-semibold text-gray-900 dark:text-zinc-100">
+                  RM {packageWarning.lastPrice}
+                </p>
+                <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">
+                  Based on {packageWarning.total} lessons at RM {(packageWarning.lastPrice / packageWarning.total).toFixed(0)}/lesson
+                </p>
+              </div>
+            )}
+            <div className="flex justify-end">
+              <Button onClick={() => setPackageWarning(null)}>
+                Got it
               </Button>
             </div>
           </div>
