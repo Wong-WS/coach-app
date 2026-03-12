@@ -40,6 +40,7 @@ export default function StudentsPage() {
   const [lessonStartTime, setLessonStartTime] = useState('09:00');
   const [lessonEndTime, setLessonEndTime] = useState('10:00');
   const [lessonPrice, setLessonPrice] = useState(0);
+  const [lessonNote, setLessonNote] = useState('');
   const [addingLesson, setAddingLesson] = useState(false);
   const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
 
@@ -203,7 +204,7 @@ export default function StudentsPage() {
       const firestore = db as Firestore;
       const batch = writeBatch(firestore);
       const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
-      batch.set(logRef, {
+      const logData: Record<string, unknown> = {
         date: lessonDate,
         studentId: selectedStudent.id,
         studentName: selectedStudent.clientName,
@@ -212,7 +213,11 @@ export default function StudentsPage() {
         endTime: lessonEndTime,
         price: lessonPrice,
         createdAt: serverTimestamp(),
-      });
+      };
+      if (lessonNote.trim()) {
+        logData.note = lessonNote.trim();
+      }
+      batch.set(logRef, logData);
       const studentRef = doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id);
       batch.update(studentRef, {
         prepaidUsed: increment(1),
@@ -224,6 +229,7 @@ export default function StudentsPage() {
         prev ? { ...prev, prepaidUsed: prev.prepaidUsed + 1 } : null
       );
       setShowAddLesson(false);
+      setLessonNote('');
       showToast('Lesson added!', 'success');
     } catch (error) {
       console.error('Error adding lesson:', error);
@@ -719,6 +725,13 @@ export default function StudentsPage() {
                     type="number"
                     value={String(lessonPrice)}
                     onChange={(e) => setLessonPrice(Number(e.target.value) || 0)}
+                  />
+                  <Input
+                    id="lessonNote"
+                    label="Note (optional)"
+                    value={lessonNote}
+                    onChange={(e) => setLessonNote(e.target.value)}
+                    placeholder="e.g. Aaron only"
                   />
                   <Button
                     size="sm"
