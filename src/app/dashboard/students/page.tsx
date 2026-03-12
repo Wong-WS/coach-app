@@ -179,6 +179,18 @@ export default function StudentsPage() {
   const addPrepaid = async (amount: number) => {
     if (!coach || !db || !selectedStudent) return;
     const packageFinished = selectedStudent.prepaidUsed >= selectedStudent.prepaidTotal && selectedStudent.prepaidTotal > 0;
+    // Optimistic update — update UI immediately
+    const prevStudent = { ...selectedStudent };
+    setSelectedStudent((prev) =>
+      prev
+        ? {
+            ...prev,
+            prepaidTotal: packageFinished ? amount : prev.prepaidTotal + amount,
+            prepaidUsed: packageFinished ? 0 : prev.prepaidUsed,
+          }
+        : null
+    );
+    showToast(`Added ${amount} prepaid lessons!`, 'success');
     try {
       const updateData: Record<string, unknown> = {
         prepaidTotal: packageFinished ? amount : increment(amount),
@@ -191,19 +203,10 @@ export default function StudentsPage() {
         doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
         updateData
       );
-      // Refresh selected student locally
-      setSelectedStudent((prev) =>
-        prev
-          ? {
-              ...prev,
-              prepaidTotal: packageFinished ? amount : prev.prepaidTotal + amount,
-              prepaidUsed: packageFinished ? 0 : prev.prepaidUsed,
-            }
-          : null
-      );
-      showToast(`Added ${amount} prepaid lessons!`, 'success');
     } catch (error) {
       console.error('Error adding prepaid:', error);
+      // Revert on failure
+      setSelectedStudent(prevStudent);
       showToast('Failed to add prepaid lessons', 'error');
     }
   };
