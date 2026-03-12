@@ -178,17 +178,28 @@ export default function StudentsPage() {
 
   const addPrepaid = async (amount: number) => {
     if (!coach || !db || !selectedStudent) return;
+    const packageFinished = selectedStudent.prepaidUsed >= selectedStudent.prepaidTotal && selectedStudent.prepaidTotal > 0;
     try {
+      const updateData: Record<string, unknown> = {
+        prepaidTotal: packageFinished ? amount : increment(amount),
+        updatedAt: serverTimestamp(),
+      };
+      if (packageFinished) {
+        updateData.prepaidUsed = 0;
+      }
       await updateDoc(
         doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
-        {
-          prepaidTotal: increment(amount),
-          updatedAt: serverTimestamp(),
-        }
+        updateData
       );
       // Refresh selected student locally
       setSelectedStudent((prev) =>
-        prev ? { ...prev, prepaidTotal: prev.prepaidTotal + amount } : null
+        prev
+          ? {
+              ...prev,
+              prepaidTotal: packageFinished ? amount : prev.prepaidTotal + amount,
+              prepaidUsed: packageFinished ? 0 : prev.prepaidUsed,
+            }
+          : null
       );
       showToast(`Added ${amount} prepaid lessons!`, 'success');
     } catch (error) {
