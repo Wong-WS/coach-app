@@ -57,6 +57,7 @@ export async function GET(
       prepaidTotal: student.prepaidTotal ?? 0,
       prepaidUsed: student.prepaidUsed ?? 0,
       credit: student.credit ?? 0,
+      pendingPayment: student.pendingPayment ?? 0,
       coachName: coach?.displayName ?? 'Coach',
       serviceType: coach?.serviceType ?? '',
       lessons,

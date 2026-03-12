@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { collection, doc, writeBatch, serverTimestamp, increment, getDoc, Firestore } from 'firebase/firestore';
+import { collection, doc, writeBatch, serverTimestamp, increment, getDoc, updateDoc, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useLocations, useBookings, useLessonLogs, useClassExceptions, useStudents } from '@/hooks/useCoachData';
@@ -135,6 +135,19 @@ export default function DashboardPage() {
           const perLessonPrice = bookingPrice;
           const packagePrice = perLessonPrice * student.prepaidTotal;
           const currentCredit = (student.credit ?? 0) + (markDonePrice < bookingPrice ? bookingPrice - markDonePrice : 0);
+
+          // Set pending payment on the student record
+          const paymentAmount = Math.max(0, packagePrice - currentCredit);
+          if (paymentAmount > 0) {
+            const firestore2 = db as Firestore;
+            const studentPayRef = doc(firestore2, 'coaches', coach.id, 'students', studentId);
+            await updateDoc(studentPayRef, {
+              pendingPayment: paymentAmount,
+              credit: 0,
+              updatedAt: serverTimestamp(),
+            });
+          }
+
           setPackageWarning({
             studentName: booking.clientName,
             remaining: remainingAfter,

@@ -105,6 +105,7 @@ export interface Student {
   prepaidTotal: number;
   prepaidUsed: number;
   credit: number;
+  pendingPayment: number;
   notes: string;
   createdAt: Date;
   updatedAt: Date;

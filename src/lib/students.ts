@@ -26,6 +26,7 @@ export async function findOrCreateStudent(
     prepaidTotal: 0,
     prepaidUsed: 0,
     credit: 0,
+    pendingPayment: 0,
     notes: '',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),

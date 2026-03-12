@@ -458,6 +458,11 @@ export default function StudentsPage() {
                     <p className="text-sm text-gray-500 dark:text-zinc-400">
                       {count} lesson{count !== 1 ? 's' : ''}
                     </p>
+                    {student.pendingPayment > 0 && (
+                      <span className="text-xs px-2 py-0.5 rounded-full mt-1 inline-block bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                        RM {student.pendingPayment} due
+                      </span>
+                    )}
                     {hasPrepaid ? (
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full mt-1 inline-block ${
@@ -519,6 +524,42 @@ export default function StudentsPage() {
                 Save Changes
               </Button>
             </div>
+
+            {/* Payment due banner */}
+            {selectedStudent.pendingPayment > 0 && (
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                    Payment due: RM {selectedStudent.pendingPayment}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    if (!coach || !db || !selectedStudent) return;
+                    try {
+                      await updateDoc(
+                        doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                        {
+                          pendingPayment: 0,
+                          credit: 0,
+                          updatedAt: serverTimestamp(),
+                        }
+                      );
+                      setSelectedStudent((prev) =>
+                        prev ? { ...prev, pendingPayment: 0, credit: 0 } : null
+                      );
+                      showToast('Payment marked as received!', 'success');
+                    } catch (error) {
+                      console.error('Error marking paid:', error);
+                      showToast('Failed to mark as paid', 'error');
+                    }
+                  }}
+                >
+                  Mark as Paid
+                </Button>
+              </div>
+            )}
 
             {/* Prepaid section */}
             <div className="border-t border-gray-100 dark:border-[#333333] pt-4">

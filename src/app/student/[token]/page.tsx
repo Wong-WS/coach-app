@@ -7,6 +7,7 @@ interface PortalData {
   prepaidTotal: number;
   prepaidUsed: number;
   credit: number;
+  pendingPayment: number;
   coachName: string;
   serviceType: string;
   lessons: {
@@ -90,6 +91,18 @@ export default function StudentPortalPage({ params }: { params: Promise<{ token:
             Welcome, {data.studentName}!
           </h1>
         </div>
+
+        {/* Payment due banner */}
+        {(data.pendingPayment ?? 0) > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <p className="text-sm font-medium text-amber-800">
+              Payment due: RM {data.pendingPayment}
+            </p>
+            <p className="text-xs text-amber-600 mt-1">
+              Please arrange payment with your coach.
+            </p>
+          </div>
+        )}
 
         {/* Prepaid status */}
         {hasPrepaid && (
