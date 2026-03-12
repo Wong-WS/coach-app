@@ -50,11 +50,15 @@ export default function DashboardPage() {
   const [rescheduleDate, setRescheduleDate] = useState('');
   const [rescheduling, setRescheduling] = useState(false);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [markDoneBooking, setMarkDoneBooking] = useState<Booking | null>(null);
+  const [markDonePrice, setMarkDonePrice] = useState(0);
+  const [markDoneNote, setMarkDoneNote] = useState('');
   const [packageWarning, setPackageWarning] = useState<{
     studentName: string;
     remaining: number;
     total: number;
     lastPrice: number;
+    credit: number;
   } | null>(null);
 
   const selectedDateStr = getDateString(selectedDate);
@@ -71,8 +75,16 @@ export default function DashboardPage() {
     return new Set(lessonLogs.map((l) => l.bookingId));
   }, [lessonLogs]);
 
-  const handleMarkDone = async (booking: Booking) => {
-    if (!coach || !db) return;
+  const openMarkDone = (booking: Booking) => {
+    setMarkDoneBooking(booking);
+    setMarkDonePrice(booking.price ?? 0);
+    setMarkDoneNote('');
+    setMenuOpen(null);
+  };
+
+  const handleConfirmMarkDone = async () => {
+    const booking = markDoneBooking;
+    if (!coach || !db || !booking) return;
     setMarking(booking.id);
     try {
       const firestore = db as Firestore;
@@ -81,7 +93,7 @@ export default function DashboardPage() {
         firestore, coach.id, booking.clientName, booking.clientPhone
       );
       const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
-      batch.set(logRef, {
+      const logData: Record<string, unknown> = {
         date: selectedDateStr,
         bookingId: booking.id,
         studentId,
@@ -89,15 +101,30 @@ export default function DashboardPage() {
         locationName: booking.locationName,
         startTime: booking.startTime,
         endTime: booking.endTime,
-        price: booking.price ?? 0,
+        price: markDonePrice,
         createdAt: serverTimestamp(),
-      });
+      };
+      if (markDoneNote.trim()) {
+        logData.note = markDoneNote.trim();
+      }
+      batch.set(logRef, logData);
+
       const studentRef = doc(firestore, 'coaches', coach.id, 'students', studentId);
-      batch.update(studentRef, {
+      const updateData: Record<string, unknown> = {
         prepaidUsed: increment(1),
         updatedAt: serverTimestamp(),
-      });
+      };
+
+      // Calculate credit: if actual price < booking price, add the difference
+      const bookingPrice = booking.price ?? 0;
+      if (markDonePrice < bookingPrice && bookingPrice > 0) {
+        const creditDiff = bookingPrice - markDonePrice;
+        updateData.credit = increment(creditDiff);
+      }
+
+      batch.update(studentRef, updateData);
       await batch.commit();
+      setMarkDoneBooking(null);
       showToast('Class marked as done!', 'success');
 
       // Check package status after marking done
@@ -105,13 +132,15 @@ export default function DashboardPage() {
       if (student && student.prepaidTotal > 0) {
         const remainingAfter = student.prepaidTotal - (student.prepaidUsed + 1);
         if (remainingAfter <= 0) {
-          const lastPrice = booking.price ?? 0;
-          const packagePrice = lastPrice * student.prepaidTotal;
+          const perLessonPrice = bookingPrice;
+          const packagePrice = perLessonPrice * student.prepaidTotal;
+          const currentCredit = (student.credit ?? 0) + (markDonePrice < bookingPrice ? bookingPrice - markDonePrice : 0);
           setPackageWarning({
             studentName: booking.clientName,
             remaining: remainingAfter,
             total: student.prepaidTotal,
             lastPrice: packagePrice,
+            credit: currentCredit,
           });
         }
       }
@@ -120,7 +149,6 @@ export default function DashboardPage() {
       showToast('Failed to mark class as done', 'error');
     } finally {
       setMarking(null);
-      setMenuOpen(null);
     }
   };
 
@@ -361,11 +389,10 @@ export default function DashboardPage() {
                           <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(null)} />
                           <div className="absolute right-0 top-full mt-1 z-20 w-40 bg-white dark:bg-[#2a2a2a] rounded-lg shadow-lg border border-gray-200 dark:border-[#444] py-1">
                             <button
-                              onClick={() => handleMarkDone(booking)}
-                              disabled={marking === booking.id}
-                              className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#333] disabled:opacity-50"
+                              onClick={() => openMarkDone(booking)}
+                              className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#333]"
                             >
-                              {marking === booking.id ? 'Marking...' : 'Mark Done'}
+                              Mark Done
                             </button>
                             <button
                               onClick={() => {
@@ -500,6 +527,67 @@ export default function DashboardPage() {
         )}
       </Modal>
 
+      {/* Mark Done confirmation modal */}
+      <Modal
+        isOpen={markDoneBooking !== null}
+        onClose={() => setMarkDoneBooking(null)}
+        title="Mark Class Done"
+      >
+        {markDoneBooking && (
+          <div className="space-y-4">
+            <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3">
+              <p className="font-medium text-gray-900 dark:text-zinc-100">
+                {markDoneBooking.clientName}
+              </p>
+              <p className="text-sm text-gray-500 dark:text-zinc-400">
+                {formatTimeDisplay(markDoneBooking.startTime)} – {formatTimeDisplay(markDoneBooking.endTime)} &middot; {markDoneBooking.locationName}
+              </p>
+            </div>
+
+            <Input
+              id="markDonePrice"
+              type="number"
+              label="Price (RM)"
+              value={markDonePrice.toString()}
+              onChange={(e) => setMarkDonePrice(parseFloat(e.target.value) || 0)}
+              min={0}
+              step={0.01}
+            />
+
+            {markDonePrice < (markDoneBooking.price ?? 0) && (markDoneBooking.price ?? 0) > 0 && (
+              <p className="text-xs text-blue-600 dark:text-blue-400">
+                RM {((markDoneBooking.price ?? 0) - markDonePrice).toFixed(0)} will be added as credit
+              </p>
+            )}
+
+            <div>
+              <label htmlFor="markDoneNote" className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
+                Note (optional)
+              </label>
+              <input
+                id="markDoneNote"
+                value={markDoneNote}
+                onChange={(e) => setMarkDoneNote(e.target.value)}
+                placeholder="e.g. Aaron only"
+                className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm"
+              />
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <Button variant="secondary" onClick={() => setMarkDoneBooking(null)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleConfirmMarkDone}
+                loading={marking === markDoneBooking.id}
+              >
+                Confirm
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       {/* Package warning modal */}
       <Modal
         isOpen={packageWarning !== null}
@@ -519,9 +607,23 @@ export default function DashboardPage() {
             {packageWarning.lastPrice > 0 && (
               <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-4">
                 <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Next payment</p>
-                <p className="text-xl font-semibold text-gray-900 dark:text-zinc-100">
-                  RM {packageWarning.lastPrice}
-                </p>
+                {packageWarning.credit > 0 ? (
+                  <>
+                    <p className="text-sm text-gray-500 dark:text-zinc-400 line-through">
+                      RM {packageWarning.lastPrice}
+                    </p>
+                    <p className="text-xl font-semibold text-gray-900 dark:text-zinc-100">
+                      RM {packageWarning.lastPrice - packageWarning.credit}
+                    </p>
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                      RM {packageWarning.credit} credit applied
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-xl font-semibold text-gray-900 dark:text-zinc-100">
+                    RM {packageWarning.lastPrice}
+                  </p>
+                )}
                 <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">
                   Based on {packageWarning.total} lessons at RM {(packageWarning.lastPrice / packageWarning.total).toFixed(0)}/lesson
                 </p>

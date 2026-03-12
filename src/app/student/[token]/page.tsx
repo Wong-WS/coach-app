@@ -6,6 +6,7 @@ interface PortalData {
   studentName: string;
   prepaidTotal: number;
   prepaidUsed: number;
+  credit: number;
   coachName: string;
   serviceType: string;
   lessons: {
@@ -13,6 +14,7 @@ interface PortalData {
     startTime: string;
     endTime: string;
     locationName: string;
+    note?: string;
   }[];
 }
 
@@ -76,6 +78,7 @@ export default function StudentPortalPage({ params }: { params: Promise<{ token:
 
   const remaining = data.prepaidTotal - data.prepaidUsed;
   const hasPrepaid = data.prepaidTotal > 0;
+  const hasCredit = (data.credit ?? 0) > 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -108,6 +111,22 @@ export default function StudentPortalPage({ params }: { params: Promise<{ token:
                 }}
               />
             </div>
+            {hasCredit && (
+              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+                <span className="text-sm text-gray-600">Credit Balance</span>
+                <span className="text-sm font-medium text-green-600">RM {data.credit}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Credit balance (standalone if no prepaid package) */}
+        {!hasPrepaid && hasCredit && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700">Credit Balance</span>
+              <span className="text-lg font-semibold text-green-600">RM {data.credit}</span>
+            </div>
           </div>
         )}
 
@@ -133,6 +152,9 @@ export default function StudentPortalPage({ params }: { params: Promise<{ token:
                   <p className="text-xs text-gray-500 mt-0.5">
                     {getDayName(lesson.date)} &middot; {formatTime(lesson.startTime)} &ndash; {formatTime(lesson.endTime)}
                   </p>
+                  {lesson.note && (
+                    <p className="text-xs text-gray-400 mt-0.5 italic">{lesson.note}</p>
+                  )}
                 </div>
               ))}
             </div>

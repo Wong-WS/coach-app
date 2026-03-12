@@ -104,6 +104,7 @@ export interface Student {
   linkToken: string;
   prepaidTotal: number;
   prepaidUsed: number;
+  credit: number;
   notes: string;
   createdAt: Date;
   updatedAt: Date;
@@ -119,6 +120,7 @@ export interface LessonLog {
   startTime: string;
   endTime: string;
   price: number;
+  note?: string;
   createdAt: Date;
 }
 

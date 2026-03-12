@@ -179,6 +179,7 @@ export function useStudents(coachId: string | undefined) {
           linkToken: d.data().linkToken,
           prepaidTotal: d.data().prepaidTotal ?? 0,
           prepaidUsed: d.data().prepaidUsed ?? 0,
+          credit: d.data().credit ?? 0,
           notes: d.data().notes ?? '',
           createdAt: d.data().createdAt?.toDate() || new Date(),
           updatedAt: d.data().updatedAt?.toDate() || new Date(),
@@ -224,6 +225,7 @@ export function useLessonLogs(coachId: string | undefined, dateFilter?: string, 
         startTime: d.data().startTime,
         endTime: d.data().endTime,
         price: d.data().price ?? 0,
+        note: d.data().note ?? undefined,
         createdAt: d.data().createdAt?.toDate() || new Date(),
       }));
       setLessonLogs(items);

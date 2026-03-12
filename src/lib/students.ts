@@ -25,6 +25,7 @@ export async function findOrCreateStudent(
     linkToken,
     prepaidTotal: 0,
     prepaidUsed: 0,
+    credit: 0,
     notes: '',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),

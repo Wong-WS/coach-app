@@ -48,6 +48,7 @@ export async function GET(
         startTime: doc.data().startTime,
         endTime: doc.data().endTime,
         locationName: doc.data().locationName,
+        note: doc.data().note || undefined,
       }))
       .sort((a, b) => b.date.localeCompare(a.date));
 
@@ -55,6 +56,7 @@ export async function GET(
       studentName: student.clientName,
       prepaidTotal: student.prepaidTotal ?? 0,
       prepaidUsed: student.prepaidUsed ?? 0,
+      credit: student.credit ?? 0,
       coachName: coach?.displayName ?? 'Coach',
       serviceType: coach?.serviceType ?? '',
       lessons,
