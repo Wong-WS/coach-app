@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { collection, addDoc, updateDoc, doc, serverTimestamp, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
-import { useLocations, useBookings, useStudents } from '@/hooks/useCoachData';
+import { useLocations, useBookings } from '@/hooks/useCoachData';
 import { Button, Input, Select, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { DayOfWeek, LessonType, Booking, LinkedStudent } from '@/types';
@@ -50,11 +50,7 @@ export default function BookingsPage() {
   const { coach } = useAuth();
   const { locations } = useLocations(coach?.id);
   const { bookings, loading } = useBookings(coach?.id);
-  const { students } = useStudents(coach?.id);
   const { showToast } = useToast();
-
-  // Map studentId → linkToken for portal links
-  const studentTokenMap = new Map(students.map((s) => [s.id, s.linkToken]));
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
@@ -281,42 +277,12 @@ export default function BookingsPage() {
                             {(booking.price ?? 0) > 0 && (
                               <span className="text-xs text-green-600 dark:text-green-400 ml-1">RM {booking.price}</span>
                             )}
-                            {booking.primaryStudentId && studentTokenMap.has(booking.primaryStudentId) && (
-                              <button
-                                type="button"
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  const token = studentTokenMap.get(booking.primaryStudentId!);
-                                  await navigator.clipboard.writeText(`${window.location.origin}/student/${token}`);
-                                  showToast(`Portal link copied for ${booking.clientName}`, 'success');
-                                }}
-                                className="ml-1 text-xs text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                                title="Copy portal link"
-                              >
-                                [link]
-                              </button>
-                            )}
                           </p>
                           {booking.linkedStudents && booking.linkedStudents.length > 0 && booking.linkedStudents.map((ls) => (
                             <p key={ls.studentId} className="text-xs text-gray-400 dark:text-zinc-500 mt-0.5">
                               + {ls.studentName}
                               {ls.price > 0 && (
                                 <span className="text-green-600 dark:text-green-400 ml-1">RM {ls.price}</span>
-                              )}
-                              {studentTokenMap.has(ls.studentId) && (
-                                <button
-                                  type="button"
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    const token = studentTokenMap.get(ls.studentId);
-                                    await navigator.clipboard.writeText(`${window.location.origin}/student/${token}`);
-                                    showToast(`Portal link copied for ${ls.studentName}`, 'success');
-                                  }}
-                                  className="ml-1 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                                  title="Copy portal link"
-                                >
-                                  [link]
-                                </button>
                               )}
                             </p>
                           ))}
