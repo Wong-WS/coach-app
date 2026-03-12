@@ -54,3 +54,28 @@ export function isRescheduledToDate(
     (e) => e.bookingId === bookingId && e.type === 'rescheduled' && e.newDate === date
   );
 }
+
+export interface CancelledClass {
+  booking: Booking;
+  exceptionId: string;
+}
+
+export function getCancelledClassesForDate(
+  date: string,
+  bookings: Booking[],
+  exceptions: ClassException[]
+): CancelledClass[] {
+  const cancelledExceptions = exceptions.filter(
+    (e) => e.originalDate === date && e.type === 'cancelled'
+  );
+
+  const result: CancelledClass[] = [];
+  for (const ex of cancelledExceptions) {
+    const booking = bookings.find((b) => b.id === ex.bookingId);
+    if (booking) {
+      result.push({ booking, exceptionId: ex.id });
+    }
+  }
+
+  return result.sort((a, b) => a.booking.startTime.localeCompare(b.booking.startTime));
+}

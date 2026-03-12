@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { collection, doc, writeBatch, serverTimestamp, increment, getDoc, updateDoc, Firestore } from 'firebase/firestore';
+import { collection, doc, writeBatch, serverTimestamp, increment, getDoc, updateDoc, deleteDoc, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useLocations, useBookings, useLessonLogs, useClassExceptions, useStudents } from '@/hooks/useCoachData';
@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { Booking } from '@/types';
 import { formatTimeDisplay } from '@/lib/availability-engine';
 import { findOrCreateStudent } from '@/lib/students';
-import { getClassesForDate, isRescheduledToDate } from '@/lib/class-schedule';
+import { getClassesForDate, isRescheduledToDate, getCancelledClassesForDate } from '@/lib/class-schedule';
 
 function getDateString(date: Date): string {
   const yyyy = date.getFullYear();
@@ -52,6 +52,7 @@ export default function DashboardPage() {
   const [rescheduleEndTime, setRescheduleEndTime] = useState('');
   const [rescheduling, setRescheduling] = useState(false);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [undoingCancel, setUndoingCancel] = useState<string | null>(null);
   const [markDoneBooking, setMarkDoneBooking] = useState<Booking | null>(null);
   const [markDonePrice, setMarkDonePrice] = useState(0);
   const [markDoneNote, setMarkDoneNote] = useState('');
@@ -71,6 +72,10 @@ export default function DashboardPage() {
 
   const dayClasses = useMemo(() => {
     return getClassesForDate(selectedDateStr, bookings, classExceptions);
+  }, [selectedDateStr, bookings, classExceptions]);
+
+  const cancelledClasses = useMemo(() => {
+    return getCancelledClassesForDate(selectedDateStr, bookings, classExceptions);
   }, [selectedDateStr, bookings, classExceptions]);
 
   const doneBookingIds = useMemo(() => {
@@ -223,6 +228,40 @@ export default function DashboardPage() {
       showToast('Failed to reschedule class', 'error');
     } finally {
       setRescheduling(false);
+    }
+  };
+
+  const handleUndoCancel = async (exceptionId: string) => {
+    if (!coach || !db) return;
+    setUndoingCancel(exceptionId);
+    try {
+      const firestore = db as Firestore;
+      await deleteDoc(doc(firestore, 'coaches', coach.id, 'classExceptions', exceptionId));
+      showToast('Cancellation undone', 'success');
+    } catch (error) {
+      console.error('Error undoing cancel:', error);
+      showToast('Failed to undo cancellation', 'error');
+    } finally {
+      setUndoingCancel(null);
+    }
+  };
+
+  const handleRescheduleInstead = async (exceptionId: string, booking: Booking) => {
+    if (!coach || !db) return;
+    setUndoingCancel(exceptionId);
+    try {
+      const firestore = db as Firestore;
+      await deleteDoc(doc(firestore, 'coaches', coach.id, 'classExceptions', exceptionId));
+      // Open reschedule modal pre-filled
+      setRescheduleBooking(booking);
+      setRescheduleDate('');
+      setRescheduleStartTime(booking.startTime);
+      setRescheduleEndTime(booking.endTime);
+    } catch (error) {
+      console.error('Error removing cancellation:', error);
+      showToast('Failed to undo cancellation', 'error');
+    } finally {
+      setUndoingCancel(null);
     }
   };
 
@@ -444,6 +483,63 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Cancelled classes */}
+      {cancelledClasses.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wider mb-2">
+            Cancelled
+          </p>
+          <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] opacity-60">
+            <div className="divide-y divide-gray-100 dark:divide-[#333333]">
+              {cancelledClasses.map(({ booking, exceptionId }) => (
+                <div key={exceptionId} className="flex items-center gap-3 p-4 sm:p-5">
+                  {/* Status indicator */}
+                  <div className="flex-shrink-0">
+                    <div className="w-6 h-6 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                      <svg className="w-4 h-4 text-red-500 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </div>
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-gray-900 dark:text-zinc-100">
+                        {formatTimeDisplay(booking.startTime)} – {formatTimeDisplay(booking.endTime)}
+                      </span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                        Cancelled
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 dark:text-zinc-400 mt-0.5">{booking.clientName}</p>
+                    <p className="text-xs text-gray-400 dark:text-zinc-500">{booking.locationName}</p>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button
+                      onClick={() => handleUndoCancel(exceptionId)}
+                      disabled={undoingCancel === exceptionId}
+                      className="px-2.5 py-1.5 text-xs font-medium rounded-lg text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50"
+                    >
+                      {undoingCancel === exceptionId ? 'Undoing...' : 'Undo'}
+                    </button>
+                    <button
+                      onClick={() => handleRescheduleInstead(exceptionId, booking)}
+                      disabled={undoingCancel === exceptionId}
+                      className="px-2.5 py-1.5 text-xs font-medium rounded-lg text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
+                    >
+                      Reschedule
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
