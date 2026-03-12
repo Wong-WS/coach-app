@@ -41,13 +41,6 @@ export interface Location {
 export type BookingStatus = 'confirmed' | 'cancelled';
 export type LessonType = 'private' | 'group';
 
-export interface LinkedStudent {
-  studentId: string;
-  studentName: string;
-  studentPhone: string;
-  price: number;
-}
-
 export interface Booking {
   id: string;
   locationId: string;
@@ -62,8 +55,6 @@ export interface Booking {
   groupSize: number;
   notes: string;
   price?: number;
-  primaryStudentId?: string;
-  linkedStudents?: LinkedStudent[];
   createdAt: Date;
   cancelledAt?: Date;
 }
