@@ -240,6 +240,7 @@ export default function StudentsPage() {
       );
       setShowAddLesson(false);
       setLessonNote('');
+      setLessonPrice(bookingPrice || lessonPrice);
       showToast('Lesson added!', 'success');
     } catch (error) {
       console.error('Error adding lesson:', error);
