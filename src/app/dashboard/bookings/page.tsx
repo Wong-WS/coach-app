@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { collection, addDoc, updateDoc, doc, serverTimestamp, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
-import { useLocations, useBookings, useStudents } from '@/hooks/useCoachData';
+import { useLocations, useBookings } from '@/hooks/useCoachData';
 import { Button, Input, Select, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { DayOfWeek, LessonType, Booking, LinkedStudent } from '@/types';
@@ -50,11 +50,7 @@ export default function BookingsPage() {
   const { coach } = useAuth();
   const { locations } = useLocations(coach?.id);
   const { bookings, loading } = useBookings(coach?.id);
-  const { students } = useStudents(coach?.id);
   const { showToast } = useToast();
-
-  // Map studentId → linkToken for portal links
-  const studentTokenMap = new Map(students.map((s) => [s.id, s.linkToken]));
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
@@ -276,55 +272,15 @@ export default function BookingsPage() {
                               {booking.lessonType === 'group' ? `Group (${booking.groupSize})` : 'Private'}
                             </span>
                           </div>
-                          <p className="text-sm text-gray-600 dark:text-zinc-400 mt-1">
-                            {booking.clientName}
-                            {(booking.price ?? 0) > 0 && (
-                              <span className="text-xs text-green-600 dark:text-green-400 ml-1">RM {booking.price}</span>
-                            )}
-                            {booking.primaryStudentId && studentTokenMap.has(booking.primaryStudentId) && (
-                              <button
-                                type="button"
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  const token = studentTokenMap.get(booking.primaryStudentId!);
-                                  await navigator.clipboard.writeText(`${window.location.origin}/student/${token}`);
-                                  showToast(`Portal link copied for ${booking.clientName}`, 'success');
-                                }}
-                                className="ml-1 text-xs text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                                title="Copy portal link"
-                              >
-                                [link]
-                              </button>
-                            )}
-                          </p>
-                          {booking.linkedStudents && booking.linkedStudents.length > 0 && booking.linkedStudents.map((ls) => (
-                            <p key={ls.studentId} className="text-xs text-gray-400 dark:text-zinc-500 mt-0.5">
-                              + {ls.studentName}
-                              {ls.price > 0 && (
-                                <span className="text-green-600 dark:text-green-400 ml-1">RM {ls.price}</span>
-                              )}
-                              {studentTokenMap.has(ls.studentId) && (
-                                <button
-                                  type="button"
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    const token = studentTokenMap.get(ls.studentId);
-                                    await navigator.clipboard.writeText(`${window.location.origin}/student/${token}`);
-                                    showToast(`Portal link copied for ${ls.studentName}`, 'success');
-                                  }}
-                                  className="ml-1 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                                  title="Copy portal link"
-                                >
-                                  [link]
-                                </button>
-                              )}
-                            </p>
-                          ))}
-                          <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{booking.locationName}</p>
+                          <p className="text-sm text-gray-600 dark:text-zinc-400 mt-1">{booking.clientName}</p>
                           {booking.linkedStudents && booking.linkedStudents.length > 0 && (
-                            <p className="text-xs font-medium text-green-600 dark:text-green-400 mt-0.5">
-                              Total: RM {(booking.price ?? 0) + booking.linkedStudents.reduce((sum, ls) => sum + ls.price, 0)}
+                            <p className="text-xs text-gray-400 dark:text-zinc-500 mt-0.5">
+                              + {booking.linkedStudents.map((ls) => ls.studentName).join(', ')}
                             </p>
+                          )}
+                          <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{booking.locationName}</p>
+                          {(booking.price ?? 0) > 0 && (
+                            <p className="text-xs font-medium text-green-600 dark:text-green-400 mt-1">RM {booking.price}</p>
                           )}
                         </div>
                         <div className="flex flex-col gap-1 ml-2">
@@ -455,113 +411,85 @@ export default function BookingsPage() {
             )}
           </div>
 
-          {formData.lessonType === 'group' ? (
+          <Input
+            id="price"
+            type="number"
+            label="Price per session (RM)"
+            value={formData.price.toString()}
+            onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
+            min={0}
+            step={0.01}
+            placeholder="0"
+          />
+
+          {formData.lessonType === 'group' && (
             <div className="border border-gray-200 dark:border-zinc-600 rounded-lg p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium text-gray-700 dark:text-zinc-300">
-                  Payment Split
+                  Additional Parents
                 </label>
                 <button
                   type="button"
-                  onClick={() => setLinkedStudentInputs([...linkedStudentInputs, { name: '', phone: '', price: 0 }])}
+                  onClick={() => setLinkedStudentInputs([...linkedStudentInputs, { name: '', phone: '', price: formData.price }])}
                   className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
                 >
                   + Add Parent
                 </button>
               </div>
-
-              {/* Primary parent price */}
-              <div className="bg-gray-50 dark:bg-[#1a1a1a]/50 rounded-lg p-3 space-y-1">
-                <p className="text-xs text-gray-500 dark:text-zinc-400">{formData.clientName || 'Primary parent'}</p>
-                <Input
-                  id="price"
-                  type="number"
-                  label="Amount (RM)"
-                  value={formData.price.toString()}
-                  onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
-                  min={0}
-                  step={0.01}
-                  placeholder="0"
-                />
-              </div>
-
-              {/* Linked parents */}
               {linkedStudentInputs.map((ls, idx) => (
-                <div key={idx} className="bg-gray-50 dark:bg-[#1a1a1a]/50 rounded-lg p-3 space-y-2">
-                  <div className="flex gap-2 items-start">
-                    <div className="flex-1">
+                <div key={idx} className="flex gap-2 items-start">
+                  <div className="flex-1 space-y-2">
+                    <Input
+                      id={`linked-name-${idx}`}
+                      placeholder="Parent name"
+                      value={ls.name}
+                      onChange={(e) => {
+                        const updated = [...linkedStudentInputs];
+                        updated[idx] = { ...updated[idx], name: e.target.value };
+                        setLinkedStudentInputs(updated);
+                      }}
+                    />
+                    <div className="grid grid-cols-2 gap-2">
                       <Input
-                        id={`linked-name-${idx}`}
-                        placeholder="Parent name"
-                        value={ls.name}
+                        id={`linked-phone-${idx}`}
+                        placeholder="Phone"
+                        value={ls.phone}
                         onChange={(e) => {
                           const updated = [...linkedStudentInputs];
-                          updated[idx] = { ...updated[idx], name: e.target.value };
+                          updated[idx] = { ...updated[idx], phone: e.target.value };
                           setLinkedStudentInputs(updated);
                         }}
                       />
+                      <Input
+                        id={`linked-price-${idx}`}
+                        type="number"
+                        placeholder="Price (RM)"
+                        value={ls.price.toString()}
+                        onChange={(e) => {
+                          const updated = [...linkedStudentInputs];
+                          updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
+                          setLinkedStudentInputs(updated);
+                        }}
+                        min={0}
+                        step={0.01}
+                      />
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setLinkedStudentInputs(linkedStudentInputs.filter((_, i) => i !== idx))}
-                      className="mt-1 p-1.5 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input
-                      id={`linked-phone-${idx}`}
-                      placeholder="Phone"
-                      value={ls.phone}
-                      onChange={(e) => {
-                        const updated = [...linkedStudentInputs];
-                        updated[idx] = { ...updated[idx], phone: e.target.value };
-                        setLinkedStudentInputs(updated);
-                      }}
-                    />
-                    <Input
-                      id={`linked-price-${idx}`}
-                      type="number"
-                      label="Amount (RM)"
-                      value={ls.price.toString()}
-                      onChange={(e) => {
-                        const updated = [...linkedStudentInputs];
-                        updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
-                        setLinkedStudentInputs(updated);
-                      }}
-                      min={0}
-                      step={0.01}
-                    />
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLinkedStudentInputs(linkedStudentInputs.filter((_, i) => i !== idx))}
+                    className="mt-1 p-1.5 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
               ))}
-
               {linkedStudentInputs.length === 0 && (
                 <p className="text-xs text-gray-400 dark:text-zinc-500">No additional parents added yet.</p>
               )}
-
-              {/* Total */}
-              <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-zinc-600">
-                <span className="text-sm font-medium text-gray-700 dark:text-zinc-300">Total per session</span>
-                <span className="text-sm font-semibold text-green-600 dark:text-green-400">
-                  RM {(formData.price + linkedStudentInputs.reduce((sum, ls) => sum + ls.price, 0)).toFixed(0)}
-                </span>
-              </div>
             </div>
-          ) : (
-            <Input
-              id="price"
-              type="number"
-              label="Price per session (RM)"
-              value={formData.price.toString()}
-              onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
-              min={0}
-              step={0.01}
-              placeholder="0"
-            />
           )}
 
           <div>
