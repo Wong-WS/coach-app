@@ -131,6 +131,8 @@ export interface ClassException {
   originalDate: string;       // "YYYY-MM-DD"
   type: 'cancelled' | 'rescheduled';
   newDate?: string;           // only for rescheduled
+  newStartTime?: string;      // optional time override for rescheduled
+  newEndTime?: string;
   createdAt: Date;
 }
 

@@ -48,6 +48,8 @@ export default function DashboardPage() {
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [rescheduleBooking, setRescheduleBooking] = useState<Booking | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleStartTime, setRescheduleStartTime] = useState('');
+  const [rescheduleEndTime, setRescheduleEndTime] = useState('');
   const [rescheduling, setRescheduling] = useState(false);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [markDoneBooking, setMarkDoneBooking] = useState<Booking | null>(null);
@@ -191,8 +193,8 @@ export default function DashboardPage() {
 
   const handleReschedule = async () => {
     if (!coach || !db || !rescheduleBooking || !rescheduleDate) return;
-    if (rescheduleDate === selectedDateStr) {
-      showToast('New date must be different from original', 'error');
+    if (rescheduleDate === selectedDateStr && rescheduleStartTime === rescheduleBooking.startTime && rescheduleEndTime === rescheduleBooking.endTime) {
+      showToast('Must change date or time', 'error');
       return;
     }
     setRescheduling(true);
@@ -200,13 +202,18 @@ export default function DashboardPage() {
       const firestore = db as Firestore;
       const exRef = doc(collection(firestore, 'coaches', coach.id, 'classExceptions'));
       const batch = writeBatch(firestore);
-      batch.set(exRef, {
+      const exData: Record<string, unknown> = {
         bookingId: rescheduleBooking.id,
         originalDate: selectedDateStr,
         type: 'rescheduled',
         newDate: rescheduleDate,
         createdAt: serverTimestamp(),
-      });
+      };
+      if (rescheduleStartTime !== rescheduleBooking.startTime || rescheduleEndTime !== rescheduleBooking.endTime) {
+        exData.newStartTime = rescheduleStartTime;
+        exData.newEndTime = rescheduleEndTime;
+      }
+      batch.set(exRef, exData);
       await batch.commit();
       showToast('Class rescheduled!', 'success');
       setRescheduleBooking(null);
@@ -411,6 +418,8 @@ export default function DashboardPage() {
                               onClick={() => {
                                 setRescheduleBooking(booking);
                                 setRescheduleDate('');
+                                setRescheduleStartTime(booking.startTime);
+                                setRescheduleEndTime(booking.endTime);
                                 setMenuOpen(null);
                               }}
                               className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#333]"
@@ -524,6 +533,23 @@ export default function DashboardPage() {
               onChange={(e) => setRescheduleDate(e.target.value)}
             />
 
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                id="rescheduleStartTime"
+                label="Start Time"
+                type="time"
+                value={rescheduleStartTime}
+                onChange={(e) => setRescheduleStartTime(e.target.value)}
+              />
+              <Input
+                id="rescheduleEndTime"
+                label="End Time"
+                type="time"
+                value={rescheduleEndTime}
+                onChange={(e) => setRescheduleEndTime(e.target.value)}
+              />
+            </div>
+
             <div className="flex gap-2 justify-end">
               <Button variant="secondary" onClick={() => setRescheduleBooking(null)}>
                 Cancel
@@ -531,7 +557,7 @@ export default function DashboardPage() {
               <Button
                 onClick={handleReschedule}
                 loading={rescheduling}
-                disabled={!rescheduleDate || rescheduleDate === selectedDateStr}
+                disabled={!rescheduleDate}
               >
                 Reschedule
               </Button>

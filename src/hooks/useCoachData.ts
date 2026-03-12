@@ -259,6 +259,8 @@ export function useClassExceptions(coachId: string | undefined) {
           originalDate: d.data().originalDate,
           type: d.data().type,
           newDate: d.data().newDate,
+          newStartTime: d.data().newStartTime,
+          newEndTime: d.data().newEndTime,
           createdAt: d.data().createdAt?.toDate() || new Date(),
         }));
         setClassExceptions(items);
