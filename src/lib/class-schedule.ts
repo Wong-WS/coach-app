@@ -27,12 +27,18 @@ export function getClassesForDate(
   classes = classes.filter((b) => !cancelledOrMovedIds.has(b.id));
 
   // Add bookings rescheduled TO this date (with optional time override)
+  // But skip if there's also a cancellation for this booking on this date
+  const cancelledOnThisDate = new Set(
+    exceptions
+      .filter((e) => e.originalDate === date && e.type === 'cancelled')
+      .map((e) => e.bookingId)
+  );
   const rescheduledToThisDate = exceptions.filter(
     (e) => e.type === 'rescheduled' && e.newDate === date
   );
   for (const exception of rescheduledToThisDate) {
     const originalBooking = bookings.find((b) => b.id === exception.bookingId);
-    if (originalBooking && !classes.some((c) => c.id === originalBooking.id)) {
+    if (originalBooking && !classes.some((c) => c.id === originalBooking.id) && !cancelledOnThisDate.has(originalBooking.id)) {
       if (exception.newStartTime && exception.newEndTime) {
         classes.push({ ...originalBooking, startTime: exception.newStartTime, endTime: exception.newEndTime });
       } else {
