@@ -44,6 +44,12 @@ export default function StudentsPage() {
   const [addingLesson, setAddingLesson] = useState(false);
   const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
 
+  // Linked student state
+  const [showLinkPicker, setShowLinkPicker] = useState(false);
+  const [linkSearch, setLinkSearch] = useState('');
+  const [linking, setLinking] = useState(false);
+  const [unlinking, setUnlinking] = useState(false);
+
   // Editable prepaid state
   const [editingPrepaid, setEditingPrepaid] = useState(false);
   const [editPrepaidTotal, setEditPrepaidTotal] = useState(0);
@@ -57,6 +63,19 @@ export default function StudentsPage() {
       .filter((l) => l.studentId === selectedStudent.id)
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [allLogs, selectedStudent]);
+
+  // Linked students for the selected student
+  const linkedStudents = useMemo(() => {
+    if (!selectedStudent) return [];
+    // If this is a primary student, find all students linked TO them
+    return students.filter((s) => s.linkedToStudentId === selectedStudent.id);
+  }, [students, selectedStudent]);
+
+  // If selected student is a secondary, find their primary
+  const primaryStudent = useMemo(() => {
+    if (!selectedStudent?.linkedToStudentId) return null;
+    return students.find((s) => s.id === selectedStudent.linkedToStudentId) ?? null;
+  }, [students, selectedStudent]);
 
   // Map students to their booking days, tracking earliest startTime and locationName per day
   const { dayToStudents, activeDays } = useMemo(() => {
@@ -111,6 +130,85 @@ export default function StudentsPage() {
     return result;
   }, [students, search, dayFilter, dayToStudents]);
 
+  const handleLinkStudent = async (secondaryStudentId: string) => {
+    if (!coach || !db || !selectedStudent) return;
+    setLinking(true);
+    try {
+      const firestore = db as Firestore;
+      const batch = writeBatch(firestore);
+
+      // Set linkedToStudentId on the secondary student
+      batch.update(doc(firestore, 'coaches', coach.id, 'students', secondaryStudentId), {
+        linkedToStudentId: selectedStudent.id,
+        updatedAt: serverTimestamp(),
+      });
+
+      // Add to linkedStudentIds on all confirmed bookings for this primary student
+      for (const booking of bookings) {
+        if (
+          booking.clientName === selectedStudent.clientName &&
+          booking.clientPhone === (selectedStudent.clientPhone || '')
+        ) {
+          const existing = booking.linkedStudentIds ?? [];
+          if (!existing.includes(secondaryStudentId)) {
+            batch.update(doc(firestore, 'coaches', coach.id, 'bookings', booking.id), {
+              linkedStudentIds: [...existing, secondaryStudentId],
+            });
+          }
+        }
+      }
+
+      await batch.commit();
+      setShowLinkPicker(false);
+      setLinkSearch('');
+      showToast('Student linked!', 'success');
+    } catch (error) {
+      console.error('Error linking student:', error);
+      showToast('Failed to link student', 'error');
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const handleUnlinkStudent = async (secondaryStudentId: string, primaryStudentId: string) => {
+    if (!coach || !db) return;
+    setUnlinking(true);
+    try {
+      const firestore = db as Firestore;
+      const batch = writeBatch(firestore);
+
+      // Clear linkedToStudentId on the secondary student
+      batch.update(doc(firestore, 'coaches', coach.id, 'students', secondaryStudentId), {
+        linkedToStudentId: null,
+        updatedAt: serverTimestamp(),
+      });
+
+      // Remove from linkedStudentIds on all bookings for the primary student
+      const primary = students.find((s) => s.id === primaryStudentId);
+      if (primary) {
+        for (const booking of bookings) {
+          if (
+            booking.clientName === primary.clientName &&
+            booking.clientPhone === (primary.clientPhone || '') &&
+            booking.linkedStudentIds?.includes(secondaryStudentId)
+          ) {
+            batch.update(doc(firestore, 'coaches', coach.id, 'bookings', booking.id), {
+              linkedStudentIds: booking.linkedStudentIds.filter((id) => id !== secondaryStudentId),
+            });
+          }
+        }
+      }
+
+      await batch.commit();
+      showToast('Student unlinked!', 'success');
+    } catch (error) {
+      console.error('Error unlinking student:', error);
+      showToast('Failed to unlink student', 'error');
+    } finally {
+      setUnlinking(false);
+    }
+  };
+
   const openDetail = (student: Student) => {
     setSelectedStudent(student);
     setEditName(student.clientName);
@@ -118,6 +216,8 @@ export default function StudentsPage() {
     setEditNotes(student.notes);
     setShowAddLesson(false);
     setEditingPrepaid(false);
+    setShowLinkPicker(false);
+    setLinkSearch('');
 
     // Auto-fill lesson form from student's earliest booking
     const studentBooking = bookings.find(
@@ -463,6 +563,14 @@ export default function StudentsPage() {
                         {formatTimeDisplay(dayInfo.startTime)} - {formatTimeDisplay(dayInfo.endTime)} &middot; {dayInfo.locationName}
                       </p>
                     )}
+                    {student.linkedToStudentId && (() => {
+                      const primary = students.find((s) => s.id === student.linkedToStudentId);
+                      return primary ? (
+                        <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
+                          Linked to {primary.clientName}
+                        </p>
+                      ) : null;
+                    })()}
                   </div>
                   <div className="text-right">
                     {student.pendingPayment > 0 && (
@@ -704,6 +812,126 @@ export default function StudentsPage() {
                 </Button>
               </div>
             </div>
+
+            {/* Linked Students */}
+            {(linkedStudents.length > 0 || primaryStudent || !selectedStudent.linkedToStudentId) && (
+              <div className="border-t border-gray-100 dark:border-[#333333] pt-4">
+                {primaryStudent ? (
+                  // This is a secondary student — show who they're linked to
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">
+                      Linked To
+                    </h3>
+                    <div className="flex items-center justify-between bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700 rounded-lg p-3">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">{primaryStudent.clientName}</p>
+                        <p className="text-xs text-gray-500 dark:text-zinc-400">{primaryStudent.clientPhone}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openDetail(primaryStudent)}
+                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          View
+                        </button>
+                        <button
+                          onClick={() => handleUnlinkStudent(selectedStudent.id, primaryStudent.id)}
+                          disabled={unlinking}
+                          className="text-xs text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
+                        >
+                          {unlinking ? 'Unlinking...' : 'Unlink'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  // This is a primary student (or unlinked) — show linked students + link button
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300">
+                        Linked Students {linkedStudents.length > 0 && `(${linkedStudents.length})`}
+                      </h3>
+                      <button
+                        onClick={() => { setShowLinkPicker(!showLinkPicker); setLinkSearch(''); }}
+                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        {showLinkPicker ? 'Cancel' : '+ Link Student'}
+                      </button>
+                    </div>
+
+                    {showLinkPicker && (
+                      <div className="mb-3 space-y-2">
+                        <input
+                          type="text"
+                          value={linkSearch}
+                          onChange={(e) => setLinkSearch(e.target.value)}
+                          placeholder="Search student to link..."
+                          className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm"
+                        />
+                        <div className="max-h-32 overflow-y-auto space-y-1">
+                          {students
+                            .filter((s) => {
+                              if (s.id === selectedStudent.id) return false;
+                              if (s.linkedToStudentId) return false; // already linked to someone
+                              if (linkedStudents.some((ls) => ls.id === s.id)) return false;
+                              if (!linkSearch.trim()) return true;
+                              const q = linkSearch.toLowerCase();
+                              return s.clientName.toLowerCase().includes(q) || s.clientPhone.toLowerCase().includes(q);
+                            })
+                            .slice(0, 5)
+                            .map((s) => (
+                              <button
+                                key={s.id}
+                                onClick={() => handleLinkStudent(s.id)}
+                                disabled={linking}
+                                className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
+                              >
+                                <span className="text-gray-900 dark:text-zinc-100">{s.clientName}</span>
+                                <span className="text-gray-400 dark:text-zinc-500 ml-2">{s.clientPhone}</span>
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {linkedStudents.length > 0 ? (
+                      <div className="space-y-2">
+                        {linkedStudents.map((ls) => (
+                          <div
+                            key={ls.id}
+                            className="flex items-center justify-between bg-gray-50 dark:bg-[#1a1a1a]/50 rounded-lg p-3"
+                          >
+                            <div>
+                              <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">{ls.clientName}</p>
+                              <p className="text-xs text-gray-500 dark:text-zinc-400">{ls.clientPhone}</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => openDetail(ls)}
+                                className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                              >
+                                View
+                              </button>
+                              <button
+                                onClick={() => handleUnlinkStudent(ls.id, selectedStudent.id)}
+                                disabled={unlinking}
+                                className="text-xs text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
+                              >
+                                {unlinking ? '...' : 'Unlink'}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : !showLinkPicker ? (
+                      <p className="text-sm text-gray-400 dark:text-zinc-500">
+                        No linked students. Use this for group lessons where each student pays separately.
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Lesson history */}
             <div className="border-t border-gray-100 dark:border-[#333333] pt-4">

@@ -104,6 +104,7 @@ export function useBookings(coachId: string | undefined, statusFilter?: 'confirm
         groupSize: d.data().groupSize,
         notes: d.data().notes,
         price: d.data().price,
+        linkedStudentIds: d.data().linkedStudentIds ?? undefined,
         createdAt: d.data().createdAt?.toDate() || new Date(),
         cancelledAt: d.data().cancelledAt?.toDate(),
       }));
@@ -182,6 +183,7 @@ export function useStudents(coachId: string | undefined) {
           credit: d.data().credit ?? 0,
           pendingPayment: d.data().pendingPayment ?? 0,
           payPerLesson: d.data().payPerLesson ?? false,
+          linkedToStudentId: d.data().linkedToStudentId ?? undefined,
           notes: d.data().notes ?? '',
           createdAt: d.data().createdAt?.toDate() || new Date(),
           updatedAt: d.data().updatedAt?.toDate() || new Date(),

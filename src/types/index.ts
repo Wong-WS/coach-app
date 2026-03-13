@@ -55,6 +55,7 @@ export interface Booking {
   groupSize: number;
   notes: string;
   price?: number;
+  linkedStudentIds?: string[]; // secondary students sharing this group lesson
   createdAt: Date;
   cancelledAt?: Date;
 }
@@ -107,6 +108,7 @@ export interface Student {
   credit: number;
   pendingPayment: number;
   payPerLesson?: boolean;
+  linkedToStudentId?: string; // if set, this is a secondary student linked to a primary
   notes: string;
   createdAt: Date;
   updatedAt: Date;

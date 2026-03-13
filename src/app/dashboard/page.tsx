@@ -56,6 +56,13 @@ export default function DashboardPage() {
   const [markDoneBooking, setMarkDoneBooking] = useState<Booking | null>(null);
   const [markDonePrice, setMarkDonePrice] = useState(0);
   const [markDoneNote, setMarkDoneNote] = useState('');
+  const [markDoneAttendees, setMarkDoneAttendees] = useState<Array<{
+    studentId: string;
+    studentName: string;
+    attended: boolean;
+    price: number;
+    isPrimary: boolean;
+  }>>([]);
   const [packageWarning, setPackageWarning] = useState<{
     studentName: string;
     remaining: number;
@@ -87,6 +94,38 @@ export default function DashboardPage() {
     setMarkDonePrice(booking.price ?? 0);
     setMarkDoneNote('');
     setMenuOpen(null);
+
+    // Build attendees list: primary + linked students
+    const attendees: typeof markDoneAttendees = [];
+    // Primary student (from booking client info)
+    const primaryStudent = students.find(
+      (s) => s.clientName === booking.clientName && s.clientPhone === (booking.clientPhone || '')
+    );
+    if (primaryStudent) {
+      attendees.push({
+        studentId: primaryStudent.id,
+        studentName: primaryStudent.clientName,
+        attended: true,
+        price: booking.price ?? 0,
+        isPrimary: true,
+      });
+    }
+    // Linked students
+    if (booking.linkedStudentIds?.length) {
+      for (const linkedId of booking.linkedStudentIds) {
+        const ls = students.find((s) => s.id === linkedId);
+        if (ls) {
+          attendees.push({
+            studentId: ls.id,
+            studentName: ls.clientName,
+            attended: true,
+            price: booking.price ?? 0,
+            isPrimary: false,
+          });
+        }
+      }
+    }
+    setMarkDoneAttendees(attendees);
   };
 
   const handleConfirmMarkDone = async () => {
@@ -95,79 +134,94 @@ export default function DashboardPage() {
     setMarking(booking.id);
     try {
       const firestore = db as Firestore;
+      const hasLinkedStudents = markDoneAttendees.length > 1;
+
+      // Determine which students to process
+      const attendeesToProcess = hasLinkedStudents
+        ? markDoneAttendees.filter((a) => a.attended)
+        : [{ studentId: '', studentName: booking.clientName, attended: true, price: markDonePrice, isPrimary: true }];
+
       const batch = writeBatch(firestore);
-      const studentId = await findOrCreateStudent(
-        firestore, coach.id, booking.clientName, booking.clientPhone
-      );
-      const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
-      const logData: Record<string, unknown> = {
-        date: selectedDateStr,
-        bookingId: booking.id,
-        studentId,
-        studentName: booking.clientName,
-        locationName: booking.locationName,
-        startTime: booking.startTime,
-        endTime: booking.endTime,
-        price: markDonePrice,
-        createdAt: serverTimestamp(),
-      };
-      if (markDoneNote.trim()) {
-        logData.note = markDoneNote.trim();
+      const processedStudents: Array<{ studentId: string; studentName: string; price: number }> = [];
+
+      for (const attendee of attendeesToProcess) {
+        // Resolve student ID
+        const studentId = attendee.studentId || await findOrCreateStudent(
+          firestore, coach.id, booking.clientName, booking.clientPhone
+        );
+        const price = hasLinkedStudents ? attendee.price : markDonePrice;
+
+        const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
+        const logData: Record<string, unknown> = {
+          date: selectedDateStr,
+          bookingId: booking.id,
+          studentId,
+          studentName: attendee.studentName,
+          locationName: booking.locationName,
+          startTime: booking.startTime,
+          endTime: booking.endTime,
+          price,
+          createdAt: serverTimestamp(),
+        };
+        if (markDoneNote.trim()) {
+          logData.note = markDoneNote.trim();
+        }
+        batch.set(logRef, logData);
+
+        const studentRef = doc(firestore, 'coaches', coach.id, 'students', studentId);
+        const updateData: Record<string, unknown> = {
+          prepaidUsed: increment(1),
+          updatedAt: serverTimestamp(),
+        };
+
+        const bookingPrice = booking.price ?? 0;
+        if (price < bookingPrice && bookingPrice > 0) {
+          updateData.credit = increment(bookingPrice - price);
+        }
+
+        const studentRecord = students.find((s) => s.id === studentId);
+        if (studentRecord?.payPerLesson && price > 0) {
+          updateData.pendingPayment = increment(price);
+        }
+
+        batch.update(studentRef, updateData);
+        processedStudents.push({ studentId, studentName: attendee.studentName, price });
       }
-      batch.set(logRef, logData);
 
-      const studentRef = doc(firestore, 'coaches', coach.id, 'students', studentId);
-      const updateData: Record<string, unknown> = {
-        prepaidUsed: increment(1),
-        updatedAt: serverTimestamp(),
-      };
-
-      // Calculate credit: if actual price < booking price, add the difference
-      const bookingPrice = booking.price ?? 0;
-      if (markDonePrice < bookingPrice && bookingPrice > 0) {
-        const creditDiff = bookingPrice - markDonePrice;
-        updateData.credit = increment(creditDiff);
-      }
-
-      // Check if student is pay-per-lesson — add price to pendingPayment
-      const studentBeforeCommit = students.find((s) => s.id === studentId);
-      if (studentBeforeCommit?.payPerLesson && markDonePrice > 0) {
-        updateData.pendingPayment = increment(markDonePrice);
-      }
-
-      batch.update(studentRef, updateData);
       await batch.commit();
       setMarkDoneBooking(null);
       showToast('Class marked as done!', 'success');
 
-      // Check package status after marking done
-      const student = studentBeforeCommit;
-      if (student && student.prepaidTotal > 0) {
-        const remainingAfter = student.prepaidTotal - (student.prepaidUsed + 1);
-        if (remainingAfter <= 0) {
-          const perLessonPrice = bookingPrice;
-          const packagePrice = perLessonPrice * student.prepaidTotal;
-          const currentCredit = (student.credit ?? 0) + (markDonePrice < bookingPrice ? bookingPrice - markDonePrice : 0);
+      // Check package status for each processed student
+      for (const { studentId, studentName, price } of processedStudents) {
+        const student = students.find((s) => s.id === studentId);
+        if (student && student.prepaidTotal > 0) {
+          const remainingAfter = student.prepaidTotal - (student.prepaidUsed + 1);
+          if (remainingAfter <= 0) {
+            const bookingPrice = booking.price ?? 0;
+            const perLessonPrice = bookingPrice;
+            const packagePrice = perLessonPrice * student.prepaidTotal;
+            const currentCredit = (student.credit ?? 0) + (price < bookingPrice ? bookingPrice - price : 0);
 
-          // Set pending payment on the student record
-          const paymentAmount = Math.max(0, packagePrice - currentCredit);
-          if (paymentAmount > 0) {
-            const firestore2 = db as Firestore;
-            const studentPayRef = doc(firestore2, 'coaches', coach.id, 'students', studentId);
-            await updateDoc(studentPayRef, {
-              pendingPayment: paymentAmount,
-              credit: 0,
-              updatedAt: serverTimestamp(),
+            const paymentAmount = Math.max(0, packagePrice - currentCredit);
+            if (paymentAmount > 0) {
+              const studentPayRef = doc(firestore, 'coaches', coach.id, 'students', studentId);
+              await updateDoc(studentPayRef, {
+                pendingPayment: paymentAmount,
+                credit: 0,
+                updatedAt: serverTimestamp(),
+              });
+            }
+
+            setPackageWarning({
+              studentName,
+              remaining: remainingAfter,
+              total: student.prepaidTotal,
+              lastPrice: packagePrice,
+              credit: currentCredit,
             });
+            break; // show one warning at a time
           }
-
-          setPackageWarning({
-            studentName: booking.clientName,
-            remaining: remainingAfter,
-            total: student.prepaidTotal,
-            lastPrice: packagePrice,
-            credit: currentCredit,
-          });
         }
       }
     } catch (error) {
@@ -420,6 +474,11 @@ export default function DashboardPage() {
                       )}
                     </div>
                     <p className="text-sm text-gray-600 dark:text-zinc-400 mt-0.5">{booking.clientName}</p>
+                    {booking.linkedStudentIds?.length ? (
+                      <p className="text-xs text-purple-600 dark:text-purple-400">
+                        + {booking.linkedStudentIds.map((id) => students.find((s) => s.id === id)?.clientName).filter(Boolean).join(', ')}
+                      </p>
+                    ) : null}
                     <p className="text-xs text-gray-400 dark:text-zinc-500">{booking.locationName}</p>
                   </div>
 
@@ -685,20 +744,66 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <Input
-              id="markDonePrice"
-              type="number"
-              label="Price (RM)"
-              value={markDonePrice.toString()}
-              onChange={(e) => setMarkDonePrice(parseFloat(e.target.value) || 0)}
-              min={0}
-              step={0.01}
-            />
+            {markDoneAttendees.length > 1 ? (
+              // Per-student attendance for group with linked students
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-gray-700 dark:text-zinc-300">Attendance & Pricing</p>
+                {markDoneAttendees.map((attendee, idx) => (
+                  <div key={attendee.studentId} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-[#1a1a1a] rounded-lg">
+                    <input
+                      type="checkbox"
+                      checked={attendee.attended}
+                      onChange={(e) => {
+                        const updated = [...markDoneAttendees];
+                        updated[idx] = { ...updated[idx], attended: e.target.checked };
+                        setMarkDoneAttendees(updated);
+                      }}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-900 dark:text-zinc-100">
+                        {attendee.studentName}
+                        {!attendee.isPrimary && (
+                          <span className="text-xs text-purple-600 dark:text-purple-400 ml-1">(linked)</span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="w-24">
+                      <input
+                        type="number"
+                        value={attendee.price}
+                        onChange={(e) => {
+                          const updated = [...markDoneAttendees];
+                          updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
+                          setMarkDoneAttendees(updated);
+                        }}
+                        disabled={!attendee.attended}
+                        className="block w-full px-2 py-1 text-sm border border-gray-300 dark:border-zinc-500 rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 disabled:opacity-40"
+                        placeholder="RM"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              // Single student — original price input
+              <>
+                <Input
+                  id="markDonePrice"
+                  type="number"
+                  label="Price (RM)"
+                  value={markDonePrice.toString()}
+                  onChange={(e) => setMarkDonePrice(parseFloat(e.target.value) || 0)}
+                  min={0}
+                  step={0.01}
+                />
 
-            {markDonePrice < (markDoneBooking.price ?? 0) && (markDoneBooking.price ?? 0) > 0 && (
-              <p className="text-xs text-blue-600 dark:text-blue-400">
-                RM {((markDoneBooking.price ?? 0) - markDonePrice).toFixed(0)} will be added as credit
-              </p>
+                {markDonePrice < (markDoneBooking.price ?? 0) && (markDoneBooking.price ?? 0) > 0 && (
+                  <p className="text-xs text-blue-600 dark:text-blue-400">
+                    RM {((markDoneBooking.price ?? 0) - markDonePrice).toFixed(0)} will be added as credit
+                  </p>
+                )}
+              </>
             )}
 
             <div>
