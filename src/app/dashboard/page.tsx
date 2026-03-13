@@ -129,13 +129,19 @@ export default function DashboardPage() {
         updateData.credit = increment(creditDiff);
       }
 
+      // Check if student is pay-per-lesson — add price to pendingPayment
+      const studentBeforeCommit = students.find((s) => s.id === studentId);
+      if (studentBeforeCommit?.payPerLesson && markDonePrice > 0) {
+        updateData.pendingPayment = increment(markDonePrice);
+      }
+
       batch.update(studentRef, updateData);
       await batch.commit();
       setMarkDoneBooking(null);
       showToast('Class marked as done!', 'success');
 
       // Check package status after marking done
-      const student = students.find((s) => s.id === studentId);
+      const student = studentBeforeCommit;
       if (student && student.prepaidTotal > 0) {
         const remainingAfter = student.prepaidTotal - (student.prepaidUsed + 1);
         if (remainingAfter <= 0) {

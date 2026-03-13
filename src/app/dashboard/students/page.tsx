@@ -487,6 +487,10 @@ export default function StudentsPage() {
                       >
                         {student.prepaidUsed}/{student.prepaidTotal}
                       </span>
+                    ) : student.payPerLesson ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full mt-1 inline-block bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                        Pay per lesson
+                      </span>
                     ) : (
                       <span className="text-xs text-gray-400 dark:text-zinc-500 mt-1 inline-block">
                         No package
@@ -575,26 +579,51 @@ export default function StudentsPage() {
               </div>
             )}
 
-            {/* Prepaid section */}
+            {/* Payment mode section */}
             <div className="border-t border-gray-100 dark:border-[#333333] pt-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300">
-                  Prepaid Package
+                  {selectedStudent.payPerLesson ? 'Pay per Lesson' : 'Prepaid Package'}
                 </h3>
-                {!editingPrepaid && (
+                <div className="flex items-center gap-3">
                   <button
-                    onClick={() => {
-                      setEditPrepaidTotal(selectedStudent.prepaidTotal);
-                      setEditPrepaidUsed(selectedStudent.prepaidUsed);
-                      setEditingPrepaid(true);
+                    onClick={async () => {
+                      if (!coach || !db || !selectedStudent) return;
+                      const newVal = !selectedStudent.payPerLesson;
+                      try {
+                        await updateDoc(
+                          doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                          { payPerLesson: newVal, updatedAt: serverTimestamp() }
+                        );
+                        setSelectedStudent((prev) => prev ? { ...prev, payPerLesson: newVal } : null);
+                        showToast(newVal ? 'Switched to pay per lesson' : 'Switched to package mode', 'success');
+                      } catch {
+                        showToast('Failed to update payment mode', 'error');
+                      }
                     }}
-                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                    className="text-xs text-purple-600 dark:text-purple-400 hover:underline"
                   >
-                    Edit
+                    {selectedStudent.payPerLesson ? 'Switch to Package' : 'Pay per Lesson'}
                   </button>
-                )}
+                  {!selectedStudent.payPerLesson && !editingPrepaid && (
+                    <button
+                      onClick={() => {
+                        setEditPrepaidTotal(selectedStudent.prepaidTotal);
+                        setEditPrepaidUsed(selectedStudent.prepaidUsed);
+                        setEditingPrepaid(true);
+                      }}
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
               </div>
-              {editingPrepaid ? (
+              {selectedStudent.payPerLesson ? (
+                <p className="text-sm text-gray-500 dark:text-zinc-400">
+                  Payment is tracked per lesson. Unpaid lessons accumulate as pending payment.
+                </p>
+              ) : editingPrepaid ? (
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <Input

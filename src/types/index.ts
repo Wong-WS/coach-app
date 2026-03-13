@@ -106,6 +106,7 @@ export interface Student {
   prepaidUsed: number;
   credit: number;
   pendingPayment: number;
+  payPerLesson?: boolean;
   notes: string;
   createdAt: Date;
   updatedAt: Date;
