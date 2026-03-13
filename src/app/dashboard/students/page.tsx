@@ -238,6 +238,11 @@ export default function StudentsPage() {
         updatedAt: serverTimestamp(),
       };
 
+      // Pay-per-lesson: add price to pendingPayment
+      if (selectedStudent.payPerLesson && lessonPrice > 0) {
+        updateData.pendingPayment = increment(lessonPrice);
+      }
+
       // Calculate credit: find booking price for this student and compare
       const studentBooking = bookings.find((b) => b.clientName === selectedStudent.clientName);
       const bookingPrice = studentBooking?.price ?? 0;
@@ -249,8 +254,9 @@ export default function StudentsPage() {
       batch.update(studentRef, updateData);
       await batch.commit();
       // Update local state
+      const pendingAdd = selectedStudent.payPerLesson ? lessonPrice : 0;
       setSelectedStudent((prev) =>
-        prev ? { ...prev, prepaidUsed: prev.prepaidUsed + 1, credit: (prev.credit ?? 0) + creditDiff } : null
+        prev ? { ...prev, prepaidUsed: prev.prepaidUsed + 1, credit: (prev.credit ?? 0) + creditDiff, pendingPayment: prev.pendingPayment + pendingAdd } : null
       );
       setShowAddLesson(false);
       setLessonNote('');
