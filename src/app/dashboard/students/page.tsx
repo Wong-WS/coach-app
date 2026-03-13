@@ -50,15 +50,6 @@ export default function StudentsPage() {
   const [editPrepaidUsed, setEditPrepaidUsed] = useState(0);
   const [savingPrepaid, setSavingPrepaid] = useState(false);
 
-  // Count lessons per student
-  const lessonCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const log of allLogs) {
-      counts[log.studentId] = (counts[log.studentId] || 0) + 1;
-    }
-    return counts;
-  }, [allLogs]);
-
   // Student's lesson history
   const studentLogs = useMemo(() => {
     if (!selectedStudent) return [];
@@ -448,7 +439,6 @@ export default function StudentsPage() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((student) => {
-            const count = lessonCounts[student.id] || 0;
             const hasPrepaid = student.prepaidTotal > 0;
             const prepaidRemaining = student.prepaidTotal - student.prepaidUsed;
             const expired = hasPrepaid && prepaidRemaining <= 0;
@@ -475,9 +465,6 @@ export default function StudentsPage() {
                     )}
                   </div>
                   <div className="text-right">
-                    <p className="text-sm text-gray-500 dark:text-zinc-400">
-                      {count} lesson{count !== 1 ? 's' : ''}
-                    </p>
                     {student.pendingPayment > 0 && (
                       <span className="text-xs px-2 py-0.5 rounded-full mt-1 inline-block bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
                         RM {student.pendingPayment} due
