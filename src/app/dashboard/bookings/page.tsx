@@ -356,6 +356,11 @@ export default function BookingsPage() {
                             </span>
                           </div>
                           <p className="text-sm text-gray-600 dark:text-zinc-400 mt-1">{booking.clientName}</p>
+                          {booking.linkedStudentIds?.length ? (
+                            <p className="text-xs text-purple-600 dark:text-purple-400">
+                              + {booking.linkedStudentIds.map((id) => students.find((s) => s.id === id)?.clientName).filter(Boolean).join(', ')}
+                            </p>
+                          ) : null}
                           <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{booking.locationName}</p>
                           {(booking.price ?? 0) > 0 && (
                             <p className="text-xs font-medium text-green-600 dark:text-green-400 mt-1">RM {booking.price}</p>
