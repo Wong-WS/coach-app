@@ -475,12 +475,16 @@ export default function DashboardPage() {
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-gray-600 dark:text-zinc-400 mt-0.5">{booking.clientName}</p>
-                    {booking.linkedStudentIds?.length ? (
-                      <p className="text-xs text-purple-600 dark:text-purple-400">
-                        + {booking.linkedStudentIds.map((id) => students.find((s) => s.id === id)?.clientName).filter(Boolean).join(', ')}
-                      </p>
-                    ) : null}
+                    <p className="text-sm text-gray-600 dark:text-zinc-400 mt-0.5">
+                      {booking.linkedStudentIds?.length
+                        ? (() => {
+                            const names = [booking.clientName, ...booking.linkedStudentIds.map((id) => students.find((s) => s.id === id)?.clientName).filter(Boolean) as string[]];
+                            return names.length <= 2
+                              ? names.join(' and ')
+                              : names.slice(0, -1).join(', ') + ', and ' + names[names.length - 1];
+                          })()
+                        : booking.clientName}
+                    </p>
                     <p className="text-xs text-gray-400 dark:text-zinc-500">{booking.locationName}</p>
                   </div>
 

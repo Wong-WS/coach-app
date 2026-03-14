@@ -33,8 +33,8 @@ const TIME_OPTIONS = Array.from({ length: 24 * 12 }, (_, i) => {
   return { value: time, label };
 });
 
-interface GroupStudent {
-  name: string;
+interface PaymentGroup {
+  names: string;
   phone: string;
   price: number;
 }
@@ -51,7 +51,7 @@ const EMPTY_FORM = {
   notes: '',
   price: 0,
   splitPayment: false,
-  groupStudents: [] as GroupStudent[],
+  paymentGroups: [] as PaymentGroup[],
 };
 
 export default function BookingsPage() {
@@ -83,8 +83,11 @@ export default function BookingsPage() {
     setFormData((prev) => ({ ...prev, startTime: start, endTime: calcEndTime(start, duration) }));
   };
 
-  const buildGroupStudents = (size: number, price: number): GroupStudent[] => {
-    return Array.from({ length: size }, () => ({ name: '', phone: '', price: Math.round(price / size) }));
+  const buildPaymentGroups = (price: number): PaymentGroup[] => {
+    return [
+      { names: '', phone: '', price: 0 },
+      { names: '', phone: '', price: 0 },
+    ];
   };
 
   const openAddModal = () => {
@@ -99,27 +102,27 @@ export default function BookingsPage() {
   };
 
   const openEditModal = (booking: Booking) => {
-    // Rebuild groupStudents from linked data if already split
+    // Rebuild payment groups from linked data if already split
     const hasSplit = !!(booking.linkedStudentIds?.length && booking.studentPrices);
-    const groupStudents: GroupStudent[] = [];
+    const paymentGroups: PaymentGroup[] = [];
 
     if (hasSplit && booking.studentPrices) {
-      // Primary student
+      // Primary student = first payment group
       const primaryStudent = students.find(
         (s) => s.clientName === booking.clientName && s.clientPhone === (booking.clientPhone || '')
       );
       const primaryId = primaryStudent?.id || '';
-      groupStudents.push({
-        name: booking.clientName,
+      paymentGroups.push({
+        names: booking.clientName,
         phone: booking.clientPhone || '',
         price: booking.studentPrices[primaryId] ?? 0,
       });
-      // Linked students
+      // Each linked student = additional payment group
       for (const linkedId of booking.linkedStudentIds!) {
         const ls = students.find((s) => s.id === linkedId);
         if (ls) {
-          groupStudents.push({
-            name: ls.clientName,
+          paymentGroups.push({
+            names: ls.clientName,
             phone: ls.clientPhone,
             price: booking.studentPrices[linkedId] ?? 0,
           });
@@ -139,7 +142,7 @@ export default function BookingsPage() {
       notes: booking.notes || '',
       price: booking.price ?? 0,
       splitPayment: hasSplit,
-      groupStudents,
+      paymentGroups,
     });
     setEditingBookingId(booking.id);
     setIsModalOpen(true);
@@ -149,13 +152,13 @@ export default function BookingsPage() {
     e.preventDefault();
     if (!coach || !db || !formData.locationId) return;
 
-    const isSplit = formData.lessonType === 'group' && formData.splitPayment && formData.groupStudents.length > 0;
+    const isSplit = formData.lessonType === 'group' && formData.splitPayment && formData.paymentGroups.length > 0;
 
-    // Validate: for split payment, all students need names
+    // Validate: for split payment, all groups need names
     if (isSplit) {
-      const emptyNames = formData.groupStudents.some((s) => !s.name.trim());
+      const emptyNames = formData.paymentGroups.some((g) => !g.names.trim());
       if (emptyNames) {
-        showToast('Please enter all student names', 'error');
+        showToast('Please enter names for all payment groups', 'error');
         return;
       }
     } else if (!formData.clientName.trim()) {
@@ -173,9 +176,9 @@ export default function BookingsPage() {
 
     const firestore = db as Firestore;
 
-    // For split payment, primary student is the first in the list
-    const primaryName = isSplit ? formData.groupStudents[0].name.trim() : formData.clientName.trim();
-    const primaryPhone = isSplit ? formData.groupStudents[0].phone.trim() : formData.clientPhone.trim();
+    // For split payment, primary student is the first payment group
+    const primaryName = isSplit ? formData.paymentGroups[0].names.trim() : formData.clientName.trim();
+    const primaryPhone = isSplit ? formData.paymentGroups[0].phone.trim() : formData.clientPhone.trim();
 
     const payload: Record<string, unknown> = {
       locationId: formData.locationId,
@@ -199,18 +202,18 @@ export default function BookingsPage() {
           const linkedStudentIds: string[] = [];
           const studentPrices: Record<string, number> = {};
 
-          const othersTotal = formData.groupStudents.slice(1).reduce((sum, s) => sum + s.price, 0);
+          const othersTotal = formData.paymentGroups.slice(1).reduce((sum, g) => sum + g.price, 0);
           studentPrices[primaryStudentId] = formData.price - othersTotal;
 
-          for (let i = 1; i < formData.groupStudents.length; i++) {
-            const gs = formData.groupStudents[i];
-            const studentId = await findOrCreateStudent(firestore, coach.id, gs.name.trim(), gs.phone.trim());
+          for (let i = 1; i < formData.paymentGroups.length; i++) {
+            const pg = formData.paymentGroups[i];
+            const studentId = await findOrCreateStudent(firestore, coach.id, pg.names.trim(), pg.phone.trim());
             await updateDoc(doc(firestore, 'coaches', coach.id, 'students', studentId), {
               linkedToStudentId: primaryStudentId,
               updatedAt: serverTimestamp(),
             });
             linkedStudentIds.push(studentId);
-            studentPrices[studentId] = gs.price;
+            studentPrices[studentId] = pg.price;
           }
 
           payload.linkedStudentIds = linkedStudentIds;
@@ -227,14 +230,14 @@ export default function BookingsPage() {
           const linkedStudentIds: string[] = [];
           const studentPrices: Record<string, number> = {};
 
-          // Calculate primary student's price (total - sum of others)
-          const othersTotal = formData.groupStudents.slice(1).reduce((sum, s) => sum + s.price, 0);
+          // Calculate primary group's price (total - sum of others)
+          const othersTotal = formData.paymentGroups.slice(1).reduce((sum, g) => sum + g.price, 0);
           const primaryPrice = formData.price - othersTotal;
           studentPrices[primaryStudentId] = primaryPrice;
 
-          for (let i = 1; i < formData.groupStudents.length; i++) {
-            const gs = formData.groupStudents[i];
-            const studentId = await findOrCreateStudent(firestore, coach.id, gs.name.trim(), gs.phone.trim());
+          for (let i = 1; i < formData.paymentGroups.length; i++) {
+            const pg = formData.paymentGroups[i];
+            const studentId = await findOrCreateStudent(firestore, coach.id, pg.names.trim(), pg.phone.trim());
 
             // Set linkedToStudentId on the secondary student
             await updateDoc(doc(firestore, 'coaches', coach.id, 'students', studentId), {
@@ -243,7 +246,7 @@ export default function BookingsPage() {
             });
 
             linkedStudentIds.push(studentId);
-            studentPrices[studentId] = gs.price;
+            studentPrices[studentId] = pg.price;
           }
 
           payload.linkedStudentIds = linkedStudentIds;
@@ -355,12 +358,16 @@ export default function BookingsPage() {
                               {booking.lessonType === 'group' ? `Group (${booking.groupSize})` : 'Private'}
                             </span>
                           </div>
-                          <p className="text-sm text-gray-600 dark:text-zinc-400 mt-1">{booking.clientName}</p>
-                          {booking.linkedStudentIds?.length ? (
-                            <p className="text-xs text-purple-600 dark:text-purple-400">
-                              + {booking.linkedStudentIds.map((id) => students.find((s) => s.id === id)?.clientName).filter(Boolean).join(', ')}
-                            </p>
-                          ) : null}
+                          <p className="text-sm text-gray-600 dark:text-zinc-400 mt-1">
+                            {booking.linkedStudentIds?.length
+                              ? (() => {
+                                  const names = [booking.clientName, ...booking.linkedStudentIds.map((id) => students.find((s) => s.id === id)?.clientName).filter(Boolean) as string[]];
+                                  return names.length <= 2
+                                    ? names.join(' and ')
+                                    : names.slice(0, -1).join(', ') + ', and ' + names[names.length - 1];
+                                })()
+                              : booking.clientName}
+                          </p>
                           <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{booking.locationName}</p>
                           {(booking.price ?? 0) > 0 && (
                             <p className="text-xs font-medium text-green-600 dark:text-green-400 mt-1">RM {booking.price}</p>
@@ -465,7 +472,7 @@ export default function BookingsPage() {
                   lessonType: lt,
                   groupSize: lt === 'private' ? 1 : Math.max(2, formData.groupSize),
                   splitPayment: false,
-                  groupStudents: [],
+                  paymentGroups: [],
                 });
               }}
               options={LESSON_TYPE_OPTIONS}
@@ -478,12 +485,7 @@ export default function BookingsPage() {
                 value={formData.groupSize.toString()}
                 onChange={(e) => {
                   const size = parseInt(e.target.value) || 2;
-                  const newStudents = formData.splitPayment
-                    ? Array.from({ length: size }, (_, i) =>
-                        formData.groupStudents[i] ?? { name: '', phone: '', price: Math.round(formData.price / size) }
-                      )
-                    : [];
-                  setFormData({ ...formData, groupSize: size, groupStudents: newStudents });
+                  setFormData({ ...formData, groupSize: size });
                 }}
                 min={2}
               />
@@ -515,8 +517,8 @@ export default function BookingsPage() {
                     setFormData({
                       ...formData,
                       splitPayment: split,
-                      groupStudents: split
-                        ? buildGroupStudents(formData.groupSize, formData.price)
+                      paymentGroups: split
+                        ? buildPaymentGroups(formData.price)
                         : [],
                     });
                   }}
@@ -529,56 +531,68 @@ export default function BookingsPage() {
             </div>
           )}
 
-          {formData.splitPayment && formData.groupStudents.length > 0 ? (
+          {formData.splitPayment && formData.paymentGroups.length > 0 ? (
             <div className="space-y-3">
-              {formData.groupStudents.map((gs, idx) => {
-                const othersTotal = formData.groupStudents.slice(1).reduce((sum, s) => sum + s.price, 0);
-                const autoPrice = idx === 0 ? formData.price - othersTotal : gs.price;
+              {formData.paymentGroups.map((pg, idx) => {
+                const othersTotal = formData.paymentGroups.slice(1).reduce((sum, g) => sum + g.price, 0);
+                const autoPrice = idx === 0 ? formData.price - othersTotal : pg.price;
 
                 return (
                   <div key={idx} className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3 space-y-2">
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-medium text-gray-500 dark:text-zinc-400">
-                        {idx === 0 ? 'Primary Student' : `Student ${idx + 1}`}
+                        Payment Group {idx + 1}
                       </p>
-                      {idx === 0 && (
-                        <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
-                          RM {autoPrice}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {idx === 0 && (
+                          <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
+                            RM {autoPrice}
+                          </span>
+                        )}
+                        {idx >= 2 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = formData.paymentGroups.filter((_, i) => i !== idx);
+                              setFormData({ ...formData, paymentGroups: updated });
+                            }}
+                            className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <input
-                        type="text"
-                        value={gs.name}
-                        onChange={(e) => {
-                          const updated = [...formData.groupStudents];
-                          updated[idx] = { ...updated[idx], name: e.target.value };
-                          setFormData({ ...formData, groupStudents: updated });
-                        }}
-                        placeholder="Name"
-                        className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm"
-                      />
-                      <input
-                        type="text"
-                        value={gs.phone}
-                        onChange={(e) => {
-                          const updated = [...formData.groupStudents];
-                          updated[idx] = { ...updated[idx], phone: e.target.value };
-                          setFormData({ ...formData, groupStudents: updated });
-                        }}
-                        placeholder="Phone"
-                        className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm"
-                      />
-                    </div>
+                    <input
+                      type="text"
+                      value={pg.names}
+                      onChange={(e) => {
+                        const updated = [...formData.paymentGroups];
+                        updated[idx] = { ...updated[idx], names: e.target.value };
+                        setFormData({ ...formData, paymentGroups: updated });
+                      }}
+                      placeholder="Names (e.g. Natsuki and Shogo)"
+                      className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm"
+                    />
+                    <input
+                      type="text"
+                      value={pg.phone}
+                      onChange={(e) => {
+                        const updated = [...formData.paymentGroups];
+                        updated[idx] = { ...updated[idx], phone: e.target.value };
+                        setFormData({ ...formData, paymentGroups: updated });
+                      }}
+                      placeholder="Phone"
+                      className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm"
+                    />
                     {idx > 0 && (
                       <input
                         type="number"
-                        value={gs.price}
+                        value={pg.price}
                         onChange={(e) => {
-                          const updated = [...formData.groupStudents];
+                          const updated = [...formData.paymentGroups];
                           updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
-                          setFormData({ ...formData, groupStudents: updated });
+                          setFormData({ ...formData, paymentGroups: updated });
                         }}
                         placeholder="Price (RM)"
                         min={0}
@@ -588,13 +602,27 @@ export default function BookingsPage() {
                   </div>
                 );
               })}
+              {formData.paymentGroups.length < formData.groupSize && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData({
+                      ...formData,
+                      paymentGroups: [...formData.paymentGroups, { names: '', phone: '', price: 0 }],
+                    });
+                  }}
+                  className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  + Add Payment Group
+                </button>
+              )}
               {(() => {
-                const othersTotal = formData.groupStudents.slice(1).reduce((sum, s) => sum + s.price, 0);
+                const othersTotal = formData.paymentGroups.slice(1).reduce((sum, g) => sum + g.price, 0);
                 const primaryPrice = formData.price - othersTotal;
                 if (primaryPrice < 0) {
                   return (
                     <p className="text-xs text-red-600 dark:text-red-400">
-                      Student prices exceed the total (RM {formData.price}). Reduce by RM {Math.abs(primaryPrice)}.
+                      Group prices exceed the total (RM {formData.price}). Reduce by RM {Math.abs(primaryPrice)}.
                     </p>
                   );
                 }

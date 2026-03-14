@@ -45,10 +45,6 @@ export default function StudentsPage() {
   const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
 
   // Linked student state
-  const [showLinkForm, setShowLinkForm] = useState(false);
-  const [linkName, setLinkName] = useState('');
-  const [linkPhone, setLinkPhone] = useState('');
-  const [linking, setLinking] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
 
   // Editable prepaid state
@@ -131,52 +127,6 @@ export default function StudentsPage() {
     return result;
   }, [students, search, dayFilter, dayToStudents]);
 
-  const handleCreateAndLinkStudent = async () => {
-    if (!coach || !db || !selectedStudent || !linkName.trim()) return;
-    setLinking(true);
-    try {
-      const firestore = db as Firestore;
-
-      // Create the secondary student (with portal link)
-      const secondaryStudentId = await findOrCreateStudent(
-        firestore, coach.id, linkName.trim(), linkPhone.trim()
-      );
-
-      // Set linkedToStudentId on the secondary student
-      const batch = writeBatch(firestore);
-      batch.update(doc(firestore, 'coaches', coach.id, 'students', secondaryStudentId), {
-        linkedToStudentId: selectedStudent.id,
-        updatedAt: serverTimestamp(),
-      });
-
-      // Add to linkedStudentIds on all confirmed bookings for this primary student
-      for (const booking of bookings) {
-        if (
-          booking.clientName === selectedStudent.clientName &&
-          booking.clientPhone === (selectedStudent.clientPhone || '')
-        ) {
-          const existing = booking.linkedStudentIds ?? [];
-          if (!existing.includes(secondaryStudentId)) {
-            batch.update(doc(firestore, 'coaches', coach.id, 'bookings', booking.id), {
-              linkedStudentIds: [...existing, secondaryStudentId],
-            });
-          }
-        }
-      }
-
-      await batch.commit();
-      setShowLinkForm(false);
-      setLinkName('');
-      setLinkPhone('');
-      showToast('Student created and linked!', 'success');
-    } catch (error) {
-      console.error('Error creating linked student:', error);
-      showToast('Failed to create linked student', 'error');
-    } finally {
-      setLinking(false);
-    }
-  };
-
   const handleUnlinkStudent = async (secondaryStudentId: string, primaryStudentId: string) => {
     if (!coach || !db) return;
     setUnlinking(true);
@@ -223,9 +173,6 @@ export default function StudentsPage() {
     setEditNotes(student.notes);
     setShowAddLesson(false);
     setEditingPrepaid(false);
-    setShowLinkForm(false);
-    setLinkName('');
-    setLinkPhone('');
 
     // Auto-fill lesson form from student's earliest booking
     const studentBooking = bookings.find(
@@ -855,44 +802,9 @@ export default function StudentsPage() {
                 ) : (
                   // This is a primary student (or unlinked) — show linked students + link button
                   <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300">
-                        Linked Students {linkedStudents.length > 0 && `(${linkedStudents.length})`}
-                      </h3>
-                      <button
-                        onClick={() => { setShowLinkForm(!showLinkForm); setLinkName(''); setLinkPhone(''); }}
-                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                      >
-                        {showLinkForm ? 'Cancel' : '+ Add Linked Student'}
-                      </button>
-                    </div>
-
-                    {showLinkForm && (
-                      <div className="mb-3 space-y-3 bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3">
-                        <Input
-                          id="linkName"
-                          label="Student Name"
-                          value={linkName}
-                          onChange={(e) => setLinkName(e.target.value)}
-                          placeholder="e.g. Ben"
-                        />
-                        <Input
-                          id="linkPhone"
-                          label="Parent Phone (optional)"
-                          value={linkPhone}
-                          onChange={(e) => setLinkPhone(e.target.value)}
-                          placeholder="e.g. 012-3456789"
-                        />
-                        <Button
-                          size="sm"
-                          onClick={handleCreateAndLinkStudent}
-                          loading={linking}
-                          disabled={!linkName.trim()}
-                        >
-                          Create & Link
-                        </Button>
-                      </div>
-                    )}
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">
+                      Linked Students {linkedStudents.length > 0 && `(${linkedStudents.length})`}
+                    </h3>
 
                     {linkedStudents.length > 0 ? (
                       <div className="space-y-2">
@@ -923,11 +835,11 @@ export default function StudentsPage() {
                           </div>
                         ))}
                       </div>
-                    ) : !showLinkForm ? (
+                    ) : (
                       <p className="text-sm text-gray-400 dark:text-zinc-500">
-                        No linked students. Use this for group lessons where each student pays separately.
+                        No linked students. Link students via split payment when creating a booking.
                       </p>
-                    ) : null}
+                    )}
                   </div>
                 )}
               </div>
