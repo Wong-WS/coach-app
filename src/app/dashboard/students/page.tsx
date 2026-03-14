@@ -45,8 +45,9 @@ export default function StudentsPage() {
   const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
 
   // Linked student state
-  const [showLinkPicker, setShowLinkPicker] = useState(false);
-  const [linkSearch, setLinkSearch] = useState('');
+  const [showLinkForm, setShowLinkForm] = useState(false);
+  const [linkName, setLinkName] = useState('');
+  const [linkPhone, setLinkPhone] = useState('');
   const [linking, setLinking] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
 
@@ -130,14 +131,19 @@ export default function StudentsPage() {
     return result;
   }, [students, search, dayFilter, dayToStudents]);
 
-  const handleLinkStudent = async (secondaryStudentId: string) => {
-    if (!coach || !db || !selectedStudent) return;
+  const handleCreateAndLinkStudent = async () => {
+    if (!coach || !db || !selectedStudent || !linkName.trim()) return;
     setLinking(true);
     try {
       const firestore = db as Firestore;
-      const batch = writeBatch(firestore);
+
+      // Create the secondary student (with portal link)
+      const secondaryStudentId = await findOrCreateStudent(
+        firestore, coach.id, linkName.trim(), linkPhone.trim()
+      );
 
       // Set linkedToStudentId on the secondary student
+      const batch = writeBatch(firestore);
       batch.update(doc(firestore, 'coaches', coach.id, 'students', secondaryStudentId), {
         linkedToStudentId: selectedStudent.id,
         updatedAt: serverTimestamp(),
@@ -159,12 +165,13 @@ export default function StudentsPage() {
       }
 
       await batch.commit();
-      setShowLinkPicker(false);
-      setLinkSearch('');
-      showToast('Student linked!', 'success');
+      setShowLinkForm(false);
+      setLinkName('');
+      setLinkPhone('');
+      showToast('Student created and linked!', 'success');
     } catch (error) {
-      console.error('Error linking student:', error);
-      showToast('Failed to link student', 'error');
+      console.error('Error creating linked student:', error);
+      showToast('Failed to create linked student', 'error');
     } finally {
       setLinking(false);
     }
@@ -216,8 +223,9 @@ export default function StudentsPage() {
     setEditNotes(student.notes);
     setShowAddLesson(false);
     setEditingPrepaid(false);
-    setShowLinkPicker(false);
-    setLinkSearch('');
+    setShowLinkForm(false);
+    setLinkName('');
+    setLinkPhone('');
 
     // Auto-fill lesson form from student's earliest booking
     const studentBooking = bookings.find(
@@ -852,45 +860,37 @@ export default function StudentsPage() {
                         Linked Students {linkedStudents.length > 0 && `(${linkedStudents.length})`}
                       </h3>
                       <button
-                        onClick={() => { setShowLinkPicker(!showLinkPicker); setLinkSearch(''); }}
+                        onClick={() => { setShowLinkForm(!showLinkForm); setLinkName(''); setLinkPhone(''); }}
                         className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
                       >
-                        {showLinkPicker ? 'Cancel' : '+ Link Student'}
+                        {showLinkForm ? 'Cancel' : '+ Add Linked Student'}
                       </button>
                     </div>
 
-                    {showLinkPicker && (
-                      <div className="mb-3 space-y-2">
-                        <input
-                          type="text"
-                          value={linkSearch}
-                          onChange={(e) => setLinkSearch(e.target.value)}
-                          placeholder="Search student to link..."
-                          className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm"
+                    {showLinkForm && (
+                      <div className="mb-3 space-y-3 bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3">
+                        <Input
+                          id="linkName"
+                          label="Student Name"
+                          value={linkName}
+                          onChange={(e) => setLinkName(e.target.value)}
+                          placeholder="e.g. Ben"
                         />
-                        <div className="max-h-32 overflow-y-auto space-y-1">
-                          {students
-                            .filter((s) => {
-                              if (s.id === selectedStudent.id) return false;
-                              if (s.linkedToStudentId) return false; // already linked to someone
-                              if (linkedStudents.some((ls) => ls.id === s.id)) return false;
-                              if (!linkSearch.trim()) return true;
-                              const q = linkSearch.toLowerCase();
-                              return s.clientName.toLowerCase().includes(q) || s.clientPhone.toLowerCase().includes(q);
-                            })
-                            .slice(0, 5)
-                            .map((s) => (
-                              <button
-                                key={s.id}
-                                onClick={() => handleLinkStudent(s.id)}
-                                disabled={linking}
-                                className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
-                              >
-                                <span className="text-gray-900 dark:text-zinc-100">{s.clientName}</span>
-                                <span className="text-gray-400 dark:text-zinc-500 ml-2">{s.clientPhone}</span>
-                              </button>
-                            ))}
-                        </div>
+                        <Input
+                          id="linkPhone"
+                          label="Parent Phone (optional)"
+                          value={linkPhone}
+                          onChange={(e) => setLinkPhone(e.target.value)}
+                          placeholder="e.g. 012-3456789"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={handleCreateAndLinkStudent}
+                          loading={linking}
+                          disabled={!linkName.trim()}
+                        >
+                          Create & Link
+                        </Button>
                       </div>
                     )}
 
@@ -923,7 +923,7 @@ export default function StudentsPage() {
                           </div>
                         ))}
                       </div>
-                    ) : !showLinkPicker ? (
+                    ) : !showLinkForm ? (
                       <p className="text-sm text-gray-400 dark:text-zinc-500">
                         No linked students. Use this for group lessons where each student pays separately.
                       </p>
