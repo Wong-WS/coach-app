@@ -102,11 +102,12 @@ export default function DashboardPage() {
       (s) => s.clientName === booking.clientName && s.clientPhone === (booking.clientPhone || '')
     );
     if (primaryStudent) {
+      const studentPrice = booking.studentPrices?.[primaryStudent.id] ?? booking.price ?? 0;
       attendees.push({
         studentId: primaryStudent.id,
         studentName: primaryStudent.clientName,
         attended: true,
-        price: booking.price ?? 0,
+        price: studentPrice,
         isPrimary: true,
       });
     }
@@ -115,11 +116,12 @@ export default function DashboardPage() {
       for (const linkedId of booking.linkedStudentIds) {
         const ls = students.find((s) => s.id === linkedId);
         if (ls) {
+          const studentPrice = booking.studentPrices?.[ls.id] ?? 0;
           attendees.push({
             studentId: ls.id,
             studentName: ls.clientName,
             attended: true,
-            price: booking.price ?? 0,
+            price: studentPrice,
             isPrimary: false,
           });
         }

@@ -56,6 +56,7 @@ export interface Booking {
   notes: string;
   price?: number;
   linkedStudentIds?: string[]; // secondary students sharing this group lesson
+  studentPrices?: Record<string, number>; // per-student prices for split payment groups
   createdAt: Date;
   cancelledAt?: Date;
 }
