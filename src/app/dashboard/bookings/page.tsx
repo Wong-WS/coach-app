@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { collection, addDoc, updateDoc, doc, serverTimestamp, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
-import { useLocations, useBookings } from '@/hooks/useCoachData';
+import { useLocations, useBookings, useStudents } from '@/hooks/useCoachData';
 import { Button, Input, Select, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { DayOfWeek, LessonType, Booking } from '@/types';
@@ -58,6 +58,7 @@ export default function BookingsPage() {
   const { coach } = useAuth();
   const { locations } = useLocations(coach?.id);
   const { bookings, loading } = useBookings(coach?.id);
+  const { students } = useStudents(coach?.id);
   const { showToast } = useToast();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -98,19 +99,32 @@ export default function BookingsPage() {
   };
 
   const openEditModal = (booking: Booking) => {
-    // Rebuild groupStudents from linked data if split payment
+    // Rebuild groupStudents from linked data if already split
     const hasSplit = !!(booking.linkedStudentIds?.length && booking.studentPrices);
     const groupStudents: GroupStudent[] = [];
+
     if (hasSplit && booking.studentPrices) {
-      // We can't fully reconstruct names from booking alone, so load from form as-is
       // Primary student
+      const primaryStudent = students.find(
+        (s) => s.clientName === booking.clientName && s.clientPhone === (booking.clientPhone || '')
+      );
+      const primaryId = primaryStudent?.id || '';
       groupStudents.push({
         name: booking.clientName,
         phone: booking.clientPhone || '',
-        price: booking.studentPrices[Object.keys(booking.studentPrices).find(
-          (id) => !booking.linkedStudentIds?.includes(id)
-        ) || ''] ?? booking.price ?? 0,
+        price: booking.studentPrices[primaryId] ?? 0,
       });
+      // Linked students
+      for (const linkedId of booking.linkedStudentIds!) {
+        const ls = students.find((s) => s.id === linkedId);
+        if (ls) {
+          groupStudents.push({
+            name: ls.clientName,
+            phone: ls.clientPhone,
+            price: booking.studentPrices[linkedId] ?? 0,
+          });
+        }
+      }
     }
 
     setFormData({
@@ -124,8 +138,8 @@ export default function BookingsPage() {
       groupSize: booking.groupSize || 1,
       notes: booking.notes || '',
       price: booking.price ?? 0,
-      splitPayment: false,
-      groupStudents: [],
+      splitPayment: hasSplit,
+      groupStudents,
     });
     setEditingBookingId(booking.id);
     setIsModalOpen(true);
@@ -179,6 +193,29 @@ export default function BookingsPage() {
 
     try {
       if (editingBookingId) {
+        if (isSplit) {
+          // Create/find all students and build linked data
+          const primaryStudentId = await findOrCreateStudent(firestore, coach.id, primaryName, primaryPhone);
+          const linkedStudentIds: string[] = [];
+          const studentPrices: Record<string, number> = {};
+
+          const othersTotal = formData.groupStudents.slice(1).reduce((sum, s) => sum + s.price, 0);
+          studentPrices[primaryStudentId] = formData.price - othersTotal;
+
+          for (let i = 1; i < formData.groupStudents.length; i++) {
+            const gs = formData.groupStudents[i];
+            const studentId = await findOrCreateStudent(firestore, coach.id, gs.name.trim(), gs.phone.trim());
+            await updateDoc(doc(firestore, 'coaches', coach.id, 'students', studentId), {
+              linkedToStudentId: primaryStudentId,
+              updatedAt: serverTimestamp(),
+            });
+            linkedStudentIds.push(studentId);
+            studentPrices[studentId] = gs.price;
+          }
+
+          payload.linkedStudentIds = linkedStudentIds;
+          payload.studentPrices = studentPrices;
+        }
         await updateDoc(doc(db, 'coaches', coach.id, 'bookings', editingBookingId), payload);
         showToast('Booking updated!', 'success');
       } else {
