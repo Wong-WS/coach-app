@@ -149,9 +149,13 @@ export default function StudentsPage() {
       const firestore = db as Firestore;
       // Delete the student document
       await deleteDoc(doc(firestore, 'coaches', coach.id, 'students', student.id));
-      // Delete their portal token if it exists
+      // Try to delete their portal token (may fail due to security rules)
       if (student.linkToken) {
-        await deleteDoc(doc(firestore, 'studentTokens', student.linkToken));
+        try {
+          await deleteDoc(doc(firestore, 'studentTokens', student.linkToken));
+        } catch {
+          // Token cleanup is best-effort
+        }
       }
       setSelectedStudent(null);
       setConfirmDeleteStudent(false);
