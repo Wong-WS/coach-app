@@ -435,7 +435,24 @@ export default function DashboardPage() {
         };
 
         // Credit calculation: if price is lower than student's standard rate
-        const studentBasePrice = primaryStudent?.lessonRate ?? 0;
+        let studentBasePrice = primaryStudent?.lessonRate ?? 0;
+        // Fallback: derive rate from booking studentPrices or booking price
+        if (!studentBasePrice && primaryStudent) {
+          for (const b of bookings) {
+            if (b.studentPrices?.[selected.studentId]) {
+              studentBasePrice = b.studentPrices[selected.studentId];
+              break;
+            }
+            if (b.clientName === primaryStudent.clientName && b.clientPhone === primaryStudent.clientPhone && b.price) {
+              studentBasePrice = b.price;
+              break;
+            }
+          }
+          // Backfill lessonRate on the student record
+          if (studentBasePrice > 0) {
+            updateData.lessonRate = studentBasePrice;
+          }
+        }
         if (selected.price < studentBasePrice && studentBasePrice > 0) {
           updateData.credit = increment(studentBasePrice - selected.price);
         }
