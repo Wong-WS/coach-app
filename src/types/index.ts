@@ -108,6 +108,7 @@ export interface Student {
   prepaidUsed: number;
   credit: number;
   pendingPayment: number;
+  lessonRate?: number; // per-lesson rate (RM) for this student
   payPerLesson?: boolean;
   linkedToStudentId?: string; // if set, this is a secondary student linked to a primary
   notes: string;

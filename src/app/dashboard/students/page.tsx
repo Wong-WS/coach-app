@@ -53,6 +53,7 @@ export default function StudentsPage() {
   const [editingPrepaid, setEditingPrepaid] = useState(false);
   const [editPrepaidTotal, setEditPrepaidTotal] = useState(0);
   const [editPrepaidUsed, setEditPrepaidUsed] = useState(0);
+  const [editLessonRate, setEditLessonRate] = useState(0);
   const [savingPrepaid, setSavingPrepaid] = useState(false);
 
   // Student's lesson history
@@ -398,11 +399,12 @@ export default function StudentsPage() {
         {
           prepaidTotal: editPrepaidTotal,
           prepaidUsed: editPrepaidUsed,
+          lessonRate: editLessonRate,
           updatedAt: serverTimestamp(),
         }
       );
       setSelectedStudent((prev) =>
-        prev ? { ...prev, prepaidTotal: editPrepaidTotal, prepaidUsed: editPrepaidUsed } : null
+        prev ? { ...prev, prepaidTotal: editPrepaidTotal, prepaidUsed: editPrepaidUsed, lessonRate: editLessonRate } : null
       );
       setEditingPrepaid(false);
       showToast('Prepaid package updated!', 'success');
@@ -732,6 +734,7 @@ export default function StudentsPage() {
                       onClick={() => {
                         setEditPrepaidTotal(selectedStudent.prepaidTotal);
                         setEditPrepaidUsed(selectedStudent.prepaidUsed);
+                        setEditLessonRate(selectedStudent.lessonRate ?? 0);
                         setEditingPrepaid(true);
                       }}
                       className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
@@ -742,12 +745,65 @@ export default function StudentsPage() {
                 </div>
               </div>
               {selectedStudent.payPerLesson ? (
-                <p className="text-sm text-gray-500 dark:text-zinc-400">
-                  Payment is tracked per lesson. Unpaid lessons accumulate as pending payment.
-                </p>
+                editingPrepaid ? (
+                  <div className="space-y-3">
+                    <Input
+                      id="editLessonRatePayPerLesson"
+                      label="Rate per Lesson (RM)"
+                      type="number"
+                      value={String(editLessonRate)}
+                      onChange={(e) => setEditLessonRate(Math.max(0, Number(e.target.value) || 0))}
+                    />
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={async () => {
+                        if (!coach || !db || !selectedStudent) return;
+                        setSavingPrepaid(true);
+                        try {
+                          await updateDoc(
+                            doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                            { lessonRate: editLessonRate, updatedAt: serverTimestamp() }
+                          );
+                          setSelectedStudent((prev) => prev ? { ...prev, lessonRate: editLessonRate } : null);
+                          setEditingPrepaid(false);
+                          showToast('Lesson rate updated!', 'success');
+                        } catch {
+                          showToast('Failed to update rate', 'error');
+                        } finally {
+                          setSavingPrepaid(false);
+                        }
+                      }} loading={savingPrepaid}>
+                        Save
+                      </Button>
+                      <Button variant="secondary" size="sm" onClick={() => setEditingPrepaid(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {(selectedStudent.lessonRate ?? 0) > 0 && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600 dark:text-zinc-400">Rate per lesson</span>
+                        <span className="font-medium text-gray-900 dark:text-zinc-100">RM {selectedStudent.lessonRate}</span>
+                      </div>
+                    )}
+                    <p className="text-sm text-gray-500 dark:text-zinc-400">
+                      Payment is tracked per lesson. Unpaid lessons accumulate as pending payment.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setEditLessonRate(selectedStudent.lessonRate ?? 0);
+                        setEditingPrepaid(true);
+                      }}
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      {(selectedStudent.lessonRate ?? 0) > 0 ? 'Edit Rate' : 'Set Rate'}
+                    </button>
+                  </div>
+                )
               ) : editingPrepaid ? (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <Input
                       id="editPrepaidTotal"
                       label="Total Lessons"
@@ -761,6 +817,13 @@ export default function StudentsPage() {
                       type="number"
                       value={String(editPrepaidUsed)}
                       onChange={(e) => setEditPrepaidUsed(Math.max(0, Number(e.target.value) || 0))}
+                    />
+                    <Input
+                      id="editLessonRate"
+                      label="Rate (RM)"
+                      type="number"
+                      value={String(editLessonRate)}
+                      onChange={(e) => setEditLessonRate(Math.max(0, Number(e.target.value) || 0))}
                     />
                   </div>
                   <div className="flex gap-2">
@@ -776,6 +839,12 @@ export default function StudentsPage() {
                 <>
                   {selectedStudent.prepaidTotal > 0 ? (
                     <div className="space-y-2">
+                      {(selectedStudent.lessonRate ?? 0) > 0 && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600 dark:text-zinc-400">Rate per lesson</span>
+                          <span className="font-medium text-gray-900 dark:text-zinc-100">RM {selectedStudent.lessonRate}</span>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-gray-600 dark:text-zinc-400">
                           {selectedStudent.prepaidUsed} of {selectedStudent.prepaidTotal} used
