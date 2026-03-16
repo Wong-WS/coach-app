@@ -559,7 +559,14 @@ export default function StudentsPage() {
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="font-medium text-gray-900 dark:text-zinc-100">
-                      {student.clientName}
+                      {(() => {
+                        const linked = students.filter((s) => s.linkedToStudentId === student.id);
+                        if (linked.length === 0) return student.clientName;
+                        const names = [student.clientName, ...linked.map((s) => s.clientName)];
+                        return names.length <= 2
+                          ? names.join(' and ')
+                          : names.slice(0, -1).join(', ') + ', and ' + names[names.length - 1];
+                      })()}
                     </p>
                     <p className="text-sm text-gray-500 dark:text-zinc-400 mt-0.5">
                       {student.clientPhone}
