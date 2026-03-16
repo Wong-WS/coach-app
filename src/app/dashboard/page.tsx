@@ -431,6 +431,13 @@ export default function DashboardPage() {
           prepaidUsed: increment(1),
           updatedAt: serverTimestamp(),
         };
+
+        // Credit calculation: if price is lower than student's standard rate
+        const studentBasePrice = primaryStudent?.lessonRate ?? 0;
+        if (selected.price < studentBasePrice && studentBasePrice > 0) {
+          updateData.credit = increment(studentBasePrice - selected.price);
+        }
+
         if (primaryStudent?.payPerLesson && selected.price > 0) {
           updateData.pendingPayment = increment(selected.price);
         }
