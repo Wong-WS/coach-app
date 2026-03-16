@@ -22,7 +22,9 @@ export default function StudentsPage() {
   const [syncing, setSyncing] = useState(false);
 
   const [search, setSearch] = useState('');
-  const [dayFilter, setDayFilter] = useState<DayOfWeek | 'all'>('all');
+  const [dayFilter, setDayFilter] = useState<DayOfWeek | 'all' | 'no-booking'>('all');
+  const [deletingStudent, setDeletingStudent] = useState(false);
+  const [confirmDeleteStudent, setConfirmDeleteStudent] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
@@ -101,10 +103,23 @@ export default function StudentsPage() {
     return { dayToStudents: dayMap, activeDays: active };
   }, [bookings, students]);
 
+  // Set of all student IDs that appear in any booking
+  const studentsWithBookings = useMemo(() => {
+    const ids = new Set<string>();
+    for (const dayStudents of dayToStudents.values()) {
+      for (const id of dayStudents.keys()) {
+        ids.add(id);
+      }
+    }
+    return ids;
+  }, [dayToStudents]);
+
   const filtered = useMemo(() => {
     let result = students;
 
-    if (dayFilter !== 'all') {
+    if (dayFilter === 'no-booking') {
+      result = result.filter((s) => !studentsWithBookings.has(s.id));
+    } else if (dayFilter !== 'all') {
       const dayStudents = dayToStudents.get(dayFilter);
       result = dayStudents ? result.filter((s) => dayStudents.has(s.id)) : [];
       // Sort by earliest class time on this day
@@ -125,7 +140,29 @@ export default function StudentsPage() {
     }
 
     return result;
-  }, [students, search, dayFilter, dayToStudents]);
+  }, [students, search, dayFilter, dayToStudents, studentsWithBookings]);
+
+  const handleDeleteStudent = async (student: Student) => {
+    if (!coach || !db) return;
+    setDeletingStudent(true);
+    try {
+      const firestore = db as Firestore;
+      // Delete the student document
+      await deleteDoc(doc(firestore, 'coaches', coach.id, 'students', student.id));
+      // Delete their portal token if it exists
+      if (student.linkToken) {
+        await deleteDoc(doc(firestore, 'studentTokens', student.linkToken));
+      }
+      setSelectedStudent(null);
+      setConfirmDeleteStudent(false);
+      showToast('Student deleted', 'success');
+    } catch (error) {
+      console.error('Error deleting student:', error);
+      showToast('Failed to delete student', 'error');
+    } finally {
+      setDeletingStudent(false);
+    }
+  };
 
   const handleUnlinkStudent = async (secondaryStudentId: string, primaryStudentId: string) => {
     if (!coach || !db) return;
@@ -470,6 +507,16 @@ export default function StudentsPage() {
               {day.charAt(0).toUpperCase() + day.slice(1, 3)}
             </button>
           ))}
+          <button
+            onClick={() => setDayFilter('no-booking')}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              dayFilter === 'no-booking'
+                ? 'bg-orange-500 text-white'
+                : 'bg-gray-100 dark:bg-[#1f1f1f] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]'
+            }`}
+          >
+            No Booking
+          </button>
         </div>
       )}
 
@@ -497,7 +544,7 @@ export default function StudentsPage() {
             const hasPrepaid = student.prepaidTotal > 0;
             const prepaidRemaining = student.prepaidTotal - student.prepaidUsed;
             const expired = hasPrepaid && prepaidRemaining <= 0;
-            const dayInfo = dayFilter !== 'all' ? dayToStudents.get(dayFilter)?.get(student.id) : null;
+            const dayInfo = dayFilter !== 'all' && dayFilter !== 'no-booking' ? dayToStudents.get(dayFilter)?.get(student.id) : null;
 
             return (
               <button
@@ -970,6 +1017,37 @@ export default function StudentsPage() {
                     Add Lesson
                   </Button>
                 </div>
+              )}
+            </div>
+
+            {/* Delete student */}
+            <div className="border-t border-gray-100 dark:border-[#333333] pt-4">
+              {confirmDeleteStudent ? (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-3 space-y-2">
+                  <p className="text-sm text-red-700 dark:text-red-300">
+                    Delete <strong>{selectedStudent.clientName}</strong>? This removes the student record and portal link. Lesson history will be lost.
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => handleDeleteStudent(selectedStudent)}
+                      loading={deletingStudent}
+                    >
+                      Delete
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => setConfirmDeleteStudent(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmDeleteStudent(true)}
+                  className="text-sm text-red-500 dark:text-red-400 hover:underline"
+                >
+                  Delete Student
+                </button>
               )}
             </div>
           </div>
