@@ -120,26 +120,20 @@ export default function DashboardPage() {
     return Object.values(groups);
   }, [adHocLogs]);
 
-  // Build selectable student list for Add Class (primary students only, with combined names)
-  const primaryStudentList = useMemo(() => {
-    return students
-      .filter((s) => !s.linkedToStudentId)
-      .map((s) => {
-        const linkedNames = students
-          .filter((ls) => ls.linkedToStudentId === s.id)
-          .map((ls) => ls.clientName);
-        const displayName = linkedNames.length > 0
-          ? [s.clientName, ...linkedNames].join(' and ')
-          : s.clientName;
-        return { studentId: s.id, displayName, clientName: s.clientName };
-      });
+  // Build selectable student list for Add Class (all students individually)
+  const selectableStudentList = useMemo(() => {
+    return students.map((s) => ({
+      studentId: s.id,
+      displayName: s.clientName,
+      clientName: s.clientName,
+    }));
   }, [students]);
 
   const filteredStudentList = useMemo(() => {
-    if (!addClassSearch.trim()) return primaryStudentList;
+    if (!addClassSearch.trim()) return selectableStudentList;
     const q = addClassSearch.toLowerCase();
-    return primaryStudentList.filter((s) => s.displayName.toLowerCase().includes(q));
-  }, [primaryStudentList, addClassSearch]);
+    return selectableStudentList.filter((s) => s.displayName.toLowerCase().includes(q));
+  }, [selectableStudentList, addClassSearch]);
 
   const openMarkDone = (booking: Booking) => {
     setMarkDoneBooking(booking);
