@@ -176,9 +176,12 @@ export default function DashboardPage() {
           updatedAt: serverTimestamp(),
         };
 
-        const bookingPrice = booking.price ?? 0;
-        if (price < bookingPrice && bookingPrice > 0) {
-          updateData.credit = increment(bookingPrice - price);
+        // For split payment, compare against the student's own price, not the total
+        const studentBasePrice = (hasLinkedStudents && booking.studentPrices?.[studentId] != null)
+          ? booking.studentPrices[studentId]
+          : (booking.price ?? 0);
+        if (price < studentBasePrice && studentBasePrice > 0) {
+          updateData.credit = increment(studentBasePrice - price);
         }
 
         const studentRecord = students.find((s) => s.id === studentId);
@@ -200,10 +203,11 @@ export default function DashboardPage() {
         if (student && student.prepaidTotal > 0) {
           const remainingAfter = student.prepaidTotal - (student.prepaidUsed + 1);
           if (remainingAfter <= 0) {
-            const bookingPrice = booking.price ?? 0;
-            const perLessonPrice = bookingPrice;
+            const perLessonPrice = (booking.studentPrices?.[studentId] != null)
+              ? booking.studentPrices[studentId]
+              : (booking.price ?? 0);
             const packagePrice = perLessonPrice * student.prepaidTotal;
-            const currentCredit = (student.credit ?? 0) + (price < bookingPrice ? bookingPrice - price : 0);
+            const currentCredit = (student.credit ?? 0) + (price < perLessonPrice ? perLessonPrice - price : 0);
 
             const paymentAmount = Math.max(0, packagePrice - currentCredit);
             if (paymentAmount > 0) {
