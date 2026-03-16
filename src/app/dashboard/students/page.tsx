@@ -247,6 +247,29 @@ export default function StudentsPage() {
         .sort((a, b) => b.date.localeCompare(a.date))[0];
       if (lastLog?.price) setLessonPrice(lastLog.price);
     }
+
+    // Auto-backfill lessonRate from booking data if not set
+    if (!student.lessonRate && coach && db) {
+      let rate = 0;
+      // Check studentPrices first (split payment — per-student price)
+      for (const b of bookings) {
+        if (b.studentPrices?.[student.id]) {
+          rate = b.studentPrices[student.id];
+          break;
+        }
+      }
+      // Fallback: non-split booking matched by name+phone
+      if (!rate && studentBooking?.price) {
+        rate = studentBooking.price;
+      }
+      if (rate > 0) {
+        updateDoc(
+          doc(db as Firestore, 'coaches', coach.id, 'students', student.id),
+          { lessonRate: rate, updatedAt: serverTimestamp() }
+        ).catch(() => {});
+        setSelectedStudent((prev) => prev ? { ...prev, lessonRate: rate } : null);
+      }
+    }
   };
 
   const handleSave = async () => {
