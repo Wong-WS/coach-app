@@ -103,7 +103,7 @@ export default function StudentsPage() {
     return { dayToStudents: dayMap, activeDays: active };
   }, [bookings, students]);
 
-  // Set of all student IDs that appear in any booking
+  // Set of all student IDs that appear in any booking (including linked students)
   const studentsWithBookings = useMemo(() => {
     const ids = new Set<string>();
     for (const dayStudents of dayToStudents.values()) {
@@ -111,8 +111,16 @@ export default function StudentsPage() {
         ids.add(id);
       }
     }
+    // Also include linked students from bookings
+    for (const booking of bookings) {
+      if (booking.linkedStudentIds) {
+        for (const id of booking.linkedStudentIds) {
+          ids.add(id);
+        }
+      }
+    }
     return ids;
-  }, [dayToStudents]);
+  }, [dayToStudents, bookings]);
 
   const filtered = useMemo(() => {
     let result = students;
