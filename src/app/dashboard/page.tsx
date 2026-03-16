@@ -71,6 +71,8 @@ export default function DashboardPage() {
     credit: number;
   } | null>(null);
 
+  const [deletingAdHocGroup, setDeletingAdHocGroup] = useState<number | null>(null);
+
   // Add Class modal state
   const [showAddClass, setShowAddClass] = useState(false);
   const [addClassDate, setAddClassDate] = useState('');
@@ -478,6 +480,47 @@ export default function DashboardPage() {
     }
   };
 
+  const handleDeleteAdHocGroup = async (group: typeof adHocLogs, groupIndex: number) => {
+    if (!coach || !db) return;
+    setDeletingAdHocGroup(groupIndex);
+    try {
+      const firestore = db as Firestore;
+      const batch = writeBatch(firestore);
+
+      for (const log of group) {
+        // Delete the lesson log
+        batch.delete(doc(firestore, 'coaches', coach.id, 'lessonLogs', log.id));
+
+        // Reverse student updates: decrement prepaidUsed, reverse credit
+        const student = students.find((s) => s.id === log.studentId);
+        if (student) {
+          const updateData: Record<string, unknown> = {
+            prepaidUsed: increment(-1),
+            updatedAt: serverTimestamp(),
+          };
+          // Reverse credit if price was below lessonRate
+          const basePrice = student.lessonRate ?? 0;
+          if (log.price < basePrice && basePrice > 0) {
+            updateData.credit = increment(-(basePrice - log.price));
+          }
+          // Reverse pendingPayment for pay-per-lesson
+          if (student.payPerLesson && log.price > 0) {
+            updateData.pendingPayment = increment(-log.price);
+          }
+          batch.update(doc(firestore, 'coaches', coach.id, 'students', log.studentId), updateData);
+        }
+      }
+
+      await batch.commit();
+      showToast('Ad-hoc class deleted', 'success');
+    } catch (error) {
+      console.error('Error deleting ad-hoc class:', error);
+      showToast('Failed to delete class', 'error');
+    } finally {
+      setDeletingAdHocGroup(null);
+    }
+  };
+
   const navigateWeek = (direction: number) => {
     const d = new Date(selectedDate);
     d.setDate(d.getDate() + direction * 7);
@@ -804,12 +847,29 @@ export default function DashboardPage() {
                     </p>
                     <p className="text-xs text-gray-400 dark:text-zinc-500">{group[0].locationName}</p>
                   </div>
-                  <div className="text-right flex-shrink-0">
+                  <div className="text-right flex-shrink-0 flex items-center gap-2">
                     {group.reduce((sum, l) => sum + l.price, 0) > 0 && (
                       <p className="text-sm font-medium text-green-600 dark:text-green-400">
                         RM {group.reduce((sum, l) => sum + l.price, 0)}
                       </p>
                     )}
+                    <button
+                      onClick={() => handleDeleteAdHocGroup(group, i)}
+                      disabled={deletingAdHocGroup === i}
+                      className="p-1.5 text-gray-400 hover:text-red-500 dark:text-zinc-500 dark:hover:text-red-400 transition-colors"
+                      title="Delete ad-hoc class"
+                    >
+                      {deletingAdHocGroup === i ? (
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      )}
+                    </button>
                   </div>
                 </div>
               ))}
