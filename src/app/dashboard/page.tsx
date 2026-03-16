@@ -5,9 +5,9 @@ import { collection, doc, writeBatch, serverTimestamp, increment, getDoc, update
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useLocations, useBookings, useLessonLogs, useClassExceptions, useStudents } from '@/hooks/useCoachData';
-import { Button, Input, Modal } from '@/components/ui';
+import { Button, Input, Modal, Select } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
-import { Booking } from '@/types';
+import { Booking, Student } from '@/types';
 import { formatTimeDisplay } from '@/lib/availability-engine';
 import { findOrCreateStudent } from '@/lib/students';
 import { getClassesForDate, isRescheduledToDate, getCancelledClassesForDate } from '@/lib/class-schedule';
@@ -71,6 +71,21 @@ export default function DashboardPage() {
     credit: number;
   } | null>(null);
 
+  // Add Class modal state
+  const [showAddClass, setShowAddClass] = useState(false);
+  const [addClassDate, setAddClassDate] = useState('');
+  const [addClassLocationId, setAddClassLocationId] = useState('');
+  const [addClassStartTime, setAddClassStartTime] = useState('');
+  const [addClassEndTime, setAddClassEndTime] = useState('');
+  const [addClassNote, setAddClassNote] = useState('');
+  const [addClassSearch, setAddClassSearch] = useState('');
+  const [addClassSelectedStudents, setAddClassSelectedStudents] = useState<Array<{
+    studentId: string;
+    displayName: string;
+    price: number;
+  }>>([]);
+  const [addingClass, setAddingClass] = useState(false);
+
   const selectedDateStr = getDateString(selectedDate);
   const todayStr = getDateString(new Date());
   const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
@@ -88,6 +103,43 @@ export default function DashboardPage() {
   const doneBookingIds = useMemo(() => {
     return new Set(lessonLogs.map((l) => l.bookingId));
   }, [lessonLogs]);
+
+  // Ad-hoc lesson logs (no bookingId) for display
+  const adHocLogs = useMemo(() => {
+    return lessonLogs.filter((l) => !l.bookingId);
+  }, [lessonLogs]);
+
+  // Group ad-hoc logs by time+location for display as cards
+  const adHocGroups = useMemo(() => {
+    const groups: Record<string, typeof adHocLogs> = {};
+    for (const log of adHocLogs) {
+      const key = `${log.startTime}-${log.endTime}-${log.locationName}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(log);
+    }
+    return Object.values(groups);
+  }, [adHocLogs]);
+
+  // Build selectable student list for Add Class (primary students only, with combined names)
+  const primaryStudentList = useMemo(() => {
+    return students
+      .filter((s) => !s.linkedToStudentId)
+      .map((s) => {
+        const linkedNames = students
+          .filter((ls) => ls.linkedToStudentId === s.id)
+          .map((ls) => ls.clientName);
+        const displayName = linkedNames.length > 0
+          ? [s.clientName, ...linkedNames].join(' and ')
+          : s.clientName;
+        return { studentId: s.id, displayName, clientName: s.clientName };
+      });
+  }, [students]);
+
+  const filteredStudentList = useMemo(() => {
+    if (!addClassSearch.trim()) return primaryStudentList;
+    const q = addClassSearch.toLowerCase();
+    return primaryStudentList.filter((s) => s.displayName.toLowerCase().includes(q));
+  }, [primaryStudentList, addClassSearch]);
 
   const openMarkDone = (booking: Booking) => {
     setMarkDoneBooking(booking);
@@ -331,6 +383,100 @@ export default function DashboardPage() {
     }
   };
 
+  const openAddClass = () => {
+    setAddClassDate(selectedDateStr);
+    setAddClassLocationId(locations[0]?.id || '');
+    setAddClassStartTime('');
+    setAddClassEndTime('');
+    setAddClassNote('');
+    setAddClassSearch('');
+    setAddClassSelectedStudents([]);
+    setShowAddClass(true);
+  };
+
+  const toggleAddClassStudent = (student: { studentId: string; displayName: string }) => {
+    setAddClassSelectedStudents((prev) => {
+      const exists = prev.find((s) => s.studentId === student.studentId);
+      if (exists) return prev.filter((s) => s.studentId !== student.studentId);
+      return [...prev, { studentId: student.studentId, displayName: student.displayName, price: 0 }];
+    });
+  };
+
+  const handleAddClass = async () => {
+    if (!coach || !db || !addClassLocationId || addClassSelectedStudents.length === 0) return;
+    setAddingClass(true);
+    try {
+      const firestore = db as Firestore;
+      const location = locations.find((l) => l.id === addClassLocationId);
+      const locationName = location?.name || '';
+      const batch = writeBatch(firestore);
+      const processedStudents: Array<{ studentId: string; studentName: string; price: number }> = [];
+
+      for (const selected of addClassSelectedStudents) {
+        const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
+        const primaryStudent = students.find((s) => s.id === selected.studentId);
+        const studentName = primaryStudent?.clientName || selected.displayName;
+
+        const logData: Record<string, unknown> = {
+          date: addClassDate,
+          studentId: selected.studentId,
+          studentName,
+          locationName,
+          startTime: addClassStartTime,
+          endTime: addClassEndTime,
+          price: selected.price,
+          createdAt: serverTimestamp(),
+        };
+        if (addClassNote.trim()) {
+          logData.note = addClassNote.trim();
+        }
+        batch.set(logRef, logData);
+
+        const studentRef = doc(firestore, 'coaches', coach.id, 'students', selected.studentId);
+        const updateData: Record<string, unknown> = {
+          prepaidUsed: increment(1),
+          updatedAt: serverTimestamp(),
+        };
+        if (primaryStudent?.payPerLesson && selected.price > 0) {
+          updateData.pendingPayment = increment(selected.price);
+        }
+        batch.update(studentRef, updateData);
+        processedStudents.push({ studentId: selected.studentId, studentName, price: selected.price });
+      }
+
+      await batch.commit();
+      setShowAddClass(false);
+      showToast('Ad-hoc class logged!', 'success');
+
+      // Check package exhaustion
+      for (const { studentId, studentName, price } of processedStudents) {
+        const student = students.find((s) => s.id === studentId);
+        if (student && student.prepaidTotal > 0) {
+          const remainingAfter = student.prepaidTotal - (student.prepaidUsed + 1);
+          if (remainingAfter <= 0) {
+            const perLessonPrice = price;
+            const packagePrice = perLessonPrice * student.prepaidTotal;
+            const currentCredit = student.credit ?? 0;
+
+            setPackageWarning({
+              studentName,
+              remaining: remainingAfter,
+              total: student.prepaidTotal,
+              lastPrice: packagePrice,
+              credit: currentCredit,
+            });
+            break;
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error adding ad-hoc class:', error);
+      showToast('Failed to add class', 'error');
+    } finally {
+      setAddingClass(false);
+    }
+  };
+
   const navigateWeek = (direction: number) => {
     const d = new Date(selectedDate);
     d.setDate(d.getDate() + direction * 7);
@@ -423,11 +569,16 @@ export default function DashboardPage() {
       </div>
 
       {/* Date header */}
-      <div>
-        <h1 className="text-xl font-bold text-gray-900 dark:text-zinc-100">{formattedDate}</h1>
-        <p className="text-sm text-gray-500 dark:text-zinc-400 mt-0.5">
-          {dayClasses.length} class{dayClasses.length !== 1 ? 'es' : ''}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-zinc-100">{formattedDate}</h1>
+          <p className="text-sm text-gray-500 dark:text-zinc-400 mt-0.5">
+            {dayClasses.length} class{dayClasses.length !== 1 ? 'es' : ''}
+          </p>
+        </div>
+        <Button variant="secondary" size="sm" onClick={openAddClass}>
+          + Add Class
+        </Button>
       </div>
 
       {/* Classes list */}
@@ -608,6 +759,56 @@ export default function DashboardPage() {
                     >
                       Reschedule
                     </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ad-hoc classes */}
+      {adHocGroups.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wider mb-2">
+            Ad-hoc Classes
+          </p>
+          <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333]">
+            <div className="divide-y divide-gray-100 dark:divide-[#333333]">
+              {adHocGroups.map((group, i) => (
+                <div key={i} className="flex items-center gap-3 p-4 sm:p-5 opacity-50">
+                  <div className="flex-shrink-0">
+                    <div className="w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                      <svg className="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-gray-900 dark:text-zinc-100">
+                        {group[0].startTime && group[0].endTime
+                          ? `${formatTimeDisplay(group[0].startTime)} – ${formatTimeDisplay(group[0].endTime)}`
+                          : 'No time set'}
+                      </span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                        Done
+                      </span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                        Ad-hoc
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 dark:text-zinc-400 mt-0.5">
+                      {group.map((l) => l.studentName).join(', ')}
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-zinc-500">{group[0].locationName}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    {group.reduce((sum, l) => sum + l.price, 0) > 0 && (
+                      <p className="text-sm font-medium text-green-600 dark:text-green-400">
+                        RM {group.reduce((sum, l) => sum + l.price, 0)}
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}
@@ -842,6 +1043,137 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Add Class modal */}
+      <Modal
+        isOpen={showAddClass}
+        onClose={() => setShowAddClass(false)}
+        title="Add Class"
+      >
+        <div className="space-y-4">
+          <Input
+            id="addClassDate"
+            label="Date"
+            type="date"
+            value={addClassDate}
+            onChange={(e) => setAddClassDate(e.target.value)}
+          />
+
+          <Select
+            id="addClassLocation"
+            label="Location"
+            value={addClassLocationId}
+            onChange={(e) => setAddClassLocationId(e.target.value)}
+            options={locations.map((l) => ({ value: l.id, label: l.name }))}
+          />
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              id="addClassStartTime"
+              label="Start Time"
+              type="time"
+              value={addClassStartTime}
+              onChange={(e) => setAddClassStartTime(e.target.value)}
+            />
+            <Input
+              id="addClassEndTime"
+              label="End Time"
+              type="time"
+              value={addClassEndTime}
+              onChange={(e) => setAddClassEndTime(e.target.value)}
+            />
+          </div>
+
+          {/* Student selector */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
+              Students
+            </label>
+            <input
+              value={addClassSearch}
+              onChange={(e) => setAddClassSearch(e.target.value)}
+              placeholder="Search students..."
+              className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm"
+            />
+            <div className="mt-2 max-h-40 overflow-y-auto border border-gray-200 dark:border-zinc-600 rounded-lg divide-y divide-gray-100 dark:divide-[#333]">
+              {filteredStudentList.length === 0 ? (
+                <p className="p-3 text-sm text-gray-400 dark:text-zinc-500 text-center">No students found</p>
+              ) : (
+                filteredStudentList.map((student) => {
+                  const isSelected = addClassSelectedStudents.some((s) => s.studentId === student.studentId);
+                  return (
+                    <label
+                      key={student.studentId}
+                      className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-[#2a2a2a] cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleAddClassStudent(student)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-900 dark:text-zinc-100">{student.displayName}</span>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Selected students with prices */}
+          {addClassSelectedStudents.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-gray-700 dark:text-zinc-300">Pricing</p>
+              {addClassSelectedStudents.map((selected, idx) => (
+                <div key={selected.studentId} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-[#1a1a1a] rounded-lg">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-900 dark:text-zinc-100">{selected.displayName}</p>
+                  </div>
+                  <div className="w-24">
+                    <input
+                      type="number"
+                      value={selected.price}
+                      onChange={(e) => {
+                        const updated = [...addClassSelectedStudents];
+                        updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
+                        setAddClassSelectedStudents(updated);
+                      }}
+                      className="block w-full px-2 py-1 text-sm border border-gray-300 dark:border-zinc-500 rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
+                      placeholder="RM"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div>
+            <label htmlFor="addClassNote" className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
+              Note (optional)
+            </label>
+            <input
+              id="addClassNote"
+              value={addClassNote}
+              onChange={(e) => setAddClassNote(e.target.value)}
+              placeholder="e.g. Combined group session"
+              className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm"
+            />
+          </div>
+
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" onClick={() => setShowAddClass(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddClass}
+              loading={addingClass}
+              disabled={!addClassLocationId || addClassSelectedStudents.length === 0}
+            >
+              Add Class
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       {/* Package warning modal */}
