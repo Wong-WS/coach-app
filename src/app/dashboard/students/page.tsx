@@ -224,28 +224,30 @@ export default function StudentsPage() {
     setShowAddLesson(false);
     setEditingPrepaid(false);
 
-    // Auto-fill lesson form from student's earliest booking
+    // Auto-fill lesson form from student's booking
+    // Check: primary on booking, or linked student on booking
     const studentBooking = bookings.find(
-      (b) => b.clientName === student.clientName && b.clientPhone === (student.clientPhone || '')
+      (b) =>
+        (b.clientName === student.clientName && b.clientPhone === (student.clientPhone || '')) ||
+        b.linkedStudentIds?.includes(student.id) ||
+        (b.studentPrices && student.id in b.studentPrices)
     );
     if (studentBooking) {
       setLessonLocationName(studentBooking.locationName);
       setLessonStartTime(studentBooking.startTime);
       setLessonEndTime(studentBooking.endTime);
-      setLessonPrice(studentBooking.price || 0);
+      // Use per-student price if available, then lessonRate, then total booking price
+      const perStudentPrice = studentBooking.studentPrices?.[student.id];
+      setLessonPrice(perStudentPrice ?? student.lessonRate ?? studentBooking.price ?? 0);
     } else {
       setLessonLocationName('');
       setLessonStartTime('09:00');
       setLessonEndTime('10:00');
-      setLessonPrice(0);
-    }
-
-    // If no price from booking, use most recent lesson log price
-    if (!studentBooking?.price) {
+      // Fall back to lessonRate or most recent lesson log price
       const lastLog = allLogs
         .filter((l) => l.studentId === student.id)
         .sort((a, b) => b.date.localeCompare(a.date))[0];
-      if (lastLog?.price) setLessonPrice(lastLog.price);
+      setLessonPrice(student.lessonRate ?? lastLog?.price ?? 0);
     }
 
     // Auto-backfill lessonRate from booking data if not set
