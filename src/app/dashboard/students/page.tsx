@@ -457,17 +457,29 @@ export default function StudentsPage() {
     if (!coach || !db || !selectedStudent) return;
     setSavingPrepaid(true);
     try {
+      const updatePayload: Record<string, unknown> = {
+        prepaidTotal: editPrepaidTotal,
+        prepaidUsed: editPrepaidUsed,
+        lessonRate: editLessonRate,
+        updatedAt: serverTimestamp(),
+      };
+
+      // Recalculate pendingPayment if package is exhausted and rate changed
+      let newPending = selectedStudent.pendingPayment;
+      const isExhausted = editPrepaidUsed >= editPrepaidTotal && editPrepaidTotal > 0;
+      if (isExhausted && editLessonRate !== (selectedStudent.lessonRate ?? 0)) {
+        const packagePrice = editLessonRate * editPrepaidTotal;
+        const currentCredit = selectedStudent.credit ?? 0;
+        newPending = Math.max(0, packagePrice - currentCredit);
+        updatePayload.pendingPayment = newPending;
+      }
+
       await updateDoc(
         doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
-        {
-          prepaidTotal: editPrepaidTotal,
-          prepaidUsed: editPrepaidUsed,
-          lessonRate: editLessonRate,
-          updatedAt: serverTimestamp(),
-        }
+        updatePayload
       );
       setSelectedStudent((prev) =>
-        prev ? { ...prev, prepaidTotal: editPrepaidTotal, prepaidUsed: editPrepaidUsed, lessonRate: editLessonRate } : null
+        prev ? { ...prev, prepaidTotal: editPrepaidTotal, prepaidUsed: editPrepaidUsed, lessonRate: editLessonRate, pendingPayment: newPending } : null
       );
       setEditingPrepaid(false);
       showToast('Prepaid package updated!', 'success');
@@ -822,11 +834,20 @@ export default function StudentsPage() {
                         if (!coach || !db || !selectedStudent) return;
                         setSavingPrepaid(true);
                         try {
+                          const updatePayload: Record<string, unknown> = { lessonRate: editLessonRate, updatedAt: serverTimestamp() };
+                          let newPending = selectedStudent.pendingPayment;
+                          const isExhausted = selectedStudent.prepaidUsed >= selectedStudent.prepaidTotal && selectedStudent.prepaidTotal > 0;
+                          if (isExhausted && editLessonRate !== (selectedStudent.lessonRate ?? 0)) {
+                            const packagePrice = editLessonRate * selectedStudent.prepaidTotal;
+                            const currentCredit = selectedStudent.credit ?? 0;
+                            newPending = Math.max(0, packagePrice - currentCredit);
+                            updatePayload.pendingPayment = newPending;
+                          }
                           await updateDoc(
                             doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
-                            { lessonRate: editLessonRate, updatedAt: serverTimestamp() }
+                            updatePayload
                           );
-                          setSelectedStudent((prev) => prev ? { ...prev, lessonRate: editLessonRate } : null);
+                          setSelectedStudent((prev) => prev ? { ...prev, lessonRate: editLessonRate, pendingPayment: newPending } : null);
                           setEditingPrepaid(false);
                           showToast('Lesson rate updated!', 'success');
                         } catch {

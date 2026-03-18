@@ -220,6 +220,28 @@ export default function BookingsPage() {
           payload.studentPrices = studentPrices;
         }
         await updateDoc(doc(db, 'coaches', coach.id, 'bookings', editingBookingId), payload);
+
+        // Sync lessonRate on affected students and recalculate pendingPayment if package exhausted
+        const studentPriceMap: Record<string, number> = isSplit
+          ? (payload.studentPrices as Record<string, number>)
+          : {};
+        if (!isSplit) {
+          const primaryStudentId = await findOrCreateStudent(firestore, coach.id, primaryName, primaryPhone);
+          studentPriceMap[primaryStudentId] = formData.price;
+        }
+        for (const [studentId, newRate] of Object.entries(studentPriceMap)) {
+          if (newRate > 0) {
+            const student = students.find((s) => s.id === studentId);
+            const updatePayload: Record<string, unknown> = { lessonRate: newRate, updatedAt: serverTimestamp() };
+            if (student && student.prepaidTotal > 0 && student.prepaidUsed >= student.prepaidTotal) {
+              const packagePrice = newRate * student.prepaidTotal;
+              const currentCredit = student.credit ?? 0;
+              updatePayload.pendingPayment = Math.max(0, packagePrice - currentCredit);
+            }
+            await updateDoc(doc(firestore, 'coaches', coach.id, 'students', studentId), updatePayload);
+          }
+        }
+
         showToast('Booking updated!', 'success');
       } else {
         // Create primary student
