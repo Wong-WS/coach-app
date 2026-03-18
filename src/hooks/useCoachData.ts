@@ -107,6 +107,7 @@ export function useBookings(coachId: string | undefined, statusFilter?: 'confirm
         linkedStudentIds: d.data().linkedStudentIds ?? undefined,
         studentPrices: d.data().studentPrices ?? undefined,
         startDate: d.data().startDate ?? undefined,
+        endDate: d.data().endDate ?? undefined,
         createdAt: d.data().createdAt?.toDate() || new Date(),
         cancelledAt: d.data().cancelledAt?.toDate(),
       }));
@@ -266,6 +267,9 @@ export function useClassExceptions(coachId: string | undefined) {
           newDate: d.data().newDate,
           newStartTime: d.data().newStartTime,
           newEndTime: d.data().newEndTime,
+          newLocationId: d.data().newLocationId,
+          newLocationName: d.data().newLocationName,
+          newPrice: d.data().newPrice,
           createdAt: d.data().createdAt?.toDate() || new Date(),
         }));
         setClassExceptions(items);

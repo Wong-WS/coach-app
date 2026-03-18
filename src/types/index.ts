@@ -58,6 +58,7 @@ export interface Booking {
   linkedStudentIds?: string[]; // secondary students sharing this group lesson
   studentPrices?: Record<string, number>; // per-student prices for split payment groups
   startDate?: string; // YYYY-MM-DD — booking only appears from this date onwards
+  endDate?: string;   // YYYY-MM-DD — booking only appears up to and including this date
   createdAt: Date;
   cancelledAt?: Date;
 }
@@ -139,6 +140,9 @@ export interface ClassException {
   newDate?: string;           // only for rescheduled
   newStartTime?: string;      // optional time override for rescheduled
   newEndTime?: string;
+  newLocationId?: string;     // optional location override for rescheduled
+  newLocationName?: string;
+  newPrice?: number;
   createdAt: Date;
 }
 

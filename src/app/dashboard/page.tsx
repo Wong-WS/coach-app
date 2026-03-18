@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { collection, doc, writeBatch, serverTimestamp, increment, getDoc, updateDoc, deleteDoc, Firestore } from 'firebase/firestore';
+import { collection, doc, writeBatch, serverTimestamp, increment, getDoc, updateDoc, deleteDoc, addDoc, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useLocations, useBookings, useLessonLogs, useClassExceptions, useStudents } from '@/hooks/useCoachData';
@@ -87,6 +87,15 @@ export default function DashboardPage() {
     price: number;
   }>>([]);
   const [addingClass, setAddingClass] = useState(false);
+
+  // Edit booking modal state
+  const [editBooking, setEditBooking] = useState<Booking | null>(null);
+  const [editLocationId, setEditLocationId] = useState('');
+  const [editStartTime, setEditStartTime] = useState('');
+  const [editEndTime, setEditEndTime] = useState('');
+  const [editPrice, setEditPrice] = useState(0);
+  const [showEditSaveOptions, setShowEditSaveOptions] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
 
   const selectedDateStr = getDateString(selectedDate);
   const todayStr = getDateString(new Date());
@@ -373,6 +382,109 @@ export default function DashboardPage() {
       showToast('Failed to undo cancellation', 'error');
     } finally {
       setUndoingCancel(null);
+    }
+  };
+
+  const openEditBooking = (booking: Booking) => {
+    setEditBooking(booking);
+    setEditLocationId(booking.locationId);
+    setEditStartTime(booking.startTime);
+    setEditEndTime(booking.endTime);
+    setEditPrice(booking.price ?? 0);
+    setShowEditSaveOptions(false);
+    setMenuOpen(null);
+  };
+
+  const hasEditChanges = () => {
+    if (!editBooking) return false;
+    return editLocationId !== editBooking.locationId ||
+      editStartTime !== editBooking.startTime ||
+      editEndTime !== editBooking.endTime ||
+      editPrice !== (editBooking.price ?? 0);
+  };
+
+  const handleEditSave = async (mode: 'this' | 'all' | 'future') => {
+    if (!coach || !db || !editBooking) return;
+    if (!hasEditChanges()) {
+      showToast('No changes to save', 'error');
+      return;
+    }
+    setEditSaving(true);
+    try {
+      const firestore = db as Firestore;
+      const newLocation = locations.find((l) => l.id === editLocationId);
+      const newLocationName = newLocation?.name || editBooking.locationName;
+
+      if (mode === 'this') {
+        // Create a rescheduled exception for this date only
+        const batch = writeBatch(firestore);
+        // Cancel original on this date
+        const exRef = doc(collection(firestore, 'coaches', coach.id, 'classExceptions'));
+        batch.set(exRef, {
+          bookingId: editBooking.id,
+          originalDate: selectedDateStr,
+          type: 'rescheduled',
+          newDate: selectedDateStr,
+          newStartTime: editStartTime,
+          newEndTime: editEndTime,
+          newLocationId: editLocationId,
+          newLocationName: newLocationName,
+          newPrice: editPrice,
+          createdAt: serverTimestamp(),
+        });
+        await batch.commit();
+        showToast('Updated for this date', 'success');
+      } else if (mode === 'all') {
+        // Update the booking directly
+        await updateDoc(doc(firestore, 'coaches', coach.id, 'bookings', editBooking.id), {
+          locationId: editLocationId,
+          locationName: newLocationName,
+          startTime: editStartTime,
+          endTime: editEndTime,
+          price: editPrice,
+          updatedAt: serverTimestamp(),
+        });
+        showToast('All events updated', 'success');
+      } else if (mode === 'future') {
+        const batch = writeBatch(firestore);
+        // End old booking the day before the selected date
+        const oldBookingRef = doc(firestore, 'coaches', coach.id, 'bookings', editBooking.id);
+        const prevDay = new Date(selectedDate);
+        prevDay.setDate(prevDay.getDate() - 1);
+        batch.update(oldBookingRef, {
+          endDate: getDateString(prevDay),
+          updatedAt: serverTimestamp(),
+        });
+        // Create new booking starting from selected date
+        const newBookingRef = doc(collection(firestore, 'coaches', coach.id, 'bookings'));
+        batch.set(newBookingRef, {
+          locationId: editLocationId,
+          locationName: newLocationName,
+          dayOfWeek: editBooking.dayOfWeek,
+          startTime: editStartTime,
+          endTime: editEndTime,
+          status: 'confirmed',
+          clientName: editBooking.clientName,
+          clientPhone: editBooking.clientPhone,
+          lessonType: editBooking.lessonType,
+          groupSize: editBooking.groupSize,
+          notes: editBooking.notes,
+          price: editPrice,
+          linkedStudentIds: editBooking.linkedStudentIds ?? null,
+          studentPrices: editBooking.studentPrices ?? null,
+          startDate: selectedDateStr,
+          createdAt: serverTimestamp(),
+        });
+        await batch.commit();
+        showToast('Future events updated', 'success');
+      }
+      setEditBooking(null);
+      setShowEditSaveOptions(false);
+    } catch (error) {
+      console.error('Error editing booking:', error);
+      showToast('Failed to update', 'error');
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -738,6 +850,12 @@ export default function DashboardPage() {
                               Mark Done
                             </button>
                             <button
+                              onClick={() => openEditBooking(booking)}
+                              className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#333]"
+                            >
+                              Edit
+                            </button>
+                            <button
                               onClick={() => {
                                 setRescheduleBooking(booking);
                                 setRescheduleDate(selectedDateStr);
@@ -1007,6 +1125,108 @@ export default function DashboardPage() {
                 disabled={!rescheduleDate}
               >
                 Reschedule
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Edit Booking modal */}
+      <Modal
+        isOpen={editBooking !== null}
+        onClose={() => { setEditBooking(null); setShowEditSaveOptions(false); }}
+        title="Edit Class"
+      >
+        {editBooking && !showEditSaveOptions && (
+          <div className="space-y-4">
+            <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3">
+              <p className="font-medium text-gray-900 dark:text-zinc-100">
+                {editBooking.clientName}
+              </p>
+              <p className="text-sm text-gray-500 dark:text-zinc-400">
+                {selectedDate.toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long' })}
+              </p>
+            </div>
+
+            <Select
+              id="editLocation"
+              label="Location"
+              value={editLocationId}
+              onChange={(e) => setEditLocationId(e.target.value)}
+              options={locations.map((l) => ({ value: l.id, label: l.name }))}
+            />
+
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                id="editStartTime"
+                label="Start Time"
+                type="time"
+                value={editStartTime}
+                onChange={(e) => setEditStartTime(e.target.value)}
+              />
+              <Input
+                id="editEndTime"
+                label="End Time"
+                type="time"
+                value={editEndTime}
+                onChange={(e) => setEditEndTime(e.target.value)}
+              />
+            </div>
+
+            <Input
+              id="editPrice"
+              label="Price (RM)"
+              type="number"
+              value={editPrice.toString()}
+              onChange={(e) => setEditPrice(parseFloat(e.target.value) || 0)}
+              min={0}
+            />
+
+            <div className="flex gap-2 justify-end">
+              <Button variant="secondary" onClick={() => setEditBooking(null)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => setShowEditSaveOptions(true)}
+                disabled={!hasEditChanges()}
+              >
+                Save
+              </Button>
+            </div>
+          </div>
+        )}
+        {editBooking && showEditSaveOptions && (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600 dark:text-zinc-400">
+              How would you like to apply these changes?
+            </p>
+            <button
+              onClick={() => handleEditSave('this')}
+              disabled={editSaving}
+              className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-[#444] hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
+            >
+              <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This event only</p>
+              <p className="text-xs text-gray-500 dark:text-zinc-400">Only change the class on {selectedDate.toLocaleDateString('en-MY', { day: 'numeric', month: 'short' })}</p>
+            </button>
+            <button
+              onClick={() => handleEditSave('future')}
+              disabled={editSaving}
+              className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-[#444] hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
+            >
+              <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This and future events</p>
+              <p className="text-xs text-gray-500 dark:text-zinc-400">Apply from {selectedDate.toLocaleDateString('en-MY', { day: 'numeric', month: 'short' })} onwards</p>
+            </button>
+            <button
+              onClick={() => handleEditSave('all')}
+              disabled={editSaving}
+              className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-[#444] hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
+            >
+              <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">All events</p>
+              <p className="text-xs text-gray-500 dark:text-zinc-400">Change all past and future occurrences</p>
+            </button>
+            <div className="flex justify-end pt-1">
+              <Button variant="secondary" size="sm" onClick={() => setShowEditSaveOptions(false)}>
+                Back
               </Button>
             </div>
           </div>

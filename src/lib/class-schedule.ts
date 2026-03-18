@@ -15,8 +15,8 @@ export function getClassesForDate(
 ): Booking[] {
   const dayOfWeek = getDayOfWeekForDate(date);
 
-  // Start with bookings for this day of week, excluding those that haven't started yet
-  let classes = bookings.filter((b) => b.dayOfWeek === dayOfWeek && (!b.startDate || date >= b.startDate));
+  // Start with bookings for this day of week, within their active date range
+  let classes = bookings.filter((b) => b.dayOfWeek === dayOfWeek && (!b.startDate || date >= b.startDate) && (!b.endDate || date <= b.endDate));
 
   // Remove bookings that have a cancelled or rescheduled exception for this date
   const cancelledOrMovedIds = new Set(
@@ -38,11 +38,21 @@ export function getClassesForDate(
   );
   for (const exception of rescheduledToThisDate) {
     const originalBooking = bookings.find((b) => b.id === exception.bookingId);
-    if (originalBooking && !classes.some((c) => c.id === originalBooking.id) && !cancelledOnThisDate.has(originalBooking.id)) {
-      if (exception.newStartTime && exception.newEndTime) {
-        classes.push({ ...originalBooking, startTime: exception.newStartTime, endTime: exception.newEndTime });
+    if (originalBooking && !cancelledOnThisDate.has(originalBooking.id)) {
+      const overrides: Partial<Booking> = {};
+      if (exception.newStartTime) overrides.startTime = exception.newStartTime;
+      if (exception.newEndTime) overrides.endTime = exception.newEndTime;
+      if (exception.newLocationId) overrides.locationId = exception.newLocationId;
+      if (exception.newLocationName) overrides.locationName = exception.newLocationName;
+      if (exception.newPrice !== undefined) overrides.price = exception.newPrice;
+
+      const existingIdx = classes.findIndex((c) => c.id === originalBooking.id);
+      if (existingIdx >= 0) {
+        // Same-date edit: apply overrides to the existing entry
+        classes[existingIdx] = { ...classes[existingIdx], ...overrides };
       } else {
-        classes.push(originalBooking);
+        // Different-date reschedule: add with overrides
+        classes.push({ ...originalBooking, ...overrides });
       }
     }
   }
