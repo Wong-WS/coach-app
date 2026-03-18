@@ -106,6 +106,7 @@ export function useBookings(coachId: string | undefined, statusFilter?: 'confirm
         price: d.data().price,
         linkedStudentIds: d.data().linkedStudentIds ?? undefined,
         studentPrices: d.data().studentPrices ?? undefined,
+        startDate: d.data().startDate ?? undefined,
         createdAt: d.data().createdAt?.toDate() || new Date(),
         cancelledAt: d.data().cancelledAt?.toDate(),
       }));

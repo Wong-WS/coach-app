@@ -13,6 +13,25 @@ import { findOrCreateStudent } from '@/lib/students';
 
 const DAYS: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
+const DAY_INDEX: Record<DayOfWeek, number> = {
+  sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
+};
+
+function getNextOccurrence(dayOfWeek: DayOfWeek): string {
+  const today = new Date();
+  const todayIndex = today.getDay();
+  const targetIndex = DAY_INDEX[dayOfWeek];
+  let daysAhead = targetIndex - todayIndex;
+  if (daysAhead < 0) daysAhead += 7;
+  if (daysAhead === 0) daysAhead = 0; // today counts if it's the same day
+  const next = new Date(today);
+  next.setDate(today.getDate() + daysAhead);
+  const yyyy = next.getFullYear();
+  const mm = String(next.getMonth() + 1).padStart(2, '0');
+  const dd = String(next.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 const DAY_OPTIONS = DAYS.map((day) => ({
   value: day,
   label: getDayDisplayName(day),
@@ -275,6 +294,7 @@ export default function BookingsPage() {
 
         await addDoc(collection(firestore, 'coaches', coach.id, 'bookings'), {
           ...payload,
+          startDate: getNextOccurrence(formData.dayOfWeek),
           status: 'confirmed',
           createdAt: serverTimestamp(),
         });

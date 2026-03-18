@@ -57,6 +57,7 @@ export interface Booking {
   price?: number;
   linkedStudentIds?: string[]; // secondary students sharing this group lesson
   studentPrices?: Record<string, number>; // per-student prices for split payment groups
+  startDate?: string; // YYYY-MM-DD — booking only appears from this date onwards
   createdAt: Date;
   cancelledAt?: Date;
 }

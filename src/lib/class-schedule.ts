@@ -15,8 +15,8 @@ export function getClassesForDate(
 ): Booking[] {
   const dayOfWeek = getDayOfWeekForDate(date);
 
-  // Start with bookings for this day of week
-  let classes = bookings.filter((b) => b.dayOfWeek === dayOfWeek);
+  // Start with bookings for this day of week, excluding those that haven't started yet
+  let classes = bookings.filter((b) => b.dayOfWeek === dayOfWeek && (!b.startDate || date >= b.startDate));
 
   // Remove bookings that have a cancelled or rescheduled exception for this date
   const cancelledOrMovedIds = new Set(
