@@ -503,7 +503,17 @@ export default function DashboardPage() {
     setAddClassSelectedStudents((prev) => {
       const exists = prev.find((s) => s.studentId === student.studentId);
       if (exists) return prev.filter((s) => s.studentId !== student.studentId);
-      return [...prev, { studentId: student.studentId, displayName: student.displayName, price: 0 }];
+      // Auto-fill price from student's lessonRate, or their booking price
+      const studentRecord = students.find((s) => s.id === student.studentId);
+      let autoPrice = studentRecord?.lessonRate ?? 0;
+      if (!autoPrice) {
+        const studentBooking = bookings.find((b) => {
+          if (b.studentPrices?.[student.studentId] != null) return true;
+          return b.clientName === studentRecord?.clientName && b.clientPhone === studentRecord?.clientPhone && (b.price ?? 0) > 0;
+        });
+        autoPrice = studentBooking?.studentPrices?.[student.studentId] ?? studentBooking?.price ?? 0;
+      }
+      return [...prev, { studentId: student.studentId, displayName: student.displayName, price: autoPrice }];
     });
   };
 
