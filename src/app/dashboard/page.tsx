@@ -251,9 +251,8 @@ export default function DashboardPage() {
         if (student && student.prepaidTotal > 0) {
           const remainingAfter = student.prepaidTotal - (student.prepaidUsed + 1);
           if (remainingAfter <= 0) {
-            const perLessonPrice = (booking.studentPrices?.[studentId] != null)
-              ? booking.studentPrices[studentId]
-              : (booking.price ?? 0);
+            const perLessonPrice = student.lessonRate
+              ?? (booking.studentPrices?.[studentId] != null ? booking.studentPrices[studentId] : (booking.price ?? 0));
             const packagePrice = perLessonPrice * student.prepaidTotal;
             const currentCredit = (student.credit ?? 0) + (price < perLessonPrice ? perLessonPrice - price : 0);
 
