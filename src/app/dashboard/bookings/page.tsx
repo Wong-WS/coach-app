@@ -234,9 +234,7 @@ export default function BookingsPage() {
             const student = students.find((s) => s.id === studentId);
             const updatePayload: Record<string, unknown> = { lessonRate: newRate, updatedAt: serverTimestamp() };
             if (student && student.prepaidTotal > 0 && student.prepaidUsed >= student.prepaidTotal) {
-              const packagePrice = newRate * student.prepaidTotal;
-              const currentCredit = student.credit ?? 0;
-              updatePayload.pendingPayment = Math.max(0, packagePrice - currentCredit);
+              updatePayload.pendingPayment = newRate * student.prepaidTotal;
             }
             await updateDoc(doc(firestore, 'coaches', coach.id, 'students', studentId), updatePayload);
           }

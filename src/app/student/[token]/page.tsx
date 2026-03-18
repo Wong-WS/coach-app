@@ -93,10 +93,10 @@ export default function StudentPortalPage({ params }: { params: Promise<{ token:
         </div>
 
         {/* Payment due banner */}
-        {(data.pendingPayment ?? 0) > 0 && (
+        {Math.max(0, (data.pendingPayment ?? 0) - (data.credit ?? 0)) > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
             <p className="text-sm font-medium text-amber-800">
-              Payment due: RM {data.pendingPayment}
+              Payment due: RM {Math.max(0, (data.pendingPayment ?? 0) - (data.credit ?? 0))}
             </p>
             <p className="text-xs text-amber-600 mt-1">
               Please arrange payment with your coach.

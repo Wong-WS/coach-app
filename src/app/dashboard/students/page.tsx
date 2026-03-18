@@ -464,13 +464,11 @@ export default function StudentsPage() {
         updatedAt: serverTimestamp(),
       };
 
-      // Recalculate pendingPayment if package is exhausted and rate changed
+      // Recalculate pendingPayment (gross) if package is exhausted and rate changed
       let newPending = selectedStudent.pendingPayment;
       const isExhausted = editPrepaidUsed >= editPrepaidTotal && editPrepaidTotal > 0;
       if (isExhausted && editLessonRate !== (selectedStudent.lessonRate ?? 0)) {
-        const packagePrice = editLessonRate * editPrepaidTotal;
-        const currentCredit = selectedStudent.credit ?? 0;
-        newPending = Math.max(0, packagePrice - currentCredit);
+        newPending = editLessonRate * editPrepaidTotal;
         updatePayload.pendingPayment = newPending;
       }
 
@@ -671,9 +669,9 @@ export default function StudentsPage() {
                     })()}
                   </div>
                   <div className="text-right">
-                    {student.pendingPayment > 0 && (
+                    {Math.max(0, student.pendingPayment - (student.credit ?? 0)) > 0 && (
                       <span className="text-xs px-2 py-0.5 rounded-full mt-1 inline-block bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                        RM {student.pendingPayment} due
+                        RM {Math.max(0, student.pendingPayment - (student.credit ?? 0))} due
                       </span>
                     )}
                     {hasPrepaid ? (
@@ -743,11 +741,11 @@ export default function StudentsPage() {
             </div>
 
             {/* Payment due banner */}
-            {selectedStudent.pendingPayment > 0 && (
+            {Math.max(0, selectedStudent.pendingPayment - (selectedStudent.credit ?? 0)) > 0 && (
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                    Payment due: RM {selectedStudent.pendingPayment}
+                    Payment due: RM {Math.max(0, selectedStudent.pendingPayment - (selectedStudent.credit ?? 0))}
                   </p>
                 </div>
                 <Button
@@ -838,9 +836,7 @@ export default function StudentsPage() {
                           let newPending = selectedStudent.pendingPayment;
                           const isExhausted = selectedStudent.prepaidUsed >= selectedStudent.prepaidTotal && selectedStudent.prepaidTotal > 0;
                           if (isExhausted && editLessonRate !== (selectedStudent.lessonRate ?? 0)) {
-                            const packagePrice = editLessonRate * selectedStudent.prepaidTotal;
-                            const currentCredit = selectedStudent.credit ?? 0;
-                            newPending = Math.max(0, packagePrice - currentCredit);
+                            newPending = editLessonRate * selectedStudent.prepaidTotal;
                             updatePayload.pendingPayment = newPending;
                           }
                           await updateDoc(

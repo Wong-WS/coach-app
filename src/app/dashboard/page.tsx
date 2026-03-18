@@ -256,12 +256,10 @@ export default function DashboardPage() {
             const packagePrice = perLessonPrice * student.prepaidTotal;
             const currentCredit = (student.credit ?? 0) + (price < perLessonPrice ? perLessonPrice - price : 0);
 
-            const paymentAmount = Math.max(0, packagePrice - currentCredit);
-            if (paymentAmount > 0) {
+            if (packagePrice > 0) {
               const studentPayRef = doc(firestore, 'coaches', coach.id, 'students', studentId);
               await updateDoc(studentPayRef, {
-                pendingPayment: paymentAmount,
-                credit: 0,
+                pendingPayment: packagePrice,
                 updatedAt: serverTimestamp(),
               });
             }
