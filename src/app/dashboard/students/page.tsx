@@ -398,13 +398,51 @@ export default function StudentsPage() {
       const firestore = db as Firestore;
       const batch = writeBatch(firestore);
       batch.delete(doc(firestore, 'coaches', coach.id, 'lessonLogs', logId));
-      batch.update(doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id), {
+
+      const log = studentLogs.find((l) => l.id === logId);
+      const updateData: Record<string, unknown> = {
         prepaidUsed: increment(-1),
         updatedAt: serverTimestamp(),
-      });
+      };
+
+      // Reverse credit if price was below lessonRate
+      const basePrice = selectedStudent.lessonRate ?? 0;
+      if (log && log.price < basePrice && basePrice > 0) {
+        updateData.credit = increment(-(basePrice - log.price));
+      }
+
+      // Reverse pendingPayment for pay-per-lesson
+      if (selectedStudent.payPerLesson && log && log.price > 0) {
+        updateData.pendingPayment = increment(-log.price);
+      }
+
+      // If package was exhausted and this deletion un-exhausts it, clear pendingPayment
+      const wasExhausted = selectedStudent.prepaidTotal > 0 && selectedStudent.prepaidUsed >= selectedStudent.prepaidTotal;
+      const willBeAfter = selectedStudent.prepaidUsed - 1;
+      if (wasExhausted && willBeAfter < selectedStudent.prepaidTotal) {
+        updateData.pendingPayment = 0;
+        updateData.credit = 0;
+      }
+
+      batch.update(doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id), updateData);
       await batch.commit();
+
+      let newPending = selectedStudent.pendingPayment;
+      let newCredit = selectedStudent.credit ?? 0;
+      if (wasExhausted && willBeAfter < selectedStudent.prepaidTotal) {
+        newPending = 0;
+        newCredit = 0;
+      } else {
+        if (selectedStudent.payPerLesson && log && log.price > 0) {
+          newPending = Math.max(0, newPending - log.price);
+        }
+        if (log && log.price < basePrice && basePrice > 0) {
+          newCredit = Math.max(0, newCredit - (basePrice - log.price));
+        }
+      }
+
       setSelectedStudent((prev) =>
-        prev ? { ...prev, prepaidUsed: Math.max(0, prev.prepaidUsed - 1) } : null
+        prev ? { ...prev, prepaidUsed: Math.max(0, prev.prepaidUsed - 1), pendingPayment: newPending, credit: newCredit } : null
       );
       showToast('Lesson deleted', 'success');
     } catch (error) {
