@@ -85,8 +85,16 @@ export default function DashboardPage() {
     studentId: string;
     displayName: string;
     price: number;
+    isNew?: boolean;
+    newPhone?: string;
+    payPerLesson?: boolean;
   }>>([]);
   const [addingClass, setAddingClass] = useState(false);
+  const [showNewStudentForm, setShowNewStudentForm] = useState(false);
+  const [newStudentName, setNewStudentName] = useState('');
+  const [newStudentPhone, setNewStudentPhone] = useState('');
+  const [newStudentPayPerLesson, setNewStudentPayPerLesson] = useState(true);
+  const [newStudentPrice, setNewStudentPrice] = useState(0);
 
   // Edit booking modal state
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
@@ -496,6 +504,11 @@ export default function DashboardPage() {
     setAddClassNote('');
     setAddClassSearch('');
     setAddClassSelectedStudents([]);
+    setShowNewStudentForm(false);
+    setNewStudentName('');
+    setNewStudentPhone('');
+    setNewStudentPayPerLesson(true);
+    setNewStudentPrice(0);
     setShowAddClass(true);
   };
 
@@ -527,7 +540,23 @@ export default function DashboardPage() {
       const batch = writeBatch(firestore);
       const processedStudents: Array<{ studentId: string; studentName: string; price: number }> = [];
 
+      // Create new students first (outside batch, since findOrCreateStudent does its own writes)
+      const resolvedStudents: typeof addClassSelectedStudents = [];
       for (const selected of addClassSelectedStudents) {
+        if (selected.isNew) {
+          const studentId = await findOrCreateStudent(firestore, coach.id, selected.displayName, selected.newPhone || '');
+          // Set payPerLesson and lessonRate on the new student
+          const studentUpdateData: Record<string, unknown> = { updatedAt: serverTimestamp() };
+          if (selected.payPerLesson) studentUpdateData.payPerLesson = true;
+          if (selected.price > 0) studentUpdateData.lessonRate = selected.price;
+          await updateDoc(doc(firestore, 'coaches', coach.id, 'students', studentId), studentUpdateData);
+          resolvedStudents.push({ ...selected, studentId, isNew: false });
+        } else {
+          resolvedStudents.push(selected);
+        }
+      }
+
+      for (const selected of resolvedStudents) {
         const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
         const primaryStudent = students.find((s) => s.id === selected.studentId);
         const studentName = primaryStudent?.clientName || selected.displayName;
@@ -576,7 +605,8 @@ export default function DashboardPage() {
           updateData.credit = increment(studentBasePrice - selected.price);
         }
 
-        if (primaryStudent?.payPerLesson && selected.price > 0) {
+        const isPayPerLesson = primaryStudent?.payPerLesson || selected.payPerLesson;
+        if (isPayPerLesson && selected.price > 0) {
           updateData.pendingPayment = increment(selected.price);
         }
         batch.update(studentRef, updateData);
@@ -1426,6 +1456,82 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {/* Add new student */}
+          {!showNewStudentForm ? (
+            <button
+              type="button"
+              onClick={() => setShowNewStudentForm(true)}
+              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              + Add new student
+            </button>
+          ) : (
+            <div className="border border-blue-200 dark:border-blue-700 rounded-lg p-3 space-y-3 bg-blue-50/50 dark:bg-blue-900/10">
+              <p className="text-sm font-medium text-gray-700 dark:text-zinc-300">New Student</p>
+              <input
+                value={newStudentName}
+                onChange={(e) => setNewStudentName(e.target.value)}
+                placeholder="Name"
+                className="block w-full px-3 py-2 text-sm border border-gray-300 dark:border-zinc-500 rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
+              />
+              <input
+                value={newStudentPhone}
+                onChange={(e) => setNewStudentPhone(e.target.value)}
+                placeholder="Phone number"
+                className="block w-full px-3 py-2 text-sm border border-gray-300 dark:border-zinc-500 rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
+              />
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  value={newStudentPrice}
+                  onChange={(e) => setNewStudentPrice(parseFloat(e.target.value) || 0)}
+                  placeholder="Price (RM)"
+                  min={0}
+                  className="w-28 px-3 py-2 text-sm border border-gray-300 dark:border-zinc-500 rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
+                />
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newStudentPayPerLesson}
+                    onChange={(e) => setNewStudentPayPerLesson(e.target.checked)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-zinc-300">Pay per lesson</span>
+                </label>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  disabled={!newStudentName.trim()}
+                  onClick={() => {
+                    const tempId = `new_${Date.now()}`;
+                    setAddClassSelectedStudents((prev) => [
+                      ...prev,
+                      {
+                        studentId: tempId,
+                        displayName: newStudentName.trim(),
+                        price: newStudentPrice,
+                        isNew: true,
+                        newPhone: newStudentPhone.trim(),
+                        payPerLesson: newStudentPayPerLesson,
+                      },
+                    ]);
+                    setShowNewStudentForm(false);
+                    setNewStudentName('');
+                    setNewStudentPhone('');
+                    setNewStudentPayPerLesson(true);
+                    setNewStudentPrice(0);
+                  }}
+                >
+                  Add
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => setShowNewStudentForm(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Selected students with prices */}
           {addClassSelectedStudents.length > 0 && (
             <div className="space-y-2">
@@ -1433,7 +1539,15 @@ export default function DashboardPage() {
               {addClassSelectedStudents.map((selected, idx) => (
                 <div key={selected.studentId} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-[#1a1a1a] rounded-lg">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-900 dark:text-zinc-100">{selected.displayName}</p>
+                    <p className="text-sm text-gray-900 dark:text-zinc-100">
+                      {selected.displayName}
+                      {selected.isNew && (
+                        <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">New</span>
+                      )}
+                      {selected.payPerLesson && (
+                        <span className="ml-1 text-xs text-gray-400 dark:text-zinc-500">Pay per lesson</span>
+                      )}
+                    </p>
                   </div>
                   <div className="w-24">
                     <input
