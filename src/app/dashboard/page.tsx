@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { Booking, Student } from '@/types';
 import { formatTimeDisplay } from '@/lib/availability-engine';
 import { findOrCreateStudent } from '@/lib/students';
-import { getClassesForDate, isRescheduledToDate, getCancelledClassesForDate } from '@/lib/class-schedule';
+import { getClassesForDate, getDayOfWeekForDate, isRescheduledToDate, getCancelledClassesForDate } from '@/lib/class-schedule';
 
 function getDateString(date: Date): string {
   const yyyy = date.getFullYear();
@@ -88,6 +88,7 @@ export default function DashboardPage() {
     isNew?: boolean;
     newPhone?: string;
     payPerLesson?: boolean;
+    packageSize?: number;
   }>>([]);
   const [addingClass, setAddingClass] = useState(false);
   const [showNewStudentForm, setShowNewStudentForm] = useState(false);
@@ -95,6 +96,7 @@ export default function DashboardPage() {
   const [newStudentPhone, setNewStudentPhone] = useState('');
   const [newStudentPayPerLesson, setNewStudentPayPerLesson] = useState(true);
   const [newStudentPrice, setNewStudentPrice] = useState(0);
+  const [newStudentPackageSize, setNewStudentPackageSize] = useState(5);
 
   // Edit booking modal state
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
@@ -509,6 +511,7 @@ export default function DashboardPage() {
     setNewStudentPhone('');
     setNewStudentPayPerLesson(true);
     setNewStudentPrice(0);
+    setNewStudentPackageSize(5);
     setShowAddClass(true);
   };
 
@@ -531,24 +534,26 @@ export default function DashboardPage() {
   };
 
   const handleAddClass = async () => {
-    if (!coach || !db || !addClassLocationId || addClassSelectedStudents.length === 0) return;
+    if (!coach || !db || !addClassLocationId || addClassSelectedStudents.length === 0 || !addClassStartTime || !addClassEndTime) return;
     setAddingClass(true);
     try {
       const firestore = db as Firestore;
       const location = locations.find((l) => l.id === addClassLocationId);
       const locationName = location?.name || '';
-      const batch = writeBatch(firestore);
-      const processedStudents: Array<{ studentId: string; studentName: string; price: number }> = [];
+      const dayOfWeek = getDayOfWeekForDate(addClassDate);
 
       // Create new students first (outside batch, since findOrCreateStudent does its own writes)
       const resolvedStudents: typeof addClassSelectedStudents = [];
       for (const selected of addClassSelectedStudents) {
         if (selected.isNew) {
           const studentId = await findOrCreateStudent(firestore, coach.id, selected.displayName, selected.newPhone || '');
-          // Set payPerLesson and lessonRate on the new student
           const studentUpdateData: Record<string, unknown> = { updatedAt: serverTimestamp() };
           if (selected.payPerLesson) studentUpdateData.payPerLesson = true;
           if (selected.price > 0) studentUpdateData.lessonRate = selected.price;
+          if (!selected.payPerLesson && selected.packageSize && selected.packageSize > 0) {
+            studentUpdateData.prepaidTotal = selected.packageSize;
+            studentUpdateData.prepaidUsed = 0;
+          }
           await updateDoc(doc(firestore, 'coaches', coach.id, 'students', studentId), studentUpdateData);
           resolvedStudents.push({ ...selected, studentId, isNew: false });
         } else {
@@ -556,90 +561,50 @@ export default function DashboardPage() {
         }
       }
 
-      for (const selected of resolvedStudents) {
-        const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
-        const primaryStudent = students.find((s) => s.id === selected.studentId);
-        const studentName = primaryStudent?.clientName || selected.displayName;
+      // Determine primary student (first selected)
+      const primary = resolvedStudents[0];
+      const primaryStudent = students.find((s) => s.id === primary.studentId);
+      const primaryName = primaryStudent?.clientName || primary.displayName;
+      const primaryPhone = primaryStudent?.clientPhone || primary.newPhone || '';
+      const totalPrice = resolvedStudents.reduce((sum, s) => sum + s.price, 0);
 
-        const logData: Record<string, unknown> = {
-          date: addClassDate,
-          studentId: selected.studentId,
-          studentName,
-          locationName,
-          startTime: addClassStartTime,
-          endTime: addClassEndTime,
-          price: selected.price,
-          createdAt: serverTimestamp(),
-        };
-        if (addClassNote.trim()) {
-          logData.note = addClassNote.trim();
-        }
-        batch.set(logRef, logData);
+      // Build booking payload
+      const bookingData: Record<string, unknown> = {
+        locationId: addClassLocationId,
+        locationName,
+        dayOfWeek,
+        startTime: addClassStartTime,
+        endTime: addClassEndTime,
+        clientName: primaryName,
+        clientPhone: primaryPhone,
+        lessonType: resolvedStudents.length > 1 ? 'group' : 'private',
+        groupSize: resolvedStudents.length,
+        notes: addClassNote.trim(),
+        price: totalPrice,
+        startDate: addClassDate,
+        endDate: addClassDate, // One-time class
+        status: 'confirmed',
+        createdAt: serverTimestamp(),
+      };
 
-        const studentRef = doc(firestore, 'coaches', coach.id, 'students', selected.studentId);
-        const updateData: Record<string, unknown> = {
-          prepaidUsed: increment(1),
-          updatedAt: serverTimestamp(),
-        };
-
-        // Credit calculation: if price is lower than student's standard rate
-        let studentBasePrice = primaryStudent?.lessonRate ?? 0;
-        // Fallback: derive rate from booking studentPrices or booking price
-        if (!studentBasePrice && primaryStudent) {
-          for (const b of bookings) {
-            if (b.studentPrices?.[selected.studentId]) {
-              studentBasePrice = b.studentPrices[selected.studentId];
-              break;
-            }
-            if (b.clientName === primaryStudent.clientName && b.clientPhone === primaryStudent.clientPhone && b.price) {
-              studentBasePrice = b.price;
-              break;
-            }
-          }
-          // Backfill lessonRate on the student record
-          if (studentBasePrice > 0) {
-            updateData.lessonRate = studentBasePrice;
-          }
+      // Handle multiple students (linked students + split prices)
+      if (resolvedStudents.length > 1) {
+        const linkedStudentIds: string[] = [];
+        const studentPrices: Record<string, number> = {};
+        studentPrices[primary.studentId] = primary.price;
+        for (let i = 1; i < resolvedStudents.length; i++) {
+          linkedStudentIds.push(resolvedStudents[i].studentId);
+          studentPrices[resolvedStudents[i].studentId] = resolvedStudents[i].price;
         }
-        if (selected.price < studentBasePrice && studentBasePrice > 0) {
-          updateData.credit = increment(studentBasePrice - selected.price);
-        }
-
-        const isPayPerLesson = primaryStudent?.payPerLesson || selected.payPerLesson;
-        if (isPayPerLesson && selected.price > 0) {
-          updateData.pendingPayment = increment(selected.price);
-        }
-        batch.update(studentRef, updateData);
-        processedStudents.push({ studentId: selected.studentId, studentName, price: selected.price });
+        bookingData.linkedStudentIds = linkedStudentIds;
+        bookingData.studentPrices = studentPrices;
       }
 
-      await batch.commit();
+      await addDoc(collection(firestore, 'coaches', coach.id, 'bookings'), bookingData);
       setShowAddClass(false);
-      showToast('Ad-hoc class logged!', 'success');
-
-      // Check package exhaustion
-      for (const { studentId, studentName, price } of processedStudents) {
-        const student = students.find((s) => s.id === studentId);
-        if (student && student.prepaidTotal > 0) {
-          const remainingAfter = student.prepaidTotal - (student.prepaidUsed + 1);
-          if (remainingAfter <= 0) {
-            const perLessonPrice = price;
-            const packagePrice = perLessonPrice * student.prepaidTotal;
-            const currentCredit = student.credit ?? 0;
-
-            setPackageWarning({
-              studentName,
-              remaining: remainingAfter,
-              total: student.prepaidTotal,
-              lastPrice: packagePrice,
-              credit: currentCredit,
-            });
-            break;
-          }
-        }
-      }
+      showToast('Class added!', 'success');
     } catch (error) {
-      console.error('Error adding ad-hoc class:', error);
+      console.error('Error adding class:', error);
       showToast('Failed to add class', 'error');
     } finally {
       setAddingClass(false);
@@ -1499,6 +1464,33 @@ export default function DashboardPage() {
                   <span className="text-sm text-gray-700 dark:text-zinc-300">Pay per lesson</span>
                 </label>
               </div>
+              {!newStudentPayPerLesson && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600 dark:text-zinc-400">Package size:</span>
+                  <div className="flex gap-2">
+                    {[5, 10].map((size) => (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() => setNewStudentPackageSize(size)}
+                        className={`px-3 py-1 text-sm rounded-lg border ${newStudentPackageSize === size
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'border-gray-300 dark:border-zinc-500 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
+                        }`}
+                      >
+                        {size} lessons
+                      </button>
+                    ))}
+                    <input
+                      type="number"
+                      value={newStudentPackageSize}
+                      onChange={(e) => setNewStudentPackageSize(Math.max(1, parseInt(e.target.value) || 1))}
+                      min={1}
+                      className="w-16 px-2 py-1 text-sm border border-gray-300 dark:border-zinc-500 rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-center"
+                    />
+                  </div>
+                </div>
+              )}
               <div className="flex gap-2">
                 <Button
                   size="sm"
@@ -1514,6 +1506,7 @@ export default function DashboardPage() {
                         isNew: true,
                         newPhone: newStudentPhone.trim(),
                         payPerLesson: newStudentPayPerLesson,
+                        packageSize: newStudentPayPerLesson ? undefined : newStudentPackageSize,
                       },
                     ]);
                     setShowNewStudentForm(false);
@@ -1521,6 +1514,7 @@ export default function DashboardPage() {
                     setNewStudentPhone('');
                     setNewStudentPayPerLesson(true);
                     setNewStudentPrice(0);
+                    setNewStudentPackageSize(5);
                   }}
                 >
                   Add
@@ -1546,6 +1540,9 @@ export default function DashboardPage() {
                       )}
                       {selected.payPerLesson && (
                         <span className="ml-1 text-xs text-gray-400 dark:text-zinc-500">Pay per lesson</span>
+                      )}
+                      {selected.isNew && !selected.payPerLesson && selected.packageSize && (
+                        <span className="ml-1 text-xs text-gray-400 dark:text-zinc-500">{selected.packageSize}-lesson package</span>
                       )}
                     </p>
                   </div>
