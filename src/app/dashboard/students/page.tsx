@@ -22,7 +22,7 @@ export default function StudentsPage() {
   const [syncing, setSyncing] = useState(false);
 
   const [search, setSearch] = useState('');
-  const [dayFilter, setDayFilter] = useState<DayOfWeek | 'all' | 'no-booking'>('all');
+  const [dayFilter, setDayFilter] = useState<DayOfWeek | 'all' | 'no-booking' | 'payment-due'>('all');
   const [deletingStudent, setDeletingStudent] = useState(false);
   const [confirmDeleteStudent, setConfirmDeleteStudent] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
@@ -126,7 +126,9 @@ export default function StudentsPage() {
   const filtered = useMemo(() => {
     let result = students;
 
-    if (dayFilter === 'no-booking') {
+    if (dayFilter === 'payment-due') {
+      result = result.filter((s) => Math.max(0, s.pendingPayment - (s.credit ?? 0)) > 0);
+    } else if (dayFilter === 'no-booking') {
       result = result.filter((s) => !studentsWithBookings.has(s.id));
     } else if (dayFilter !== 'all') {
       const dayStudents = dayToStudents.get(dayFilter);
@@ -605,6 +607,16 @@ export default function StudentsPage() {
           >
             No Booking
           </button>
+          <button
+            onClick={() => setDayFilter('payment-due')}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              dayFilter === 'payment-due'
+                ? 'bg-amber-500 text-white'
+                : 'bg-gray-100 dark:bg-[#1f1f1f] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]'
+            }`}
+          >
+            Payment Due
+          </button>
         </div>
       )}
 
@@ -632,7 +644,7 @@ export default function StudentsPage() {
             const hasPrepaid = student.prepaidTotal > 0;
             const prepaidRemaining = student.prepaidTotal - student.prepaidUsed;
             const expired = hasPrepaid && prepaidRemaining <= 0;
-            const dayInfo = dayFilter !== 'all' && dayFilter !== 'no-booking' ? dayToStudents.get(dayFilter)?.get(student.id) : null;
+            const dayInfo = dayFilter !== 'all' && dayFilter !== 'no-booking' && dayFilter !== 'payment-due' ? dayToStudents.get(dayFilter)?.get(student.id) : null;
 
             return (
               <button
