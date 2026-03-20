@@ -573,19 +573,26 @@ export default function BookingsPage() {
                               key={s.id}
                               type="button"
                               onClick={() => {
+                                // Find existing booking for this student to auto-fill everything
+                                const studentBooking = bookings.find((b) =>
+                                  b.status === 'confirmed' && !b.endDate && (
+                                    b.studentPrices?.[s.id] != null ||
+                                    (b.clientName === s.clientName && b.clientPhone === s.clientPhone)
+                                  )
+                                );
                                 let autoPrice = s.lessonRate ?? 0;
-                                if (!autoPrice) {
-                                  const studentBooking = bookings.find((b) => {
-                                    if (b.studentPrices?.[s.id] != null) return true;
-                                    return b.clientName === s.clientName && b.clientPhone === s.clientPhone && (b.price ?? 0) > 0;
-                                  });
-                                  autoPrice = studentBooking?.studentPrices?.[s.id] ?? studentBooking?.price ?? 0;
+                                if (!autoPrice && studentBooking) {
+                                  autoPrice = studentBooking.studentPrices?.[s.id] ?? studentBooking.price ?? 0;
                                 }
                                 setFormData({
                                   ...formData,
                                   clientName: s.clientName,
                                   clientPhone: s.clientPhone,
                                   price: autoPrice || formData.price,
+                                  dayOfWeek: studentBooking?.dayOfWeek ?? formData.dayOfWeek,
+                                  startTime: studentBooking?.startTime ?? formData.startTime,
+                                  endTime: studentBooking?.endTime ?? formData.endTime,
+                                  locationId: studentBooking?.locationId ?? formData.locationId,
                                 });
                                 setShowStudentDropdown(false);
                                 setStudentSearch('');
