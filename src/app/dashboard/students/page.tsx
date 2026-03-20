@@ -300,6 +300,7 @@ export default function StudentsPage() {
   const addPrepaid = async (amount: number) => {
     if (!coach || !db || !selectedStudent) return;
     const packageFinished = selectedStudent.prepaidUsed >= selectedStudent.prepaidTotal && selectedStudent.prepaidTotal > 0;
+    const overflow = packageFinished ? Math.max(0, selectedStudent.prepaidUsed - selectedStudent.prepaidTotal) : 0;
     // Optimistic update — update UI immediately
     const prevStudent = { ...selectedStudent };
     setSelectedStudent((prev) =>
@@ -307,7 +308,7 @@ export default function StudentsPage() {
         ? {
             ...prev,
             prepaidTotal: packageFinished ? amount : prev.prepaidTotal + amount,
-            prepaidUsed: packageFinished ? 0 : prev.prepaidUsed,
+            prepaidUsed: packageFinished ? overflow : prev.prepaidUsed,
           }
         : null
     );
@@ -318,7 +319,7 @@ export default function StudentsPage() {
         updatedAt: serverTimestamp(),
       };
       if (packageFinished) {
-        updateData.prepaidUsed = 0;
+        updateData.prepaidUsed = overflow;
       }
       await updateDoc(
         doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
