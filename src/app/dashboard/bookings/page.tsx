@@ -87,11 +87,9 @@ export default function BookingsPage() {
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
 
-  const todayStr = new Date().toISOString().split('T')[0];
   const confirmedBookings = bookings.filter((b) =>
     b.status === 'confirmed' &&
-    !(b.startDate && b.endDate && b.startDate === b.endDate) && // Exclude one-time classes
-    !(b.endDate && b.endDate < todayStr) // Exclude ended bookings
+    !b.endDate // Exclude one-time classes and ended/split bookings
   );
 
   const calcEndTime = (start: string, durationMinutes: number) => {
