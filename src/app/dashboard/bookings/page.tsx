@@ -537,6 +537,88 @@ export default function BookingsPage() {
             )}
           </div>
 
+          {!formData.splitPayment && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
+                  Student
+                </label>
+                <div className="relative">
+                  <input
+                    value={showStudentDropdown ? studentSearch : formData.clientName}
+                    onChange={(e) => {
+                      setStudentSearch(e.target.value);
+                      setShowStudentDropdown(true);
+                      setFormData({ ...formData, clientName: e.target.value, clientPhone: '' });
+                    }}
+                    onFocus={() => {
+                      setStudentSearch(formData.clientName);
+                      setShowStudentDropdown(true);
+                    }}
+                    placeholder="Search or type student name..."
+                    className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm"
+                  />
+                  {showStudentDropdown && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setShowStudentDropdown(false)} />
+                      <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-white dark:bg-[#2a2a2a] rounded-lg shadow-lg border border-gray-200 dark:border-[#444] max-h-48 overflow-y-auto">
+                        {students
+                          .filter((s) => {
+                            if (!studentSearch.trim()) return true;
+                            const q = studentSearch.toLowerCase();
+                            return s.clientName.toLowerCase().includes(q) || s.clientPhone.toLowerCase().includes(q);
+                          })
+                          .map((s) => (
+                            <button
+                              key={s.id}
+                              type="button"
+                              onClick={() => {
+                                let autoPrice = s.lessonRate ?? 0;
+                                if (!autoPrice) {
+                                  const studentBooking = bookings.find((b) => {
+                                    if (b.studentPrices?.[s.id] != null) return true;
+                                    return b.clientName === s.clientName && b.clientPhone === s.clientPhone && (b.price ?? 0) > 0;
+                                  });
+                                  autoPrice = studentBooking?.studentPrices?.[s.id] ?? studentBooking?.price ?? 0;
+                                }
+                                setFormData({
+                                  ...formData,
+                                  clientName: s.clientName,
+                                  clientPhone: s.clientPhone,
+                                  price: autoPrice || formData.price,
+                                });
+                                setShowStudentDropdown(false);
+                                setStudentSearch('');
+                              }}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-[#333] text-gray-900 dark:text-zinc-100"
+                            >
+                              <span>{s.clientName}</span>
+                              {s.clientPhone && (
+                                <span className="ml-2 text-xs text-gray-400 dark:text-zinc-500">{s.clientPhone}</span>
+                              )}
+                            </button>
+                          ))}
+                        {studentSearch.trim() && !students.some((s) => s.clientName.toLowerCase() === studentSearch.toLowerCase()) && (
+                          <div className="px-3 py-2 text-xs text-gray-400 dark:text-zinc-500 border-t border-gray-100 dark:border-[#444]">
+                            New student: &quot;{studentSearch.trim()}&quot;
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <Input
+                id="clientPhone"
+                label="Client Phone"
+                value={formData.clientPhone}
+                onChange={(e) => setFormData({ ...formData, clientPhone: e.target.value })}
+                placeholder="+60123456789"
+              />
+            </>
+          )}
+
           <Input
             id="price"
             type="number"
@@ -674,78 +756,6 @@ export default function BookingsPage() {
                 return null;
               })()}
             </div>
-          ) : !formData.splitPayment ? (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
-                  Student
-                </label>
-                <div className="relative">
-                  <input
-                    value={showStudentDropdown ? studentSearch : formData.clientName}
-                    onChange={(e) => {
-                      setStudentSearch(e.target.value);
-                      setShowStudentDropdown(true);
-                      setFormData({ ...formData, clientName: e.target.value, clientPhone: '' });
-                    }}
-                    onFocus={() => {
-                      setStudentSearch(formData.clientName);
-                      setShowStudentDropdown(true);
-                    }}
-                    placeholder="Search or type student name..."
-                    className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm"
-                  />
-                  {showStudentDropdown && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setShowStudentDropdown(false)} />
-                      <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-white dark:bg-[#2a2a2a] rounded-lg shadow-lg border border-gray-200 dark:border-[#444] max-h-48 overflow-y-auto">
-                        {students
-                          .filter((s) => {
-                            if (!studentSearch.trim()) return true;
-                            const q = studentSearch.toLowerCase();
-                            return s.clientName.toLowerCase().includes(q) || s.clientPhone.toLowerCase().includes(q);
-                          })
-                          .map((s) => (
-                            <button
-                              key={s.id}
-                              type="button"
-                              onClick={() => {
-                                setFormData({
-                                  ...formData,
-                                  clientName: s.clientName,
-                                  clientPhone: s.clientPhone,
-                                  price: s.lessonRate ?? formData.price,
-                                });
-                                setShowStudentDropdown(false);
-                                setStudentSearch('');
-                              }}
-                              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-[#333] text-gray-900 dark:text-zinc-100"
-                            >
-                              <span>{s.clientName}</span>
-                              {s.clientPhone && (
-                                <span className="ml-2 text-xs text-gray-400 dark:text-zinc-500">{s.clientPhone}</span>
-                              )}
-                            </button>
-                          ))}
-                        {studentSearch.trim() && !students.some((s) => s.clientName.toLowerCase() === studentSearch.toLowerCase()) && (
-                          <div className="px-3 py-2 text-xs text-gray-400 dark:text-zinc-500 border-t border-gray-100 dark:border-[#444]">
-                            New student: &quot;{studentSearch.trim()}&quot;
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <Input
-                id="clientPhone"
-                label="Client Phone"
-                value={formData.clientPhone}
-                onChange={(e) => setFormData({ ...formData, clientPhone: e.target.value })}
-                placeholder="+60123456789"
-              />
-            </>
           ) : null}
 
           <div>
