@@ -146,6 +146,15 @@ export interface ClassException {
   createdAt: Date;
 }
 
+export interface Payment {
+  id: string;
+  studentId: string;
+  studentName: string;
+  amount: number;
+  collectedAt: Date;
+  createdAt: Date;
+}
+
 export interface BookingFormData {
   locationId: string;
   dayOfWeek: DayOfWeek;

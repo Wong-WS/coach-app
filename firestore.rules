@@ -64,6 +64,11 @@ service cloud.firestore {
         allow read, write: if isOwner(coachId);
       }
 
+      // Payments - owner only
+      match /payments/{paymentId} {
+        allow read, write: if isOwner(coachId);
+      }
+
       // Waitlist - owner read/update/delete, public create with validation
       match /waitlist/{waitlistId} {
         allow read: if isOwner(coachId);

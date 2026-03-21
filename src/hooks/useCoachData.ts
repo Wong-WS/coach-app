@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { collection, doc, onSnapshot, query, where, orderBy, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Booking, Location, WorkingHours, DayOfWeek, WaitlistEntry, WaitlistStatus, Student, LessonLog, ClassException } from '@/types';
+import { Booking, Location, WorkingHours, DayOfWeek, WaitlistEntry, WaitlistStatus, Student, LessonLog, ClassException, Payment } from '@/types';
 
 export function useWorkingHours(coachId: string | undefined) {
   const [workingHours, setWorkingHours] = useState<WorkingHours[]>([]);
@@ -281,6 +281,39 @@ export function useClassExceptions(coachId: string | undefined) {
   }, [coachId]);
 
   return { classExceptions, loading };
+}
+
+export function usePayments(coachId: string | undefined) {
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!coachId || !db) {
+      setLoading(false);
+      return;
+    }
+
+    const firestore = db as Firestore;
+    const unsubscribe = onSnapshot(
+      query(collection(firestore, 'coaches', coachId, 'payments'), orderBy('collectedAt', 'desc')),
+      (snapshot) => {
+        const items: Payment[] = snapshot.docs.map((d) => ({
+          id: d.id,
+          studentId: d.data().studentId,
+          studentName: d.data().studentName,
+          amount: d.data().amount ?? 0,
+          collectedAt: d.data().collectedAt?.toDate() || new Date(),
+          createdAt: d.data().createdAt?.toDate() || new Date(),
+        }));
+        setPayments(items);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [coachId]);
+
+  return { payments, loading };
 }
 
 // Hook for public page - fetches coach by slug

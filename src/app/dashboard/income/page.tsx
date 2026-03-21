@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { useBookings, useLessonLogs } from '@/hooks/useCoachData';
+import { useBookings, useLessonLogs, usePayments } from '@/hooks/useCoachData';
 import { getDayDisplayName, formatTimeDisplay } from '@/lib/availability-engine';
 
 function getWeekRange(): { start: string; end: string } {
@@ -43,6 +43,7 @@ export default function IncomePage() {
   const { coach } = useAuth();
   const { bookings, loading } = useBookings(coach?.id, 'confirmed');
   const { lessonLogs, loading: logsLoading } = useLessonLogs(coach?.id);
+  const { payments, loading: paymentsLoading } = usePayments(coach?.id);
 
   const unpricedCount = bookings.filter((b) => !b.price).length;
   const weeklyTotal = bookings.reduce((sum, b) => sum + (b.price ?? 0), 0);
@@ -64,6 +65,15 @@ export default function IncomePage() {
       .reduce((sum, l) => sum + l.price, 0);
   }, [lessonLogs, monthRange]);
 
+  const monthPayments = useMemo(() => {
+    const now = new Date();
+    return payments.filter((p) => {
+      return p.collectedAt.getFullYear() === now.getFullYear() && p.collectedAt.getMonth() === now.getMonth();
+    });
+  }, [payments]);
+
+  const monthCollected = useMemo(() => monthPayments.reduce((sum, p) => sum + p.amount, 0), [monthPayments]);
+
   const recentLogs = useMemo(() => {
     return [...lessonLogs]
       .sort((a, b) => b.date.localeCompare(a.date))
@@ -73,7 +83,7 @@ export default function IncomePage() {
   const formatRM = (amount: number) =>
     `RM ${amount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  if (loading || logsLoading) {
+  if (loading || logsLoading || paymentsLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -89,8 +99,8 @@ export default function IncomePage() {
       </div>
 
       {/* Actual income */}
-      {lessonLogs.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {(lessonLogs.length > 0 || monthPayments.length > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-6">
             <p className="text-sm text-gray-500 dark:text-zinc-400">This Week (Actual)</p>
             <p className="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">{formatRM(weekActual)}</p>
@@ -103,6 +113,13 @@ export default function IncomePage() {
             <p className="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">{formatRM(monthActual)}</p>
             <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">
               vs {formatRM(monthlyTotal)} projected
+            </p>
+          </div>
+          <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-6">
+            <p className="text-sm text-gray-500 dark:text-zinc-400">Collected This Month</p>
+            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">{formatRM(monthCollected)}</p>
+            <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">
+              {monthPayments.length} payment{monthPayments.length !== 1 ? 's' : ''} received
             </p>
           </div>
         </div>

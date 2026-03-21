@@ -46,6 +46,11 @@ export default function StudentsPage() {
   const [addingLesson, setAddingLesson] = useState(false);
   const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
 
+  // Record Payment state
+  const [showRecordPayment, setShowRecordPayment] = useState(false);
+  const [recordPaymentAmount, setRecordPaymentAmount] = useState(0);
+  const [recordingPayment, setRecordingPayment] = useState(false);
+
   // Linked student state
   const [unlinking, setUnlinking] = useState(false);
 
@@ -765,15 +770,29 @@ export default function StudentsPage() {
                   size="sm"
                   onClick={async () => {
                     if (!coach || !db || !selectedStudent) return;
+                    const firestore = db as Firestore;
+                    const amount = Math.max(0, selectedStudent.pendingPayment - (selectedStudent.credit ?? 0));
                     try {
-                      await updateDoc(
-                        doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                      const batch = writeBatch(firestore);
+                      batch.update(
+                        doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id),
                         {
                           pendingPayment: 0,
                           credit: 0,
                           updatedAt: serverTimestamp(),
                         }
                       );
+                      if (amount > 0) {
+                        const paymentRef = doc(collection(firestore, 'coaches', coach.id, 'payments'));
+                        batch.set(paymentRef, {
+                          studentId: selectedStudent.id,
+                          studentName: selectedStudent.clientName,
+                          amount,
+                          collectedAt: serverTimestamp(),
+                          createdAt: serverTimestamp(),
+                        });
+                      }
+                      await batch.commit();
                       setSelectedStudent((prev) =>
                         prev ? { ...prev, pendingPayment: 0, credit: 0 } : null
                       );
@@ -787,6 +806,68 @@ export default function StudentsPage() {
                   Mark as Paid
                 </Button>
               </div>
+            )}
+
+            {/* Record Payment (backfill) */}
+            {showRecordPayment ? (
+              <div className="bg-gray-50 dark:bg-[#1a1a1a] border border-gray-200 dark:border-[#333333] rounded-lg p-4 space-y-3">
+                <p className="text-sm font-medium text-gray-700 dark:text-zinc-300">Record a payment</p>
+                <Input
+                  id="recordPaymentAmount"
+                  label="Amount (RM)"
+                  type="number"
+                  value={String(recordPaymentAmount)}
+                  onChange={(e) => setRecordPaymentAmount(Math.max(0, Number(e.target.value) || 0))}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    loading={recordingPayment}
+                    onClick={async () => {
+                      if (!coach || !db || !selectedStudent || recordPaymentAmount <= 0) return;
+                      setRecordingPayment(true);
+                      try {
+                        const firestore = db as Firestore;
+                        const paymentRef = doc(collection(firestore, 'coaches', coach.id, 'payments'));
+                        const batch = writeBatch(firestore);
+                        batch.set(paymentRef, {
+                          studentId: selectedStudent.id,
+                          studentName: selectedStudent.clientName,
+                          amount: recordPaymentAmount,
+                          collectedAt: serverTimestamp(),
+                          createdAt: serverTimestamp(),
+                        });
+                        await batch.commit();
+                        setShowRecordPayment(false);
+                        setRecordPaymentAmount(0);
+                        showToast(`Recorded RM ${recordPaymentAmount} payment`, 'success');
+                      } catch {
+                        showToast('Failed to record payment', 'error');
+                      } finally {
+                        setRecordingPayment(false);
+                      }
+                    }}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => { setShowRecordPayment(false); setRecordPaymentAmount(0); }}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  const defaultAmount = selectedStudent.payPerLesson
+                    ? (selectedStudent.lessonRate ?? 0)
+                    : (selectedStudent.lessonRate ?? 0) * selectedStudent.prepaidTotal;
+                  setRecordPaymentAmount(defaultAmount);
+                  setShowRecordPayment(true);
+                }}
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                Record Payment
+              </button>
             )}
 
             {/* Payment mode section */}
