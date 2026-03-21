@@ -58,6 +58,12 @@ interface PaymentGroup {
   price: number;
 }
 
+const PACKAGE_OPTIONS = [
+  { value: '0', label: 'No package (pay per lesson)' },
+  { value: '5', label: '5 lessons' },
+  { value: '10', label: '10 lessons' },
+];
+
 const EMPTY_FORM = {
   locationId: '',
   dayOfWeek: 'monday' as DayOfWeek,
@@ -69,6 +75,7 @@ const EMPTY_FORM = {
   groupSize: 1,
   notes: '',
   price: 0,
+  packageSize: 0,
   splitPayment: false,
   paymentGroups: [] as PaymentGroup[],
 };
@@ -154,6 +161,12 @@ export default function BookingsPage() {
       }
     }
 
+    // Look up existing student to get their package size
+    const existingStudent = students.find(
+      (s) => s.clientName === booking.clientName && s.clientPhone === (booking.clientPhone || '')
+    );
+    const editPackageSize = existingStudent?.prepaidTotal ?? 0;
+
     setFormData({
       locationId: booking.locationId,
       dayOfWeek: booking.dayOfWeek,
@@ -165,6 +178,7 @@ export default function BookingsPage() {
       groupSize: booking.groupSize || 1,
       notes: booking.notes || '',
       price: booking.price ?? 0,
+      packageSize: editPackageSize,
       splitPayment: hasSplit,
       paymentGroups,
     });
@@ -303,6 +317,25 @@ export default function BookingsPage() {
           status: 'confirmed',
           createdAt: serverTimestamp(),
         });
+
+        // Set prepaid package and payment info on the primary student
+        if (!isSplit && formData.price > 0) {
+          const studentUpdate: Record<string, unknown> = {
+            lessonRate: formData.price,
+            updatedAt: serverTimestamp(),
+          };
+          if (formData.packageSize > 0) {
+            studentUpdate.prepaidTotal = formData.packageSize;
+            studentUpdate.prepaidUsed = 0;
+            studentUpdate.payPerLesson = false;
+            studentUpdate.pendingPayment = formData.price * formData.packageSize;
+          } else {
+            studentUpdate.payPerLesson = true;
+            studentUpdate.pendingPayment = formData.price;
+          }
+          await updateDoc(doc(firestore, 'coaches', coach.id, 'students', primaryStudentId), studentUpdate);
+        }
+
         showToast('Booking created!', 'success');
       }
       setIsModalOpen(false);
@@ -584,11 +617,14 @@ export default function BookingsPage() {
                                 if (!autoPrice && studentBooking) {
                                   autoPrice = studentBooking.studentPrices?.[s.id] ?? studentBooking.price ?? 0;
                                 }
+                                // Auto-fill package: use student's current prepaidTotal if they have one
+                                const autoPackage = s.prepaidTotal > 0 ? s.prepaidTotal : (s.payPerLesson ? 0 : 0);
                                 setFormData({
                                   ...formData,
                                   clientName: s.clientName,
                                   clientPhone: s.clientPhone,
                                   price: autoPrice || formData.price,
+                                  packageSize: autoPackage,
                                   dayOfWeek: studentBooking?.dayOfWeek ?? formData.dayOfWeek,
                                   startTime: studentBooking?.startTime ?? formData.startTime,
                                   endTime: studentBooking?.endTime ?? formData.endTime,
@@ -629,7 +665,7 @@ export default function BookingsPage() {
           <Input
             id="price"
             type="number"
-            label="Total Price per session (RM)"
+            label="Price per session (RM)"
             value={formData.price.toString()}
             onChange={(e) => {
               const newPrice = parseFloat(e.target.value) || 0;
@@ -639,6 +675,23 @@ export default function BookingsPage() {
             step={0.01}
             placeholder="0"
           />
+
+          {!formData.splitPayment && (
+            <div>
+              <Select
+                id="packageSize"
+                label="Prepaid Package"
+                value={formData.packageSize.toString()}
+                onChange={(e) => setFormData({ ...formData, packageSize: parseInt(e.target.value) || 0 })}
+                options={PACKAGE_OPTIONS}
+              />
+              {formData.packageSize > 0 && formData.price > 0 && (
+                <p className="text-sm text-gray-600 dark:text-zinc-400 mt-1">
+                  {formData.packageSize} lessons × RM {formData.price} = <span className="font-medium text-green-600 dark:text-green-400">RM {formData.packageSize * formData.price} due</span>
+                </p>
+              )}
+            </div>
+          )}
 
           {formData.lessonType === 'group' && (
             <div className="space-y-3">
