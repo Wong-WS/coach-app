@@ -234,6 +234,11 @@ export default function BookingsPage() {
 
     try {
       if (editingBookingId) {
+        // Update startDate when day changes so the booking shows from the next occurrence (including today)
+        const originalBooking = bookings.find((b) => b.id === editingBookingId);
+        if (originalBooking && originalBooking.dayOfWeek !== formData.dayOfWeek) {
+          payload.startDate = getNextOccurrence(formData.dayOfWeek);
+        }
         if (isSplit) {
           // Create/find all students and build linked data
           const primaryStudentId = await findOrCreateStudent(firestore, coach.id, primaryName, primaryPhone);
