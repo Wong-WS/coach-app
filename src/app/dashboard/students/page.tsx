@@ -87,7 +87,7 @@ export default function StudentsPage() {
     const dayMap = new Map<DayOfWeek, Map<string, { startTime: string; endTime: string; locationName: string }>>();
 
     for (const booking of bookings) {
-      if (!booking.clientName) continue;
+      if (!booking.clientName || booking.endDate) continue;
       const matched = students.find(
         (s) =>
           s.clientName === booking.clientName &&
@@ -117,9 +117,9 @@ export default function StudentsPage() {
         ids.add(id);
       }
     }
-    // Also include linked students from bookings
+    // Also include linked students from recurring bookings
     for (const booking of bookings) {
-      if (booking.linkedStudentIds) {
+      if (booking.linkedStudentIds && !booking.endDate) {
         for (const id of booking.linkedStudentIds) {
           ids.add(id);
         }
