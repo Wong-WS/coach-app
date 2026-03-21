@@ -158,13 +158,37 @@ export default function StudentsPage() {
     return result;
   }, [students, search, dayFilter, dayToStudents, studentsWithBookings]);
 
+  const getStudentBookings = (student: Student) => {
+    return bookings.filter(
+      (b) =>
+        b.status === 'confirmed' &&
+        !b.endDate &&
+        b.clientName === student.clientName &&
+        b.clientPhone === (student.clientPhone || '')
+    );
+  };
+
   const handleDeleteStudent = async (student: Student) => {
     if (!coach || !db) return;
     setDeletingStudent(true);
     try {
       const firestore = db as Firestore;
+      const studentBookings = getStudentBookings(student);
+      const batch = writeBatch(firestore);
+
       // Delete the student document
-      await deleteDoc(doc(firestore, 'coaches', coach.id, 'students', student.id));
+      batch.delete(doc(firestore, 'coaches', coach.id, 'students', student.id));
+
+      // Cancel all active recurring bookings for this student
+      for (const booking of studentBookings) {
+        batch.update(doc(firestore, 'coaches', coach.id, 'bookings', booking.id), {
+          status: 'cancelled',
+          cancelledAt: serverTimestamp(),
+        });
+      }
+
+      await batch.commit();
+
       // Try to delete their portal token (may fail due to security rules)
       if (student.linkToken) {
         try {
@@ -175,7 +199,10 @@ export default function StudentsPage() {
       }
       setSelectedStudent(null);
       setConfirmDeleteStudent(false);
-      showToast('Student deleted', 'success');
+      const msg = studentBookings.length > 0
+        ? `Student deleted and ${studentBookings.length} booking${studentBookings.length > 1 ? 's' : ''} cancelled`
+        : 'Student deleted';
+      showToast(msg, 'success');
     } catch (error) {
       console.error('Error deleting student:', error);
       showToast('Failed to delete student', 'error');
@@ -1288,6 +1315,9 @@ export default function StudentsPage() {
                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-3 space-y-2">
                   <p className="text-sm text-red-700 dark:text-red-300">
                     Delete <strong>{selectedStudent.clientName}</strong>? This removes the student record and portal link. Lesson history will be lost.
+                    {getStudentBookings(selectedStudent).length > 0 && (
+                      <> Their {getStudentBookings(selectedStudent).length} active booking{getStudentBookings(selectedStudent).length > 1 ? 's' : ''} will also be cancelled.</>
+                    )}
                   </p>
                   <div className="flex gap-2">
                     <Button
