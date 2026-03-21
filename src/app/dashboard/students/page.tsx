@@ -56,6 +56,11 @@ export default function StudentsPage() {
   });
   const [recordingPayment, setRecordingPayment] = useState(false);
 
+  // Edit payment date state
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
+  const [editPaymentDate, setEditPaymentDate] = useState('');
+  const [savingPaymentDate, setSavingPaymentDate] = useState(false);
+
   // Linked student state
   const [unlinking, setUnlinking] = useState(false);
 
@@ -1270,14 +1275,68 @@ export default function StudentsPage() {
                   {studentPayments.map((payment) => (
                     <div
                       key={payment.id}
-                      className="flex items-center justify-between text-sm p-2 bg-gray-50 dark:bg-[#1a1a1a]/50 rounded"
+                      className="text-sm p-2 bg-gray-50 dark:bg-[#1a1a1a]/50 rounded"
                     >
-                      <p className="text-gray-900 dark:text-zinc-100">
-                        {payment.collectedAt.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      </p>
-                      <span className="text-blue-600 dark:text-blue-400 font-medium">
-                        RM {payment.amount}
-                      </span>
+                      {editingPaymentId === payment.id ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="date"
+                            value={editPaymentDate}
+                            onChange={(e) => setEditPaymentDate(e.target.value)}
+                            className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-zinc-500 rounded bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
+                          />
+                          <button
+                            disabled={savingPaymentDate}
+                            onClick={async () => {
+                              if (!coach || !db || !editPaymentDate) return;
+                              setSavingPaymentDate(true);
+                              try {
+                                const [y, m, d] = editPaymentDate.split('-').map(Number);
+                                await updateDoc(
+                                  doc(db as Firestore, 'coaches', coach.id, 'payments', payment.id),
+                                  { collectedAt: Timestamp.fromDate(new Date(y, m - 1, d)) }
+                                );
+                                setEditingPaymentId(null);
+                                showToast('Payment date updated', 'success');
+                              } catch {
+                                showToast('Failed to update date', 'error');
+                              } finally {
+                                setSavingPaymentDate(false);
+                              }
+                            }}
+                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+                          >
+                            {savingPaymentDate ? '...' : 'Save'}
+                          </button>
+                          <button
+                            onClick={() => setEditingPaymentId(null)}
+                            className="text-xs text-gray-500 dark:text-zinc-400 hover:underline"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <p className="text-gray-900 dark:text-zinc-100">
+                              {payment.collectedAt.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </p>
+                            <button
+                              onClick={() => {
+                                const d = payment.collectedAt;
+                                setEditPaymentDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+                                setEditingPaymentId(payment.id);
+                              }}
+                              className="text-xs text-gray-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                          <span className="text-blue-600 dark:text-blue-400 font-medium">
+                            RM {payment.amount}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
