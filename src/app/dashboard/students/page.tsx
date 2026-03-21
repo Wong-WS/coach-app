@@ -56,10 +56,12 @@ export default function StudentsPage() {
   });
   const [recordingPayment, setRecordingPayment] = useState(false);
 
-  // Edit payment date state
+  // Edit payment state
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [editPaymentDate, setEditPaymentDate] = useState('');
-  const [savingPaymentDate, setSavingPaymentDate] = useState(false);
+  const [editPaymentAmount, setEditPaymentAmount] = useState(0);
+  const [savingPayment, setSavingPayment] = useState(false);
+  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
 
   // Linked student state
   const [unlinking, setUnlinking] = useState(false);
@@ -1278,42 +1280,77 @@ export default function StudentsPage() {
                       className="text-sm p-2 bg-gray-50 dark:bg-[#1a1a1a]/50 rounded"
                     >
                       {editingPaymentId === payment.id ? (
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="date"
-                            value={editPaymentDate}
-                            onChange={(e) => setEditPaymentDate(e.target.value)}
-                            className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-zinc-500 rounded bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
-                          />
-                          <button
-                            disabled={savingPaymentDate}
-                            onClick={async () => {
-                              if (!coach || !db || !editPaymentDate) return;
-                              setSavingPaymentDate(true);
-                              try {
-                                const [y, m, d] = editPaymentDate.split('-').map(Number);
-                                await updateDoc(
-                                  doc(db as Firestore, 'coaches', coach.id, 'payments', payment.id),
-                                  { collectedAt: Timestamp.fromDate(new Date(y, m - 1, d)) }
-                                );
-                                setEditingPaymentId(null);
-                                showToast('Payment date updated', 'success');
-                              } catch {
-                                showToast('Failed to update date', 'error');
-                              } finally {
-                                setSavingPaymentDate(false);
-                              }
-                            }}
-                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
-                          >
-                            {savingPaymentDate ? '...' : 'Save'}
-                          </button>
-                          <button
-                            onClick={() => setEditingPaymentId(null)}
-                            className="text-xs text-gray-500 dark:text-zinc-400 hover:underline"
-                          >
-                            Cancel
-                          </button>
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <input
+                              type="date"
+                              value={editPaymentDate}
+                              onChange={(e) => setEditPaymentDate(e.target.value)}
+                              className="px-2 py-1 text-sm border border-gray-300 dark:border-zinc-500 rounded bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
+                            />
+                            <div className="flex items-center gap-1">
+                              <span className="text-sm text-gray-500 dark:text-zinc-400">RM</span>
+                              <input
+                                type="number"
+                                value={editPaymentAmount}
+                                onChange={(e) => setEditPaymentAmount(Math.max(0, Number(e.target.value) || 0))}
+                                className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-zinc-500 rounded bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              disabled={savingPayment}
+                              onClick={async () => {
+                                if (!coach || !db || !editPaymentDate || editPaymentAmount <= 0) return;
+                                setSavingPayment(true);
+                                try {
+                                  const [y, m, d] = editPaymentDate.split('-').map(Number);
+                                  await updateDoc(
+                                    doc(db as Firestore, 'coaches', coach.id, 'payments', payment.id),
+                                    {
+                                      collectedAt: Timestamp.fromDate(new Date(y, m - 1, d)),
+                                      amount: editPaymentAmount,
+                                    }
+                                  );
+                                  setEditingPaymentId(null);
+                                  showToast('Payment updated', 'success');
+                                } catch {
+                                  showToast('Failed to update payment', 'error');
+                                } finally {
+                                  setSavingPayment(false);
+                                }
+                              }}
+                              className="text-xs text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+                            >
+                              {savingPayment ? '...' : 'Save'}
+                            </button>
+                            <button
+                              onClick={() => setEditingPaymentId(null)}
+                              className="text-xs text-gray-500 dark:text-zinc-400 hover:underline"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              disabled={deletingPaymentId === payment.id}
+                              onClick={async () => {
+                                if (!coach || !db) return;
+                                setDeletingPaymentId(payment.id);
+                                try {
+                                  await deleteDoc(doc(db as Firestore, 'coaches', coach.id, 'payments', payment.id));
+                                  setEditingPaymentId(null);
+                                  showToast('Payment deleted', 'success');
+                                } catch {
+                                  showToast('Failed to delete payment', 'error');
+                                } finally {
+                                  setDeletingPaymentId(null);
+                                }
+                              }}
+                              className="text-xs text-red-500 dark:text-red-400 hover:underline disabled:opacity-50 ml-auto"
+                            >
+                              {deletingPaymentId === payment.id ? '...' : 'Delete'}
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <div className="flex items-center justify-between">
@@ -1325,6 +1362,7 @@ export default function StudentsPage() {
                               onClick={() => {
                                 const d = payment.collectedAt;
                                 setEditPaymentDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+                                setEditPaymentAmount(payment.amount);
                                 setEditingPaymentId(payment.id);
                               }}
                               className="text-xs text-gray-400 dark:text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400"
