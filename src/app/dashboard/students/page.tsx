@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { collection, doc, updateDoc, deleteDoc, writeBatch, serverTimestamp, increment, Firestore } from 'firebase/firestore';
+import { collection, doc, updateDoc, deleteDoc, writeBatch, serverTimestamp, increment, Timestamp, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
-import { useStudents, useLessonLogs, useLocations, useBookings } from '@/hooks/useCoachData';
+import { useStudents, useLessonLogs, useLocations, useBookings, usePayments } from '@/hooks/useCoachData';
 import { Button, Input, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { Student, LessonLog, DayOfWeek } from '@/types';
@@ -17,6 +17,7 @@ export default function StudentsPage() {
   const { lessonLogs: allLogs } = useLessonLogs(coach?.id);
   const { locations } = useLocations(coach?.id);
   const { bookings } = useBookings(coach?.id, 'confirmed');
+  const { payments } = usePayments(coach?.id);
   const { showToast } = useToast();
 
   const [syncing, setSyncing] = useState(false);
@@ -49,6 +50,10 @@ export default function StudentsPage() {
   // Record Payment state
   const [showRecordPayment, setShowRecordPayment] = useState(false);
   const [recordPaymentAmount, setRecordPaymentAmount] = useState(0);
+  const [recordPaymentDate, setRecordPaymentDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
   const [recordingPayment, setRecordingPayment] = useState(false);
 
   // Linked student state
@@ -68,6 +73,14 @@ export default function StudentsPage() {
       .filter((l) => l.studentId === selectedStudent.id)
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [allLogs, selectedStudent]);
+
+  // Student's payment history
+  const studentPayments = useMemo(() => {
+    if (!selectedStudent) return [];
+    return payments
+      .filter((p) => p.studentId === selectedStudent.id)
+      .sort((a, b) => b.collectedAt.getTime() - a.collectedAt.getTime());
+  }, [payments, selectedStudent]);
 
   // Linked students for the selected student
   const linkedStudents = useMemo(() => {
@@ -839,29 +852,40 @@ export default function StudentsPage() {
             {showRecordPayment ? (
               <div className="bg-gray-50 dark:bg-[#1a1a1a] border border-gray-200 dark:border-[#333333] rounded-lg p-4 space-y-3">
                 <p className="text-sm font-medium text-gray-700 dark:text-zinc-300">Record a payment</p>
-                <Input
-                  id="recordPaymentAmount"
-                  label="Amount (RM)"
-                  type="number"
-                  value={String(recordPaymentAmount)}
-                  onChange={(e) => setRecordPaymentAmount(Math.max(0, Number(e.target.value) || 0))}
-                />
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    id="recordPaymentAmount"
+                    label="Amount (RM)"
+                    type="number"
+                    value={String(recordPaymentAmount)}
+                    onChange={(e) => setRecordPaymentAmount(Math.max(0, Number(e.target.value) || 0))}
+                  />
+                  <Input
+                    id="recordPaymentDate"
+                    label="Date Received"
+                    type="date"
+                    value={recordPaymentDate}
+                    onChange={(e) => setRecordPaymentDate(e.target.value)}
+                  />
+                </div>
                 <div className="flex gap-2">
                   <Button
                     size="sm"
                     loading={recordingPayment}
                     onClick={async () => {
-                      if (!coach || !db || !selectedStudent || recordPaymentAmount <= 0) return;
+                      if (!coach || !db || !selectedStudent || recordPaymentAmount <= 0 || !recordPaymentDate) return;
                       setRecordingPayment(true);
                       try {
                         const firestore = db as Firestore;
+                        const [y, m, d] = recordPaymentDate.split('-').map(Number);
+                        const collectedDate = Timestamp.fromDate(new Date(y, m - 1, d));
                         const paymentRef = doc(collection(firestore, 'coaches', coach.id, 'payments'));
                         const batch = writeBatch(firestore);
                         batch.set(paymentRef, {
                           studentId: selectedStudent.id,
                           studentName: selectedStudent.clientName,
                           amount: recordPaymentAmount,
-                          collectedAt: serverTimestamp(),
+                          collectedAt: collectedDate,
                           createdAt: serverTimestamp(),
                         });
                         await batch.commit();
@@ -885,6 +909,9 @@ export default function StudentsPage() {
             ) : (
               <button
                 onClick={() => {
+                  const now = new Date();
+                  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                  setRecordPaymentDate(todayStr);
                   const defaultAmount = selectedStudent.payPerLesson
                     ? (selectedStudent.lessonRate ?? 0)
                     : (selectedStudent.lessonRate ?? 0) * selectedStudent.prepaidTotal;
@@ -1225,6 +1252,32 @@ export default function StudentsPage() {
                           )}
                         </button>
                       </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Payment history */}
+            <div className="border-t border-gray-100 dark:border-[#333333] pt-4">
+              <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-3">
+                Payment History ({studentPayments.length})
+              </h3>
+              {studentPayments.length === 0 ? (
+                <p className="text-sm text-gray-400 dark:text-zinc-500">No payments recorded yet.</p>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {studentPayments.map((payment) => (
+                    <div
+                      key={payment.id}
+                      className="flex items-center justify-between text-sm p-2 bg-gray-50 dark:bg-[#1a1a1a]/50 rounded"
+                    >
+                      <p className="text-gray-900 dark:text-zinc-100">
+                        {payment.collectedAt.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </p>
+                      <span className="text-blue-600 dark:text-blue-400 font-medium">
+                        RM {payment.amount}
+                      </span>
                     </div>
                   ))}
                 </div>

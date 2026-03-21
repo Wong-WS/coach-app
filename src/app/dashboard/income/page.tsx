@@ -74,6 +74,10 @@ export default function IncomePage() {
 
   const monthCollected = useMemo(() => monthPayments.reduce((sum, p) => sum + p.amount, 0), [monthPayments]);
 
+  const recentPayments = useMemo(() => {
+    return [...payments].slice(0, 20);
+  }, [payments]);
+
   const recentLogs = useMemo(() => {
     return [...lessonLogs]
       .sort((a, b) => b.date.localeCompare(a.date))
@@ -190,6 +194,42 @@ export default function IncomePage() {
                       ) : (
                         <span className="text-gray-400 dark:text-zinc-500">&mdash;</span>
                       )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Recent payments */}
+      {recentPayments.length > 0 && (
+        <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333]">
+          <div className="p-6 border-b border-gray-100 dark:border-[#333333]">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">Recent Payments</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 dark:border-[#333333]">
+                  <th className="text-left px-6 py-3 text-gray-500 dark:text-zinc-400 font-medium">Date</th>
+                  <th className="text-left px-6 py-3 text-gray-500 dark:text-zinc-400 font-medium">Student</th>
+                  <th className="text-right px-6 py-3 text-gray-500 dark:text-zinc-400 font-medium">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentPayments.map((payment) => (
+                  <tr
+                    key={payment.id}
+                    className="border-b border-gray-50 dark:border-[#2a2a2a] last:border-0 hover:bg-gray-50 dark:hover:bg-[#262626]"
+                  >
+                    <td className="px-6 py-3 text-gray-900 dark:text-zinc-100">
+                      {payment.collectedAt.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </td>
+                    <td className="px-6 py-3 text-gray-600 dark:text-zinc-400">{payment.studentName}</td>
+                    <td className="px-6 py-3 text-right">
+                      <span className="text-blue-600 dark:text-blue-400 font-medium">{formatRM(payment.amount)}</span>
                     </td>
                   </tr>
                 ))}
