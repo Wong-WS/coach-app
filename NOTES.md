@@ -26,6 +26,8 @@
 
 ## Next Session
 
+- (2026-03-23) Edge case to discuss: Woojin + 3 kids class — details TBD
+
 ## Ideas (not urgent)
 
 - (2026-03-23) Run full E2E bug hunt using Chrome MCP — let Claude click through the app and find edge cases, broken flows, and UI issues
