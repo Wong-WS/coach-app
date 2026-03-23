@@ -1544,9 +1544,6 @@ export default function StudentsPage() {
         title="Renew Prepaid Package?"
       >
         <div className="space-y-4">
-          <p className="text-sm text-gray-600 dark:text-zinc-400">
-            Package is fully used. Would you like to renew?
-          </p>
           <Input
             label="Number of lessons"
             type="number"
