@@ -480,7 +480,9 @@ export default function StudentsPage() {
       const willBeAfter = selectedStudent.prepaidUsed - 1;
       if (wasExhausted && willBeAfter < selectedStudent.prepaidTotal) {
         updateData.pendingPayment = 0;
-        updateData.credit = 0;
+        // Don't zero out credit here — the specific lesson's credit was already
+        // reversed above (lines 467-471). Zeroing it would lose credit accumulated
+        // from other cheaper lessons in the package.
       }
 
       // If deleting the last lesson log, clear any leftover credit
@@ -495,7 +497,10 @@ export default function StudentsPage() {
       let newCredit = selectedStudent.credit ?? 0;
       if (wasExhausted && willBeAfter < selectedStudent.prepaidTotal) {
         newPending = 0;
-        newCredit = 0;
+        // Only reverse credit for the specific deleted lesson, not all credit
+        if (log && log.price < basePrice && basePrice > 0) {
+          newCredit = Math.max(0, newCredit - (basePrice - log.price));
+        }
       } else if (studentLogs.length <= 1) {
         newCredit = 0;
       } else {
