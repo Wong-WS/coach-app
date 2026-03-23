@@ -73,6 +73,11 @@ export default function StudentsPage() {
   const [editLessonRate, setEditLessonRate] = useState(0);
   const [savingPrepaid, setSavingPrepaid] = useState(false);
 
+  // Renew package after payment modal
+  const [showRenewModal, setShowRenewModal] = useState(false);
+  const [renewAmount, setRenewAmount] = useState(0);
+  const [renewingPackage, setRenewingPackage] = useState(false);
+
   // Student's lesson history
   const studentLogs = useMemo(() => {
     if (!selectedStudent) return [];
@@ -850,6 +855,11 @@ export default function StudentsPage() {
                         prev ? { ...prev, pendingPayment: 0, credit: 0 } : null
                       );
                       showToast('Payment marked as received!', 'success');
+                      // If package is exhausted, prompt to renew
+                      if (!selectedStudent.payPerLesson && selectedStudent.prepaidTotal > 0 && selectedStudent.prepaidUsed >= selectedStudent.prepaidTotal) {
+                        setRenewAmount(selectedStudent.prepaidTotal);
+                        setShowRenewModal(true);
+                      }
                     } catch (error) {
                       console.error('Error marking paid:', error);
                       showToast('Failed to mark as paid', 'error');
@@ -1520,6 +1530,62 @@ export default function StudentsPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Renew Package Modal */}
+      <Modal
+        isOpen={showRenewModal}
+        onClose={() => setShowRenewModal(false)}
+        title="Renew Prepaid Package?"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-zinc-400">
+            Package is fully used. Would you like to renew?
+          </p>
+          <Input
+            label="Number of lessons"
+            type="number"
+            min={1}
+            value={String(renewAmount)}
+            onChange={(e) => setRenewAmount(Math.max(1, Number(e.target.value) || 1))}
+          />
+          <div className="flex gap-2">
+            <Button
+              className="flex-1"
+              loading={renewingPackage}
+              onClick={async () => {
+                if (!coach || !db || !selectedStudent) return;
+                setRenewingPackage(true);
+                try {
+                  const overflow = Math.max(0, selectedStudent.prepaidUsed - selectedStudent.prepaidTotal);
+                  await updateDoc(
+                    doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                    {
+                      prepaidTotal: renewAmount,
+                      prepaidUsed: overflow,
+                      updatedAt: serverTimestamp(),
+                    }
+                  );
+                  setSelectedStudent((prev) =>
+                    prev ? { ...prev, prepaidTotal: renewAmount, prepaidUsed: overflow } : null
+                  );
+                  showToast(`Package renewed with ${renewAmount} lessons!`, 'success');
+                  setShowRenewModal(false);
+                } catch (error) {
+                  console.error('Error renewing package:', error);
+                  showToast('Failed to renew package', 'error');
+                } finally {
+                  setRenewingPackage(false);
+                }
+              }}
+            >
+              Renew
+            </Button>
+            <Button variant="secondary" className="flex-1" onClick={() => setShowRenewModal(false)}>
+              Skip
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );
