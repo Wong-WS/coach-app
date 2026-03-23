@@ -1110,7 +1110,27 @@ export default function StudentsPage() {
                       {(selectedStudent.credit ?? 0) > 0 && (
                         <div className="flex items-center justify-between text-sm mt-2">
                           <span className="text-gray-600 dark:text-zinc-400">Credit Balance</span>
-                          <span className="font-medium text-green-600 dark:text-green-400">RM {selectedStudent.credit}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-green-600 dark:text-green-400">RM {selectedStudent.credit}</span>
+                            <button
+                              onClick={async () => {
+                                if (!coach || !db || !selectedStudent) return;
+                                try {
+                                  await updateDoc(
+                                    doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                                    { credit: 0, updatedAt: serverTimestamp() }
+                                  );
+                                  setSelectedStudent((prev) => prev ? { ...prev, credit: 0 } : null);
+                                  showToast('Credit cleared', 'success');
+                                } catch {
+                                  showToast('Failed to clear credit', 'error');
+                                }
+                              }}
+                              className="text-xs text-red-400 hover:text-red-600 dark:hover:text-red-300"
+                            >
+                              Clear
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
