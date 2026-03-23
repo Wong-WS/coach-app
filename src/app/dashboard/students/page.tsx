@@ -419,10 +419,9 @@ export default function StudentsPage() {
         updateData.pendingPayment = increment(lessonPrice);
       }
 
-      // Calculate credit: find booking price for this student and compare
-      const studentBooking = bookings.find((b) => b.clientName === selectedStudent.clientName);
-      const bookingPrice = studentBooking?.price ?? 0;
-      const creditDiff = bookingPrice > 0 && lessonPrice < bookingPrice ? bookingPrice - lessonPrice : 0;
+      // Calculate credit: compare against student's lessonRate
+      const basePrice = selectedStudent.lessonRate ?? 0;
+      const creditDiff = basePrice > 0 && lessonPrice < basePrice ? basePrice - lessonPrice : 0;
       if (creditDiff > 0) {
         updateData.credit = increment(creditDiff);
       }
@@ -436,7 +435,7 @@ export default function StudentsPage() {
       );
       setShowAddLesson(false);
       setLessonNote('');
-      setLessonPrice(bookingPrice || lessonPrice);
+      setLessonPrice(basePrice || lessonPrice);
       showToast('Lesson added!', 'success');
     } catch (error) {
       console.error('Error adding lesson:', error);
@@ -479,6 +478,11 @@ export default function StudentsPage() {
         updateData.credit = 0;
       }
 
+      // If deleting the last lesson log, clear any leftover credit
+      if (studentLogs.length <= 1) {
+        updateData.credit = 0;
+      }
+
       batch.update(doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id), updateData);
       await batch.commit();
 
@@ -486,6 +490,8 @@ export default function StudentsPage() {
       let newCredit = selectedStudent.credit ?? 0;
       if (wasExhausted && willBeAfter < selectedStudent.prepaidTotal) {
         newPending = 0;
+        newCredit = 0;
+      } else if (studentLogs.length <= 1) {
         newCredit = 0;
       } else {
         if (selectedStudent.payPerLesson && log && log.price > 0) {
