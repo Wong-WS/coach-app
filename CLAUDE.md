@@ -22,37 +22,51 @@ coach-app/src/
 │   ├── signup/page.tsx               # Signup page with slug creation
 │   ├── dashboard/
 │   │   ├── layout.tsx                # Auth guard + sidebar + mobile bottom nav
-│   │   ├── page.tsx                  # Overview (stats, weekly view, copy public link)
+│   │   ├── page.tsx                  # Today's Classes — mark-as-done, class exceptions
 │   │   ├── settings/page.tsx         # Working hours (multiple time ranges), duration, buffer, WhatsApp
 │   │   ├── locations/page.tsx        # Manage locations
 │   │   ├── bookings/page.tsx         # Create/view/cancel bookings (5-min time increments)
+│   │   ├── students/page.tsx         # Student management — prepaid, credits, payments, portal links
+│   │   ├── income/page.tsx           # Income tracking and projections
 │   │   └── waitlist/page.tsx         # View and manage waitlist entries
-│   └── [slug]/page.tsx               # Public coach page with availability + waitlist join
+│   ├── [slug]/page.tsx               # Public coach page with availability + waitlist join
+│   ├── student/[token]/page.tsx      # Student portal (read-only lesson history)
+│   └── api/
+│       ├── coach/[slug]/route.ts     # Public coach profile API (GET)
+│       ├── availability/[coachId]/route.ts  # Available slots API (GET)
+│       └── student/[token]/route.ts  # Student portal API (Admin SDK, GET)
 ├── lib/
 │   ├── firebase.ts                   # Firebase client init
-│   ├── auth-context.tsx              # Auth React context + signup logic
-│   └── availability-engine.ts        # Core slot calculation algorithm (multi-range aware)
+│   ├── firebase-admin.ts             # Firebase Admin SDK (server-side)
+│   ├── auth-context.tsx              # Auth React context + signup/signin/signout
+│   ├── availability-engine.ts        # Core slot calculation algorithm (multi-range aware)
+│   ├── class-schedule.ts             # Schedule helpers (getClassesForDate, rescheduling)
+│   └── students.ts                   # findOrCreateStudent utility (name+phone match)
 ├── components/
-│   └── ui/                           # Button, Input, Select, Modal, Toast
+│   └── ui/                           # Button, Input, Select, Modal, PhoneInput, Toast
 ├── hooks/
-│   └── useCoachData.ts               # Firestore hooks: useWorkingHours, useLocations, useBookings, useWaitlist, useCoachBySlug
-└── types/index.ts                    # TypeScript types
+│   └── useCoachData.ts               # Firestore hooks: useWorkingHours, useLocations, useBookings, useWaitlist, useStudents, useLessonLogs, useClassExceptions, usePayments, useCoachBySlug
+└── types/index.ts                    # TypeScript types (Coach, Booking, Student, LessonLog, ClassException, Payment, etc.)
 ```
 
 ### Technology Stack
 
-- **Framework**: Next.js 15 with App Router
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
+- **Framework**: Next.js 16 with App Router
+- **Language**: TypeScript 5
+- **Styling**: Tailwind CSS 4
 - **Database**: Firebase Firestore
 - **Auth**: Firebase Authentication
-- **Hosting**: Vercel (planned)
+- **Admin SDK**: Firebase Admin SDK 13
+- **Hosting**: Vercel
 
 ### Firestore Data Model
 
 ```
 coachSlugs/{slug}                        # Top-level lookup: slug → coachId
   coachId: string
+
+studentTokens/{linkToken}               # Student portal token → coachId + studentId
+  coachId, studentId
 
 coaches/{coachId}                        # Coach profile & settings
   displayName, slug, email, serviceType
@@ -71,6 +85,8 @@ coaches/{coachId}/bookings/{bookingId}   # Recurring weekly bookings
   locationId, locationName, dayOfWeek
   startTime, endTime, status             # status: 'confirmed' | 'cancelled'
   clientName, clientPhone, lessonType, groupSize, notes
+  price, linkedStudentIds[], studentPrices{}
+  startDate, endDate                     # Optional date range filtering
   createdAt, cancelledAt
 
 coaches/{coachId}/waitlist/{entryId}     # Waitlist entries from public page
@@ -79,6 +95,27 @@ coaches/{coachId}/waitlist/{entryId}     # Waitlist entries from public page
   clientName, clientPhone, notes
   status                                 # 'waiting' | 'contacted' | 'booked'
   createdAt, contactedAt, bookedAt
+
+coaches/{coachId}/students/{studentId}   # Student records with prepaid tracking
+  clientName, clientPhone, linkToken
+  prepaidTotal, prepaidUsed, credit, pendingPayment
+  lessonRate, payPerLesson, linkedToStudentId
+  notes, createdAt, updatedAt
+
+coaches/{coachId}/lessonLogs/{logId}     # Completed lesson records
+  date, bookingId, studentId, studentName
+  locationName, startTime, endTime
+  price, note, createdAt
+
+coaches/{coachId}/classExceptions/{exceptionId}  # Per-date overrides
+  bookingId, originalDate
+  type                                   # 'cancelled' | 'rescheduled'
+  newDate, newStartTime, newEndTime, newLocationId, newLocationName, newPrice
+  createdAt
+
+coaches/{coachId}/payments/{paymentId}   # Payment collection records
+  studentId, studentName, amount
+  collectedAt, createdAt
 ```
 
 ### Key Features
@@ -100,6 +137,17 @@ coaches/{coachId}/waitlist/{entryId}     # Waitlist entries from public page
     - Public page: modal form (location, day, preferred time, name, phone, notes)
     - Dashboard: tab filtering (Waiting/Contacted/Booked), status transitions, WhatsApp prefill, delete
 
+#### Phase 3 (Implemented)
+12. Student tracking — auto-created on booking creation and mark-as-done
+13. Prepaid packages — prepaidTotal/prepaidUsed per student, credit balance
+14. Lesson logging — mark-as-done creates lessonLog, increments prepaidUsed
+15. Student portal — public read-only page at /student/[token] (via Admin SDK API)
+16. Linked students — for group lessons with separate-paying parents (linkedToStudentId, linkedStudentIds[], studentPrices{})
+17. Class exceptions — cancel or reschedule individual occurrences of recurring bookings
+18. Income dashboard — projected vs. actual income, payment tracking
+19. Payment collection — record payments per student, pending payment tracking
+20. Per-student pricing — lessonRate, payPerLesson flag on Student
+
 ### Availability Engine Logic
 
 - Takes: workingHours, lessonDuration, travelBuffer, confirmedBookings, clientLocationId
@@ -116,6 +164,7 @@ coaches/{coachId}/waitlist/{entryId}     # Waitlist entries from public page
 - workingHours/locations: public read, owner write
 - bookings: public read (for availability engine), owner write
 - waitlist: public create, owner read/write/delete
+- students/lessonLogs/classExceptions/payments: owner read/write
 
 ### Test Account
 
@@ -135,9 +184,8 @@ NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
 NEXT_PUBLIC_FIREBASE_APP_ID=
 ```
 
-### Phase 3 (Future)
+### Future
 
 - WhatsApp/SMS notifications
-- Holiday/exception handling
-- Payments/subscriptions
 - Custom domains
+- Production guardrails (see memory/future-guardrails.md)
