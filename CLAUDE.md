@@ -2,6 +2,12 @@
 
 ## Project: CoachApp - Multi-Tenant Scheduling SaaS
 
+### Notes System
+
+- At the start of every session, read `NOTES.md` and briefly summarize any open items.
+- When the user says "add a note", append it to the most relevant section in `NOTES.md` with today's date.
+- When an item is resolved, mark it with ✅ and the date rather than deleting it.
+
 ### Useful Commands
 
 - `npm run dev` - Run development server (http://localhost:3000)
