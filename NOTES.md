@@ -6,19 +6,21 @@
 
 ## Architecture Questions
 
-1. (2026-03-23) **Giant page components** — `dashboard/page.tsx` (1646 lines, 48 useState) and `students/page.tsx` (1592 lines, 46 useState) are doing too much. Should we extract modal flows into separate components/hooks? What's the right split?
+1. (2026-03-23) **Payment–lesson log coupling is fragile** — credit, pendingPayment, and prepaidUsed are derived counters on the student doc, updated incrementally on each mark-as-done / delete. Deleting and re-adding lessons can desync these values (e.g., credit lost). Need a more robust approach — e.g., recompute totals from lessonLogs + payments on the fly, or link payments directly to lesson logs, so the source of truth is always the raw records rather than mutable counters.
 
-2. (2026-03-23) **No pagination on Firestore queries** — all hooks (`useBookings`, `useStudents`, `useLessonLogs`, etc.) load entire collections into memory with no limits. Fine for now with one coach, but won't scale. When should we add pagination, and which collections first?
+2. (2026-03-23) **Giant page components** — `dashboard/page.tsx` (1646 lines, 48 useState) and `students/page.tsx` (1592 lines, 46 useState) are doing too much. Should we extract modal flows into separate components/hooks? What's the right split?
 
-3. (2026-03-23) **ClassExceptions grow unbounded** — every single-date cancellation or reschedule creates a `classException` doc that's never cleaned up. A coach cancelling one class per week = 52 docs/year per booking. Should we add a cleanup strategy or TTL?
+3. (2026-03-23) **No pagination on Firestore queries** — all hooks (`useBookings`, `useStudents`, `useLessonLogs`, etc.) load entire collections into memory with no limits. Fine for now with one coach, but won't scale. When should we add pagination, and which collections first?
 
-4. (2026-03-23) **No global error boundary** — errors are handled per-action with try/catch + toast. An unhandled error in any component crashes the whole app. Should we add `error.tsx` files and/or a global error boundary?
+4. (2026-03-23) **ClassExceptions grow unbounded** — every single-date cancellation or reschedule creates a `classException` doc that's never cleaned up. A coach cancelling one class per week = 52 docs/year per booking. Should we add a cleanup strategy or TTL?
 
-5. (2026-03-23) **Client-side Firebase on every page** — Firebase SDK bundles on all pages even public ones that only use API routes. Should we lazy-load or tree-shake it for public pages?
+5. (2026-03-23) **No global error boundary** — errors are handled per-action with try/catch + toast. An unhandled error in any component crashes the whole app. Should we add `error.tsx` files and/or a global error boundary?
 
-6. (2026-03-23) **No caching on availability API** — every public page load recalculates availability from scratch. Should we add Cache-Control headers or client-side caching?
+6. (2026-03-23) **Client-side Firebase on every page** — Firebase SDK bundles on all pages even public ones that only use API routes. Should we lazy-load or tree-shake it for public pages?
 
-7. (2026-03-23) **Recurring booking model vs. individual instances** — currently bookings are recurring (one doc per weekly slot) with exceptions tracked separately. This requires loading all bookings + all exceptions to render any single day. Would flattening to individual booking instances be better as data grows?
+7. (2026-03-23) **No caching on availability API** — every public page load recalculates availability from scratch. Should we add Cache-Control headers or client-side caching?
+
+8. (2026-03-23) **Recurring booking model vs. individual instances** — currently bookings are recurring (one doc per weekly slot) with exceptions tracked separately. This requires loading all bookings + all exceptions to render any single day. Would flattening to individual booking instances be better as data grows?
 
 ## Next Session
 
