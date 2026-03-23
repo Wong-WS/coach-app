@@ -78,17 +78,22 @@ export function PhoneInput({ id, label, value, onChange, placeholder = 'Phone nu
         </label>
       )}
       <div className="flex">
-        <select
-          value={countryCode}
-          onChange={(e) => handleCodeChange(e.target.value)}
-          className="px-2 py-2 border border-r-0 border-gray-300 dark:border-zinc-500 rounded-l-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-        >
-          {COUNTRY_CODES.map((cc) => (
-            <option key={cc.code} value={cc.code}>
-              {cc.label}
-            </option>
-          ))}
-        </select>
+        <div className="relative">
+          <select
+            value={countryCode}
+            onChange={(e) => handleCodeChange(e.target.value)}
+            className="appearance-none h-full pl-3 pr-7 py-2 border border-r-0 border-gray-300 dark:border-zinc-500 rounded-l-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+          >
+            {COUNTRY_CODES.map((cc) => (
+              <option key={cc.code} value={cc.code}>
+                {cc.label}
+              </option>
+            ))}
+          </select>
+          <svg className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
         <input
           id={id}
           type="tel"
@@ -96,7 +101,7 @@ export function PhoneInput({ id, label, value, onChange, placeholder = 'Phone nu
           onChange={(e) => handleNumberChange(e.target.value)}
           placeholder={placeholder}
           required={required}
-          className="flex-1 px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-r-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
+          className="flex-1 min-w-0 px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-r-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
         />
       </div>
     </div>
