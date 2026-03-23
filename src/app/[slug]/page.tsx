@@ -6,7 +6,7 @@ import { db } from '@/lib/firebase';
 import { Coach, Location, DayOfWeek, PreferredTime } from '@/types';
 import { getDayDisplayName, formatTimeDisplay, DayAvailability } from '@/lib/availability-engine';
 import { Button } from '@/components/ui/Button';
-import { Modal, Input, Select } from '@/components/ui';
+import { Modal, Input, Select, PhoneInput } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import Link from 'next/link';
 
@@ -380,12 +380,11 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
             required
           />
 
-          <Input
+          <PhoneInput
             id="wl-phone"
             label="WhatsApp Number"
             value={waitlistForm.clientPhone}
-            onChange={(e) => setWaitlistForm({ ...waitlistForm, clientPhone: e.target.value })}
-            placeholder="+60123456789"
+            onChange={(val) => setWaitlistForm({ ...waitlistForm, clientPhone: val })}
             required
           />
 

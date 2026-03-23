@@ -5,7 +5,7 @@ import { collection, addDoc, updateDoc, doc, serverTimestamp, Firestore } from '
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useLocations, useBookings, useStudents } from '@/hooks/useCoachData';
-import { Button, Input, Select, Modal } from '@/components/ui';
+import { Button, Input, Select, Modal, PhoneInput } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { DayOfWeek, LessonType, Booking } from '@/types';
 import { getDayDisplayName, formatTimeDisplay } from '@/lib/availability-engine';
@@ -657,12 +657,11 @@ export default function BookingsPage() {
                 </div>
               </div>
 
-              <Input
+              <PhoneInput
                 id="clientPhone"
                 label="Client Phone"
                 value={formData.clientPhone}
-                onChange={(e) => setFormData({ ...formData, clientPhone: e.target.value })}
-                placeholder="+60123456789"
+                onChange={(val) => setFormData({ ...formData, clientPhone: val })}
               />
             </>
           )}
@@ -766,16 +765,13 @@ export default function BookingsPage() {
                       placeholder="Names (e.g. Natsuki and Shogo)"
                       className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm"
                     />
-                    <input
-                      type="text"
+                    <PhoneInput
                       value={pg.phone}
-                      onChange={(e) => {
+                      onChange={(val) => {
                         const updated = [...formData.paymentGroups];
-                        updated[idx] = { ...updated[idx], phone: e.target.value };
+                        updated[idx] = { ...updated[idx], phone: val };
                         setFormData({ ...formData, paymentGroups: updated });
                       }}
-                      placeholder="Phone"
-                      className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm"
                     />
                     {idx > 0 && (
                       <input

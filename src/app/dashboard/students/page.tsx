@@ -5,7 +5,7 @@ import { collection, doc, updateDoc, deleteDoc, writeBatch, serverTimestamp, inc
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useStudents, useLessonLogs, useLocations, useBookings, usePayments } from '@/hooks/useCoachData';
-import { Button, Input, Modal } from '@/components/ui';
+import { Button, Input, Modal, PhoneInput } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { Student, LessonLog, DayOfWeek } from '@/types';
 import { formatTimeDisplay } from '@/lib/availability-engine';
@@ -788,11 +788,11 @@ export default function StudentsPage() {
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
               />
-              <Input
+              <PhoneInput
                 id="editPhone"
                 label="Phone"
                 value={editPhone}
-                onChange={(e) => setEditPhone(e.target.value)}
+                onChange={(val) => setEditPhone(val)}
               />
               <div>
                 <label htmlFor="editNotes" className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
-import { Button, Input } from '@/components/ui';
+import { Button, Input, PhoneInput } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 
 export default function SignupPage() {
@@ -109,14 +109,11 @@ export default function SignupPage() {
             required
           />
 
-          <Input
+          <PhoneInput
             id="whatsappNumber"
-            name="whatsappNumber"
-            type="tel"
             label="WhatsApp Number"
             value={formData.whatsappNumber}
-            onChange={handleChange}
-            placeholder="e.g., +60123456789"
+            onChange={(val) => setFormData({ ...formData, whatsappNumber: val })}
             required
           />
 

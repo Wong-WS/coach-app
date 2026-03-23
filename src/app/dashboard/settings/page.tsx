@@ -5,7 +5,7 @@ import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useWorkingHours } from '@/hooks/useCoachData';
-import { Button, Input, Select } from '@/components/ui';
+import { Button, Input, Select, PhoneInput } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { DayOfWeek } from '@/types';
 import { getDayDisplayName } from '@/lib/availability-engine';
@@ -248,12 +248,11 @@ export default function SettingsPage() {
       {/* Contact Settings */}
       <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-6">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100 mb-6">Contact Settings</h2>
-        <Input
+        <PhoneInput
           id="whatsappNumber"
           label="WhatsApp Number"
           value={formData.whatsappNumber}
-          onChange={(e) => setFormData({ ...formData, whatsappNumber: e.target.value })}
-          placeholder="+60123456789"
+          onChange={(val) => setFormData({ ...formData, whatsappNumber: val })}
         />
         <p className="text-sm text-gray-500 dark:text-zinc-400 mt-2">
           Clients will use this number to contact you via WhatsApp.
