@@ -2,7 +2,23 @@
 
 ## Bugs / Broken Things
 
+- (2026-03-23) Memory leak in `useCoachBySlug` — nested `onSnapshot` inside outer `onSnapshot` never gets unsubscribed. Inner listener accumulates on every outer update. (`src/hooks/useCoachData.ts`)
+
 ## Architecture Questions
+
+1. (2026-03-23) **Giant page components** — `dashboard/page.tsx` (1646 lines, 48 useState) and `students/page.tsx` (1592 lines, 46 useState) are doing too much. Should we extract modal flows into separate components/hooks? What's the right split?
+
+2. (2026-03-23) **No pagination on Firestore queries** — all hooks (`useBookings`, `useStudents`, `useLessonLogs`, etc.) load entire collections into memory with no limits. Fine for now with one coach, but won't scale. When should we add pagination, and which collections first?
+
+3. (2026-03-23) **ClassExceptions grow unbounded** — every single-date cancellation or reschedule creates a `classException` doc that's never cleaned up. A coach cancelling one class per week = 52 docs/year per booking. Should we add a cleanup strategy or TTL?
+
+4. (2026-03-23) **No global error boundary** — errors are handled per-action with try/catch + toast. An unhandled error in any component crashes the whole app. Should we add `error.tsx` files and/or a global error boundary?
+
+5. (2026-03-23) **Client-side Firebase on every page** — Firebase SDK bundles on all pages even public ones that only use API routes. Should we lazy-load or tree-shake it for public pages?
+
+6. (2026-03-23) **No caching on availability API** — every public page load recalculates availability from scratch. Should we add Cache-Control headers or client-side caching?
+
+7. (2026-03-23) **Recurring booking model vs. individual instances** — currently bookings are recurring (one doc per weekly slot) with exceptions tracked separately. This requires loading all bookings + all exceptions to render any single day. Would flattening to individual booking instances be better as data grows?
 
 ## Next Session
 
