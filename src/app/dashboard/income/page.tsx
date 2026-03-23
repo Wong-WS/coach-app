@@ -45,8 +45,10 @@ export default function IncomePage() {
   const { lessonLogs, loading: logsLoading } = useLessonLogs(coach?.id);
   const { payments, loading: paymentsLoading } = usePayments(coach?.id);
 
-  const unpricedCount = bookings.filter((b) => !b.price).length;
-  const weeklyTotal = bookings.reduce((sum, b) => sum + (b.price ?? 0), 0);
+  // Only recurring bookings (no endDate) for projections
+  const recurringBookings = bookings.filter((b) => !b.endDate);
+  const unpricedCount = recurringBookings.filter((b) => !b.price).length;
+  const weeklyTotal = recurringBookings.reduce((sum, b) => sum + (b.price ?? 0), 0);
   const monthlyTotal = weeklyTotal * (52 / 12);
   const annualTotal = weeklyTotal * 52;
 
@@ -244,7 +246,7 @@ export default function IncomePage() {
         <div className="p-6 border-b border-gray-100 dark:border-[#333333]">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">Booking Breakdown</h2>
         </div>
-        {bookings.length === 0 ? (
+        {recurringBookings.length === 0 ? (
           <div className="p-6 text-center text-gray-400 dark:text-zinc-500">
             No confirmed bookings yet.
           </div>
@@ -261,7 +263,7 @@ export default function IncomePage() {
                 </tr>
               </thead>
               <tbody>
-                {bookings.map((booking) => {
+                {recurringBookings.map((booking) => {
                   const price = booking.price ?? 0;
                   const pct = weeklyTotal > 0 ? ((price / weeklyTotal) * 100).toFixed(1) : '\u2014';
                   return (
