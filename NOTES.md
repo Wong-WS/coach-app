@@ -26,6 +26,7 @@
 
 ## Ideas (not urgent)
 
+- (2026-03-23) Run full E2E bug hunt using Chrome MCP — let Claude click through the app and find edge cases, broken flows, and UI issues
 - (2026-03-23) UI/UX design overhaul — revisit the overall app design
 - WhatsApp/SMS notifications
 - Custom domains
