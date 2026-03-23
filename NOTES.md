@@ -8,6 +8,7 @@
 
 ## Ideas (not urgent)
 
+- (2026-03-23) UI/UX design overhaul — revisit the overall app design
 - WhatsApp/SMS notifications
 - Custom domains
 - Production guardrails: prevent marking done for future dates
