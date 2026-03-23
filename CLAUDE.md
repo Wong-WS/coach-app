@@ -5,6 +5,7 @@
 ### Notes System
 
 - At the start of every session, read `NOTES.md` and briefly summarize any open items.
+- When the user asks about current status, open items, or what to work on (e.g., "what's on the table", "what's the plan", "status update", "what are we working on"), read `NOTES.md` and give a concise briefing of open bugs, next session items, and any relevant ideas.
 - When the user says "add a note", append it to the most relevant section in `NOTES.md` with today's date.
 - When an item is resolved, mark it with ✅ and the date rather than deleting it.
 
