@@ -20,7 +20,9 @@
 
 7. (2026-03-23) **No caching on availability API** — every public page load recalculates availability from scratch. Should we add Cache-Control headers or client-side caching?
 
-8. (2026-03-23) **Recurring booking model vs. individual instances** — currently bookings are recurring (one doc per weekly slot) with exceptions tracked separately. This requires loading all bookings + all exceptions to render any single day. Would flattening to individual booking instances be better as data grows?
+8. (2026-03-23) **Multiple entry points for creating students/bookings** — bookings can be created from both the Bookings page and the Overview (Today's Classes) page via ad-hoc classes. Students get auto-created in multiple places too. This risks inconsistent data (e.g., pricing, package tracking, lesson logs). Should we consolidate to a single flow for each? Need to balance simplicity vs. convenience — the ad-hoc class feature on Overview is handy, but it bypasses the full booking form. Think about: what's the ideal flow where data stays clean (lesson logs, prepaid tracking, payments) without making the coach jump between pages?
+
+9. (2026-03-23) **Recurring booking model vs. individual instances** — currently bookings are recurring (one doc per weekly slot) with exceptions tracked separately. This requires loading all bookings + all exceptions to render any single day. Would flattening to individual booking instances be better as data grows?
 
 ## Next Session
 
