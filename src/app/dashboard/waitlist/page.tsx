@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useWaitlist } from '@/hooks/useCoachData';
 import { Button, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
+import { formatDateMedium } from '@/lib/date-format';
 import { WaitlistStatus, WaitlistEntry } from '@/types';
 import { getDayDisplayName } from '@/lib/availability-engine';
 
@@ -188,7 +189,7 @@ export default function WaitlistPage() {
                   </div>
                 )}
                 <p className="text-xs text-gray-400 dark:text-zinc-500 mt-2">
-                  Joined {entry.createdAt.toLocaleDateString()}
+                  Joined {formatDateMedium(entry.createdAt)}
                 </p>
               </div>
 

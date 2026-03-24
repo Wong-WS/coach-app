@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useBookings, useLessonLogs, usePayments } from '@/hooks/useCoachData';
 import { getDayDisplayName, formatTimeDisplay } from '@/lib/availability-engine';
+import { formatDateMedium } from '@/lib/date-format';
 
 function getWeekRange(): { start: string; end: string } {
   const now = new Date();
@@ -227,7 +228,7 @@ export default function IncomePage() {
                     className="border-b border-gray-50 dark:border-[#2a2a2a] last:border-0 hover:bg-gray-50 dark:hover:bg-[#262626]"
                   >
                     <td className="px-6 py-3 text-gray-900 dark:text-zinc-100">
-                      {payment.collectedAt.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {formatDateMedium(payment.collectedAt)}
                     </td>
                     <td className="px-6 py-3 text-gray-600 dark:text-zinc-400">{payment.studentName}</td>
                     <td className="px-6 py-3 text-right">

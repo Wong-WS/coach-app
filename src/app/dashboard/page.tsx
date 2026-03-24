@@ -11,6 +11,7 @@ import { Booking, Student } from '@/types';
 import { formatTimeDisplay } from '@/lib/availability-engine';
 import { findOrCreateStudent } from '@/lib/students';
 import { getClassesForDate, getDayOfWeekForDate, isRescheduledToDate, getCancelledClassesForDate } from '@/lib/class-schedule';
+import { formatDateFull, formatDateShort } from '@/lib/date-format';
 
 function getDateString(date: Date): string {
   const yyyy = date.getFullYear();
@@ -679,12 +680,7 @@ export default function DashboardPage() {
     );
   }
 
-  const formattedDate = selectedDate.toLocaleDateString('en-MY', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  const formattedDate = formatDateFull(selectedDate);
 
   return (
     <div className="space-y-6">
@@ -1099,7 +1095,7 @@ export default function DashboardPage() {
                 {formatTimeDisplay(rescheduleBooking.startTime)} – {formatTimeDisplay(rescheduleBooking.endTime)} &middot; {rescheduleBooking.locationName}
               </p>
               <p className="text-sm text-gray-400 dark:text-zinc-500 mt-1">
-                Original date: {selectedDate.toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long' })}
+                Original date: {formatDateFull(selectedDate)}
               </p>
             </div>
 
@@ -1157,7 +1153,7 @@ export default function DashboardPage() {
                 {editBooking.clientName}
               </p>
               <p className="text-sm text-gray-500 dark:text-zinc-400">
-                {selectedDate.toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long' })}
+                {formatDateFull(selectedDate)}
               </p>
             </div>
 
@@ -1219,7 +1215,7 @@ export default function DashboardPage() {
               className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-[#444] hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
             >
               <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This event only</p>
-              <p className="text-xs text-gray-500 dark:text-zinc-400">Only change the class on {selectedDate.toLocaleDateString('en-MY', { day: 'numeric', month: 'short' })}</p>
+              <p className="text-xs text-gray-500 dark:text-zinc-400">Only change the class on {formatDateShort(selectedDate)}</p>
             </button>
             <button
               onClick={() => handleEditSave('future')}
@@ -1227,7 +1223,7 @@ export default function DashboardPage() {
               className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-[#444] hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
             >
               <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This and future events</p>
-              <p className="text-xs text-gray-500 dark:text-zinc-400">Apply from {selectedDate.toLocaleDateString('en-MY', { day: 'numeric', month: 'short' })} onwards</p>
+              <p className="text-xs text-gray-500 dark:text-zinc-400">Apply from {formatDateShort(selectedDate)} onwards</p>
             </button>
             <button
               onClick={() => handleEditSave('all')}

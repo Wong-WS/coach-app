@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { Student, LessonLog, DayOfWeek } from '@/types';
 import { formatTimeDisplay } from '@/lib/availability-engine';
 import { findOrCreateStudent } from '@/lib/students';
+import { formatDateMedium } from '@/lib/date-format';
 
 export default function StudentsPage() {
   const { coach } = useAuth();
@@ -1405,7 +1406,7 @@ export default function StudentsPage() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <p className="text-gray-900 dark:text-zinc-100">
-                              {payment.collectedAt.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              {formatDateMedium(payment.collectedAt)}
                             </p>
                             <button
                               onClick={() => {

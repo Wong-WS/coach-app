@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, use } from 'react';
+import { formatDateMedium, parseDateString } from '@/lib/date-format';
 
 interface PortalData {
   studentName: string;
@@ -159,7 +160,7 @@ export default function StudentPortalPage({ params }: { params: Promise<{ token:
               {data.lessons.map((lesson, i) => (
                 <div key={i} className="px-4 sm:px-6 py-3">
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-medium text-gray-900">{lesson.date}</p>
+                    <p className="text-sm font-medium text-gray-900">{formatDateMedium(parseDateString(lesson.date))}</p>
                     <p className="text-xs text-gray-400 text-right shrink-0">{lesson.locationName}</p>
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">

@@ -426,7 +426,7 @@ export default function BookingsPage() {
                     {bookingsByDay[day].map((booking) => (
                       <div
                         key={booking.id}
-                        className="flex items-start justify-between p-4 bg-gray-50 dark:bg-[#1a1a1a]/50 rounded-lg"
+                        className="flex items-start justify-between p-4 bg-gray-50 dark:bg-[#1a1a1a]/50 rounded-lg h-full"
                       >
                         <div>
                           <div className="flex items-center gap-2">
