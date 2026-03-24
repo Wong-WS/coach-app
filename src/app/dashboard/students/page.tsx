@@ -708,7 +708,10 @@ export default function StudentsPage() {
               )}
             </div>
           ) : (
-            'No students match your search.'
+            dayFilter === 'payment-due' ? 'No students with unpaid balances.'
+            : dayFilter === 'no-booking' ? 'All students have bookings.'
+            : dayFilter !== 'all' ? `No students with bookings on ${dayFilter.charAt(0).toUpperCase() + dayFilter.slice(1)}.`
+            : 'No students match your search.'
           )}
         </div>
       ) : (
