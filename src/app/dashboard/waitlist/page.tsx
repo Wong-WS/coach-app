@@ -119,7 +119,7 @@ export default function WaitlistPage() {
             onClick={() => setActiveTab(tab.value)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               activeTab === tab.value
-                ? 'bg-purple-600 text-white'
+                ? 'bg-blue-600 text-white'
                 : 'bg-white dark:bg-[#1f1f1f] text-gray-700 dark:text-zinc-300 border border-gray-200 dark:border-[#333333] hover:bg-gray-50 dark:hover:bg-[#303030]'
             }`}
           >
