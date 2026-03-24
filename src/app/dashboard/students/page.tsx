@@ -626,7 +626,7 @@ export default function StudentsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100">Students</h1>
           <p className="text-gray-600 dark:text-zinc-400 mt-1">
-            {students.length} student{students.length !== 1 ? 's' : ''}
+            {filtered.length} student{filtered.length !== 1 ? 's' : ''}{dayFilter !== 'all' || search ? ` (of ${students.length})` : ''}
           </p>
         </div>
         {bookings.length > 0 && (
