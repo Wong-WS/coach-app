@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { Student, LessonLog, DayOfWeek } from '@/types';
 import { formatTimeDisplay } from '@/lib/availability-engine';
 import { findOrCreateStudent } from '@/lib/students';
-import { formatDateMedium } from '@/lib/date-format';
+import { formatDateMedium, parseDateString } from '@/lib/date-format';
 
 export default function StudentsPage() {
   const { coach } = useAuth();
@@ -1280,7 +1280,7 @@ export default function StudentsPage() {
                       className="flex items-center justify-between text-sm p-2 bg-gray-50 dark:bg-[#1a1a1a]/50 rounded"
                     >
                       <div>
-                        <p className="text-gray-900 dark:text-zinc-100">{log.date.split('-').reverse().join('-')}</p>
+                        <p className="text-gray-900 dark:text-zinc-100">{formatDateMedium(parseDateString(log.date))}</p>
                         <p className="text-xs text-gray-500 dark:text-zinc-400">
                           {formatTimeDisplay(log.startTime)} – {formatTimeDisplay(log.endTime)} &middot; {log.locationName}
                         </p>
