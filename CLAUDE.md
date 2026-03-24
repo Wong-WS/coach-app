@@ -7,6 +7,7 @@
 - **Card lists must have uniform height.** Never add extra lines (subtitles, secondary text) that make some cards taller than others. Keep card content single-line. Move metadata like "Linked to X" into badges on the right side, not subtitles below the name.
 - **Badges/pills must have proper spacing.** When placing multiple badges side-by-side, use `gap-2` or similar. Never let them touch or cramp together.
 - **Hide detail-panel-only info from list cards.** Phone numbers, notes, and other details belong in the detail panel, not the card list.
+- **Never use `window.confirm` or `window.alert`.** Always use the app's `<Modal>` component for confirmations and dialogs.
 
 ### Notes System
 
