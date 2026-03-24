@@ -752,7 +752,7 @@ export default function StudentsPage() {
                   <div className="text-right">
                     {Math.max(0, student.pendingPayment - (student.credit ?? 0)) > 0 && (
                       <span className="text-xs px-2 py-0.5 rounded-full mt-1 inline-block bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                        RM {Math.max(0, student.pendingPayment - (student.credit ?? 0))} due
+                        RM {Math.max(0, student.pendingPayment - (student.credit ?? 0))} unpaid
                       </span>
                     )}
                     {hasPrepaid ? (
@@ -826,7 +826,7 @@ export default function StudentsPage() {
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                    Payment due: RM {Math.max(0, selectedStudent.pendingPayment - (selectedStudent.credit ?? 0))}
+                    Unpaid: RM {Math.max(0, selectedStudent.pendingPayment - (selectedStudent.credit ?? 0))}
                   </p>
                 </div>
                 <Button
@@ -963,12 +963,29 @@ export default function StudentsPage() {
                     onClick={async () => {
                       if (!coach || !db || !selectedStudent) return;
                       const newVal = !selectedStudent.payPerLesson;
+                      const hasPending = Math.max(0, selectedStudent.pendingPayment - (selectedStudent.credit ?? 0)) > 0;
+                      // When switching to pay-per-lesson with a pending balance, confirm clearing it
+                      if (newVal && hasPending) {
+                        const amount = Math.max(0, selectedStudent.pendingPayment - (selectedStudent.credit ?? 0));
+                        if (!window.confirm(`Switching to pay per lesson will clear the RM ${amount} unpaid balance (no payment will be recorded). Continue?`)) {
+                          return;
+                        }
+                      }
                       try {
+                        const updatePayload: Record<string, unknown> = { payPerLesson: newVal, updatedAt: serverTimestamp() };
+                        if (newVal && hasPending) {
+                          updatePayload.pendingPayment = 0;
+                          updatePayload.credit = 0;
+                        }
                         await updateDoc(
                           doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
-                          { payPerLesson: newVal, updatedAt: serverTimestamp() }
+                          updatePayload
                         );
-                        setSelectedStudent((prev) => prev ? { ...prev, payPerLesson: newVal } : null);
+                        setSelectedStudent((prev) => prev ? {
+                          ...prev,
+                          payPerLesson: newVal,
+                          ...(newVal && hasPending ? { pendingPayment: 0, credit: 0 } : {}),
+                        } : null);
                         showToast(newVal ? 'Switched to pay per lesson' : 'Switched to package mode', 'success');
                       } catch {
                         showToast('Failed to update payment mode', 'error');
