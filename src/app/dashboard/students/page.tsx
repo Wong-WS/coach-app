@@ -1448,6 +1448,7 @@ export default function StudentsPage() {
                     label="Date"
                     type="date"
                     value={lessonDate}
+                    max={new Date().toISOString().split('T')[0]}
                     onChange={(e) => setLessonDate(e.target.value)}
                   />
                   <div>
