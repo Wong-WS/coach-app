@@ -1181,14 +1181,9 @@ export default function StudentsPage() {
               <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">
                 Student Portal Link
               </h3>
-              <div className="flex items-center gap-2">
-                <code className="text-xs bg-gray-100 dark:bg-[#1a1a1a] px-2 py-1 rounded flex-1 truncate text-gray-600 dark:text-zinc-400">
-                  /student/{selectedStudent.linkToken}
-                </code>
-                <Button variant="secondary" size="sm" onClick={copyPortalLink}>
-                  {copied ? 'Copied!' : 'Copy'}
-                </Button>
-              </div>
+              <Button variant="secondary" size="sm" onClick={copyPortalLink}>
+                {copied ? 'Copied!' : 'Copy Portal Link'}
+              </Button>
             </div>
 
             {/* Linked Students */}
