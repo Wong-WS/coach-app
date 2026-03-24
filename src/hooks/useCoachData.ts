@@ -339,7 +339,15 @@ export function useCoachBySlug(slug: string) {
     const firestore = db as Firestore;
     const slugDocRef = doc(firestore, 'coachSlugs', slug);
 
+    let unsubscribeCoach: (() => void) | null = null;
+
     const unsubscribeSlug = onSnapshot(slugDocRef, (slugDoc) => {
+      // Clean up previous inner listener before creating a new one
+      if (unsubscribeCoach) {
+        unsubscribeCoach();
+        unsubscribeCoach = null;
+      }
+
       if (!slugDoc.exists()) {
         setError('Coach not found');
         setLoading(false);
@@ -349,7 +357,7 @@ export function useCoachBySlug(slug: string) {
       const coachId = slugDoc.data().coachId;
       const coachDocRef = doc(firestore, 'coaches', coachId);
 
-      onSnapshot(coachDocRef, (coachDoc) => {
+      unsubscribeCoach = onSnapshot(coachDocRef, (coachDoc) => {
         if (!coachDoc.exists()) {
           setError('Coach profile not found');
           setLoading(false);
@@ -369,7 +377,12 @@ export function useCoachBySlug(slug: string) {
       });
     });
 
-    return () => unsubscribeSlug();
+    return () => {
+      unsubscribeSlug();
+      if (unsubscribeCoach) {
+        unsubscribeCoach();
+      }
+    };
   }, [slug]);
 
   return { coach, loading, error };
