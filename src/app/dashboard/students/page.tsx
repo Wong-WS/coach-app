@@ -73,6 +73,10 @@ export default function StudentsPage() {
   const [editLessonRate, setEditLessonRate] = useState(0);
   const [savingPrepaid, setSavingPrepaid] = useState(false);
 
+  // Confirm switch to pay-per-lesson (clear pending balance)
+  const [showClearPendingModal, setShowClearPendingModal] = useState(false);
+  const [clearPendingAmount, setClearPendingAmount] = useState(0);
+
   // Renew package after payment modal
   const [showRenewModal, setShowRenewModal] = useState(false);
   const [renewAmount, setRenewAmount] = useState(0);
@@ -961,28 +965,18 @@ export default function StudentsPage() {
                       if (!coach || !db || !selectedStudent) return;
                       const newVal = !selectedStudent.payPerLesson;
                       const hasPending = Math.max(0, selectedStudent.pendingPayment - (selectedStudent.credit ?? 0)) > 0;
-                      // When switching to pay-per-lesson with a pending balance, confirm clearing it
+                      // When switching to pay-per-lesson with a pending balance, show confirmation modal
                       if (newVal && hasPending) {
-                        const amount = Math.max(0, selectedStudent.pendingPayment - (selectedStudent.credit ?? 0));
-                        if (!window.confirm(`Switching to pay per lesson will clear the RM ${amount} unpaid balance (no payment will be recorded). Continue?`)) {
-                          return;
-                        }
+                        setClearPendingAmount(Math.max(0, selectedStudent.pendingPayment - (selectedStudent.credit ?? 0)));
+                        setShowClearPendingModal(true);
+                        return;
                       }
                       try {
-                        const updatePayload: Record<string, unknown> = { payPerLesson: newVal, updatedAt: serverTimestamp() };
-                        if (newVal && hasPending) {
-                          updatePayload.pendingPayment = 0;
-                          updatePayload.credit = 0;
-                        }
                         await updateDoc(
                           doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
-                          updatePayload
+                          { payPerLesson: newVal, updatedAt: serverTimestamp() }
                         );
-                        setSelectedStudent((prev) => prev ? {
-                          ...prev,
-                          payPerLesson: newVal,
-                          ...(newVal && hasPending ? { pendingPayment: 0, credit: 0 } : {}),
-                        } : null);
+                        setSelectedStudent((prev) => prev ? { ...prev, payPerLesson: newVal } : null);
                         showToast(newVal ? 'Switched to pay per lesson' : 'Switched to package mode', 'success');
                       } catch {
                         showToast('Failed to update payment mode', 'error');
@@ -1549,6 +1543,43 @@ export default function StudentsPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Clear Pending Balance Confirmation Modal */}
+      <Modal
+        isOpen={showClearPendingModal}
+        onClose={() => setShowClearPendingModal(false)}
+        title="Switch to Pay per Lesson?"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-zinc-400">
+            This will clear the RM {clearPendingAmount} unpaid balance. No payment will be recorded.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              className="flex-1"
+              onClick={async () => {
+                if (!coach || !db || !selectedStudent) return;
+                try {
+                  await updateDoc(
+                    doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                    { payPerLesson: true, pendingPayment: 0, credit: 0, updatedAt: serverTimestamp() }
+                  );
+                  setSelectedStudent((prev) => prev ? { ...prev, payPerLesson: true, pendingPayment: 0, credit: 0 } : null);
+                  showToast('Switched to pay per lesson', 'success');
+                  setShowClearPendingModal(false);
+                } catch {
+                  showToast('Failed to update payment mode', 'error');
+                }
+              }}
+            >
+              Clear &amp; Switch
+            </Button>
+            <Button variant="secondary" className="flex-1" onClick={() => setShowClearPendingModal(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       {/* Renew Package Modal */}
