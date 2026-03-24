@@ -720,36 +720,33 @@ export default function StudentsPage() {
                 onClick={() => openDetail(student)}
                 className="text-left bg-white dark:bg-[#1f1f1f] rounded-xl p-4 shadow-sm border border-gray-100 dark:border-[#333333] hover:border-blue-200 dark:hover:border-blue-700 transition-colors"
               >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-medium text-gray-900 dark:text-zinc-100">
+                <div className="flex items-center justify-between">
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900 dark:text-zinc-100 truncate">
                       {(() => {
                         const linked = students.filter((s) => s.linkedToStudentId === student.id);
                         if (linked.length === 0) return student.clientName;
                         const names = [student.clientName, ...linked.map((s) => s.clientName)];
                         return names.length <= 2
                           ? names.join(' and ')
-                          : names.slice(0, -1).join(', ') + ', and ' + names[names.length - 1];
+                          : names.slice(0, -1).join(', ') + ', ' + names[names.length - 1];
                       })()}
                     </p>
-                    <p className="text-sm text-gray-500 dark:text-zinc-400 mt-0.5">
-                      {student.clientPhone}
-                    </p>
                     {dayInfo && (
-                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
                         {formatTimeDisplay(dayInfo.startTime)} - {formatTimeDisplay(dayInfo.endTime)} &middot; {dayInfo.locationName}
                       </p>
                     )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
                     {student.linkedToStudentId && (() => {
                       const primary = students.find((s) => s.id === student.linkedToStudentId);
                       return primary ? (
-                        <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
                           Linked to {primary.clientName}
-                        </p>
+                        </span>
                       ) : null;
                     })()}
-                  </div>
-                  <div className="flex items-center gap-2">
                     {Math.max(0, student.pendingPayment - (student.credit ?? 0)) > 0 && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
                         RM {Math.max(0, student.pendingPayment - (student.credit ?? 0))} unpaid
