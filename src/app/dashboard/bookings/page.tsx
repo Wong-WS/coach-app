@@ -452,8 +452,10 @@ export default function BookingsPage() {
                               : booking.clientName}
                           </p>
                           <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{booking.locationName}</p>
-                          {(booking.price ?? 0) > 0 && (
-                            <p className="text-xs font-medium text-green-600 dark:text-green-400 mt-1">RM {booking.price}</p>
+                          {booking.price != null && (
+                            <p className={`text-xs font-medium mt-1 ${booking.price > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-zinc-500'}`}>
+                              {booking.price > 0 ? `RM ${booking.price}` : 'Free'}
+                            </p>
                           )}
                         </div>
                         <div className="flex flex-col gap-1 ml-2">
