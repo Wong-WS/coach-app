@@ -2,7 +2,7 @@
 
 ## Bugs / Broken Things
 
-- (2026-03-23) Memory leak in `useCoachBySlug` — nested `onSnapshot` inside outer `onSnapshot` never gets unsubscribed. Inner listener accumulates on every outer update. (`src/hooks/useCoachData.ts`)
+- ✅ (2026-03-24) Memory leak in `useCoachBySlug` — nested `onSnapshot` inside outer `onSnapshot` never gets unsubscribed. Inner listener accumulates on every outer update. (`src/hooks/useCoachData.ts`)
 
 ## Architecture Questions
 
@@ -26,7 +26,7 @@
 
 ## Next Session
 
-- (2026-03-23) Edge case to discuss: Woojin + 3 kids class — details TBD
+- ✅ (2026-03-24) Edge case: Woojin + 3 kids class — 4 kids as one student record, one parent pays for all. Holiday scenario (2 kids away) handled by adjusting price on mark-as-done. Switching to pay-per-lesson now clears pending balance. Renamed "due" → "unpaid" labels.
 
 ## Ideas (not urgent)
 
@@ -34,6 +34,7 @@
 - (2026-03-23) UI/UX design overhaul — revisit the overall app design
 - WhatsApp/SMS notifications
 - Custom domains
-- Production guardrails: prevent marking done for future dates
+- ✅ (2026-03-24) Production guardrails: prevent marking done for future dates
 - Production guardrails: restrict prepaid package editing (admin mode or audit log)
 - Production guardrails: lesson log deletion safeguards (confirmation dialog, soft-delete, time-limited)
+- (2026-03-24) Income page: projected collected income — estimate how much the coach will likely collect from students (based on active packages, lesson rates, pending payments, etc.)
