@@ -749,15 +749,15 @@ export default function StudentsPage() {
                       ) : null;
                     })()}
                   </div>
-                  <div className="text-right">
+                  <div className="flex flex-col items-end gap-1.5">
                     {Math.max(0, student.pendingPayment - (student.credit ?? 0)) > 0 && (
-                      <span className="text-xs px-2 py-0.5 rounded-full mt-1 inline-block bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
                         RM {Math.max(0, student.pendingPayment - (student.credit ?? 0))} unpaid
                       </span>
                     )}
                     {hasPrepaid ? (
                       <span
-                        className={`text-xs px-2 py-0.5 rounded-full mt-1 inline-block ${
+                        className={`text-xs px-2 py-0.5 rounded-full ${
                           expired
                             ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
                             : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
@@ -766,11 +766,11 @@ export default function StudentsPage() {
                         {student.prepaidUsed}/{student.prepaidTotal}
                       </span>
                     ) : student.payPerLesson ? (
-                      <span className="text-xs px-2 py-0.5 rounded-full mt-1 inline-block bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
                         Pay per lesson
                       </span>
                     ) : (
-                      <span className="text-xs text-gray-400 dark:text-zinc-500 mt-1 inline-block">
+                      <span className="text-xs text-gray-400 dark:text-zinc-500">
                         No package
                       </span>
                     )}
