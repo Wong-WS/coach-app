@@ -848,12 +848,14 @@ export default function DashboardPage() {
                         <>
                           <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(null)} />
                           <div className="absolute right-0 top-full mt-1 z-20 w-40 bg-white dark:bg-[#2a2a2a] rounded-lg shadow-lg border border-gray-200 dark:border-[#444] py-1">
+                            {selectedDateStr <= todayStr && (
                             <button
                               onClick={() => openMarkDone(booking)}
                               className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#333]"
                             >
                               Mark Done
                             </button>
+                            )}
                             <button
                               onClick={() => openEditBooking(booking)}
                               className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#333]"
