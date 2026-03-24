@@ -856,9 +856,11 @@ export default function DashboardPage() {
                                   ? 'text-gray-400 dark:text-zinc-600 cursor-not-allowed'
                                   : 'text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#333]'
                               }`}
-                              title={selectedDateStr > todayStr ? 'Cannot mark future classes as done' : undefined}
                             >
                               Mark Done
+                              {selectedDateStr > todayStr && (
+                                <span className="block text-xs text-gray-400 dark:text-zinc-600">(future date)</span>
+                              )}
                             </button>
                             <button
                               onClick={() => openEditBooking(booking)}
