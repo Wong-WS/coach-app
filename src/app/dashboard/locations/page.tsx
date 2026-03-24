@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { collection, addDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useLocations } from '@/hooks/useCoachData';
@@ -14,6 +14,7 @@ export default function LocationsPage() {
   const { showToast } = useToast();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     address: '',
@@ -23,25 +24,51 @@ export default function LocationsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  const handleAdd = async (e: React.FormEvent) => {
+  const openAddModal = () => {
+    setEditingId(null);
+    setFormData({ name: '', address: '', notes: '' });
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (location: { id: string; name: string; address?: string; notes?: string }) => {
+    setEditingId(location.id);
+    setFormData({
+      name: location.name,
+      address: location.address || '',
+      notes: location.notes || '',
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!coach || !db || !formData.name.trim()) return;
     setSaving(true);
 
     try {
-      await addDoc(collection(db, 'coaches', coach.id, 'locations'), {
-        name: formData.name.trim(),
-        address: formData.address.trim() || null,
-        notes: formData.notes.trim() || null,
-        createdAt: serverTimestamp(),
-      });
+      if (editingId) {
+        await updateDoc(doc(db, 'coaches', coach.id, 'locations', editingId), {
+          name: formData.name.trim(),
+          address: formData.address.trim() || null,
+          notes: formData.notes.trim() || null,
+        });
+        showToast('Location updated!', 'success');
+      } else {
+        await addDoc(collection(db, 'coaches', coach.id, 'locations'), {
+          name: formData.name.trim(),
+          address: formData.address.trim() || null,
+          notes: formData.notes.trim() || null,
+          createdAt: serverTimestamp(),
+        });
+        showToast('Location added!', 'success');
+      }
 
       setFormData({ name: '', address: '', notes: '' });
+      setEditingId(null);
       setIsModalOpen(false);
-      showToast('Location added!', 'success');
     } catch (error) {
-      console.error('Error adding location:', error);
-      showToast('Failed to add location', 'error');
+      console.error('Error saving location:', error);
+      showToast(editingId ? 'Failed to update location' : 'Failed to add location', 'error');
     } finally {
       setSaving(false);
     }
@@ -78,7 +105,7 @@ export default function LocationsPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100">Locations</h1>
           <p className="text-gray-600 dark:text-zinc-400 mt-1">Manage your lesson locations</p>
         </div>
-        <Button onClick={() => setIsModalOpen(true)}>Add Location</Button>
+        <Button onClick={openAddModal}>Add Location</Button>
       </div>
 
       {/* Locations list */}
@@ -91,7 +118,7 @@ export default function LocationsPage() {
           </div>
           <h3 className="text-lg font-medium text-gray-900 dark:text-zinc-100 mb-2">No locations yet</h3>
           <p className="text-gray-600 dark:text-zinc-400 mb-6">Add your first location to get started.</p>
-          <Button onClick={() => setIsModalOpen(true)}>Add Location</Button>
+          <Button onClick={openAddModal}>Add Location</Button>
         </div>
       ) : (
         <div className="grid gap-4">
@@ -118,14 +145,23 @@ export default function LocationsPage() {
                     )}
                   </div>
                 </div>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={() => setConfirmDeleteId(location.id)}
-                  loading={deletingId === location.id}
-                >
-                  Delete
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openEditModal(location)}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => setConfirmDeleteId(location.id)}
+                    loading={deletingId === location.id}
+                  >
+                    Delete
+                  </Button>
+                </div>
               </div>
             </div>
           ))}
@@ -149,13 +185,13 @@ export default function LocationsPage() {
         </div>
       </Modal>
 
-      {/* Add Location Modal */}
+      {/* Add/Edit Location Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title="Add Location"
+        title={editingId ? 'Edit Location' : 'Add Location'}
       >
-        <form onSubmit={handleAdd} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <Input
             id="name"
             label="Location Name"
@@ -189,7 +225,7 @@ export default function LocationsPage() {
               Cancel
             </Button>
             <Button type="submit" loading={saving}>
-              Add Location
+              {editingId ? 'Save Changes' : 'Add Location'}
             </Button>
           </div>
         </form>
