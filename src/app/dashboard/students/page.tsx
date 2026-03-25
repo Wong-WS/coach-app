@@ -976,11 +976,16 @@ export default function StudentsPage() {
                         return;
                       }
                       try {
+                        const updateData: Record<string, unknown> = { payPerLesson: newVal, updatedAt: serverTimestamp() };
+                        if (newVal) {
+                          updateData.prepaidTotal = 0;
+                          updateData.prepaidUsed = 0;
+                        }
                         await updateDoc(
                           doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
-                          { payPerLesson: newVal, updatedAt: serverTimestamp() }
+                          updateData
                         );
-                        setSelectedStudent((prev) => prev ? { ...prev, payPerLesson: newVal } : null);
+                        setSelectedStudent((prev) => prev ? { ...prev, payPerLesson: newVal, ...(newVal ? { prepaidTotal: 0, prepaidUsed: 0 } : {}) } : null);
                         showToast(newVal ? 'Switched to pay per lesson' : 'Switched to package mode', 'success');
                       } catch {
                         showToast('Failed to update payment mode', 'error');
