@@ -71,23 +71,32 @@ function computeProjectedCollections(
   let payPerLessonTotal = 0;
 
   for (const student of students) {
-    const bookings = studentBookingsMap.get(student.id);
-    if (!bookings || bookings.length === 0) continue;
+    const studentBookings = studentBookingsMap.get(student.id);
+    if (!studentBookings || studentBookings.length === 0) continue;
 
-    const rate = student.lessonRate ?? 0;
-    if (rate <= 0) continue;
+    // Use lessonRate if set, otherwise fall back to the booking price
+    // For linked students, use studentPrices from the booking if available
+    const getRate = (b: Booking) => {
+      if (student.lessonRate != null && student.lessonRate > 0) return student.lessonRate;
+      if (b.studentPrices?.[student.id] != null) return b.studentPrices[student.id];
+      return b.price ?? 0;
+    };
 
     if (student.payPerLesson) {
-      // Count lessons in the target month
-      let lessonCount = 0;
-      for (const b of bookings) {
-        lessonCount += countDayOccurrencesInMonth(b.dayOfWeek, year, month);
+      // Count lessons in the target month × rate per lesson
+      for (const b of studentBookings) {
+        const rate = getRate(b);
+        if (rate <= 0) continue;
+        const count = countDayOccurrencesInMonth(b.dayOfWeek, year, month);
+        payPerLessonTotal += count * rate;
       }
-      payPerLessonTotal += lessonCount * rate;
     } else if (student.prepaidTotal > 0) {
       // Package student — figure out when package exhausts
+      const rate = getRate(studentBookings[0]);
+      if (rate <= 0) continue;
+
       const remaining = Math.max(0, student.prepaidTotal - student.prepaidUsed);
-      const lessonsPerWeek = bookings.length;
+      const lessonsPerWeek = studentBookings.length;
 
       if (remaining === 0) {
         // Package already exhausted — renewal is due now (current month)
