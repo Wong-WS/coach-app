@@ -104,12 +104,7 @@ function computeProjectedCollections(
       const lessonsPerWeek = studentBookings.length;
 
       if (remaining === 0) {
-        // Package already exhausted — renewal is due now (current month)
-        const now = new Date();
-        const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
-        if (isCurrentMonth) {
-          packageRenewals += rate * student.prepaidTotal;
-        }
+        // Package already exhausted — already captured in "Currently unpaid", skip
       } else {
         // Calculate when package runs out
         const weeksUntilExhaustion = Math.ceil(remaining / lessonsPerWeek);
