@@ -2,9 +2,119 @@
 
 import { useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { useBookings, useLessonLogs, usePayments } from '@/hooks/useCoachData';
+import { useBookings, useLessonLogs, usePayments, useStudents } from '@/hooks/useCoachData';
 import { getDayDisplayName, formatTimeDisplay } from '@/lib/availability-engine';
 import { formatDateMedium } from '@/lib/date-format';
+import type { DayOfWeek, Booking, Student } from '@/types';
+
+const DAY_TO_JS: Record<DayOfWeek, number> = {
+  sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
+  thursday: 4, friday: 5, saturday: 6,
+};
+
+function countDayOccurrencesInMonth(dayOfWeek: DayOfWeek, year: number, month: number): number {
+  const targetDay = DAY_TO_JS[dayOfWeek];
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  let count = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    if (new Date(year, month, d).getDay() === targetDay) count++;
+  }
+  return count;
+}
+
+function getMonthLabel(year: number, month: number): string {
+  return new Date(year, month, 1).toLocaleDateString('en-MY', { month: 'long', year: 'numeric' });
+}
+
+interface ProjectedCollection {
+  packageRenewals: number;
+  payPerLesson: number;
+  total: number;
+}
+
+function computeProjectedCollections(
+  students: Student[],
+  recurringBookings: Booking[],
+  year: number,
+  month: number,
+): ProjectedCollection {
+  // Build student → bookings map
+  const studentBookingsMap = new Map<string, Booking[]>();
+  for (const booking of recurringBookings) {
+    // Check booking is active during this month
+    const monthStart = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    const monthEnd = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    if (booking.startDate && booking.startDate > monthEnd) continue;
+    if (booking.endDate && booking.endDate < monthStart) continue;
+
+    // Primary student
+    const primary = students.find(
+      (s) => s.clientName === booking.clientName && s.clientPhone === (booking.clientPhone || '')
+    );
+    if (primary) {
+      const existing = studentBookingsMap.get(primary.id) ?? [];
+      existing.push(booking);
+      studentBookingsMap.set(primary.id, existing);
+    }
+    // Linked students
+    if (booking.linkedStudentIds) {
+      for (const linkedId of booking.linkedStudentIds) {
+        const existing = studentBookingsMap.get(linkedId) ?? [];
+        existing.push(booking);
+        studentBookingsMap.set(linkedId, existing);
+      }
+    }
+  }
+
+  let packageRenewals = 0;
+  let payPerLessonTotal = 0;
+
+  for (const student of students) {
+    const bookings = studentBookingsMap.get(student.id);
+    if (!bookings || bookings.length === 0) continue;
+
+    const rate = student.lessonRate ?? 0;
+    if (rate <= 0) continue;
+
+    if (student.payPerLesson) {
+      // Count lessons in the target month
+      let lessonCount = 0;
+      for (const b of bookings) {
+        lessonCount += countDayOccurrencesInMonth(b.dayOfWeek, year, month);
+      }
+      payPerLessonTotal += lessonCount * rate;
+    } else if (student.prepaidTotal > 0) {
+      // Package student — figure out when package exhausts
+      const remaining = Math.max(0, student.prepaidTotal - student.prepaidUsed);
+      const lessonsPerWeek = bookings.length;
+
+      if (remaining === 0) {
+        // Package already exhausted — renewal is due now (current month)
+        const now = new Date();
+        const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+        if (isCurrentMonth) {
+          packageRenewals += rate * student.prepaidTotal;
+        }
+      } else {
+        // Calculate when package runs out
+        const weeksUntilExhaustion = Math.ceil(remaining / lessonsPerWeek);
+        const exhaustionDate = new Date();
+        exhaustionDate.setDate(exhaustionDate.getDate() + weeksUntilExhaustion * 7);
+
+        if (exhaustionDate.getFullYear() === year && exhaustionDate.getMonth() === month) {
+          packageRenewals += rate * student.prepaidTotal;
+        }
+      }
+    }
+  }
+
+  return {
+    packageRenewals,
+    payPerLesson: payPerLessonTotal,
+    total: packageRenewals + payPerLessonTotal,
+  };
+}
 
 function getWeekRange(): { start: string; end: string } {
   const now = new Date();
@@ -45,6 +155,7 @@ export default function IncomePage() {
   const { bookings, loading } = useBookings(coach?.id, 'confirmed');
   const { lessonLogs, loading: logsLoading } = useLessonLogs(coach?.id);
   const { payments, loading: paymentsLoading } = usePayments(coach?.id);
+  const { students, loading: studentsLoading } = useStudents(coach?.id);
 
   // Only recurring bookings (no endDate) for projections
   const recurringBookings = bookings.filter((b) => !b.endDate);
@@ -87,10 +198,21 @@ export default function IncomePage() {
       .slice(0, 20);
   }, [lessonLogs]);
 
+  const projectedCollections = useMemo(() => {
+    const now = new Date();
+    const currentMonth = computeProjectedCollections(students, recurringBookings, now.getFullYear(), now.getMonth());
+    const nextDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const nextMonth = computeProjectedCollections(students, recurringBookings, nextDate.getFullYear(), nextDate.getMonth());
+    const currentLabel = getMonthLabel(now.getFullYear(), now.getMonth());
+    const nextLabel = getMonthLabel(nextDate.getFullYear(), nextDate.getMonth());
+    const unpaid = students.reduce((sum, s) => sum + Math.max(0, (s.pendingPayment ?? 0) - (s.credit ?? 0)), 0);
+    return { currentMonth, nextMonth, currentLabel, nextLabel, unpaid };
+  }, [students, recurringBookings]);
+
   const formatRM = (amount: number) =>
     `RM ${amount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  if (loading || logsLoading || paymentsLoading) {
+  if (loading || logsLoading || paymentsLoading || studentsLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -137,6 +259,60 @@ export default function IncomePage() {
           <p className="text-sm text-yellow-800 dark:text-yellow-300">
             {unpricedCount} booking{unpricedCount > 1 ? 's have' : ' has'} no price set. Add prices to your bookings to get accurate projections.
           </p>
+        </div>
+      )}
+
+      {/* Projected Collections */}
+      {(projectedCollections.currentMonth.total > 0 || projectedCollections.nextMonth.total > 0 || projectedCollections.unpaid > 0) && (
+        <div>
+          <h2 className="text-sm font-medium text-gray-500 dark:text-zinc-400 mb-3 uppercase tracking-wide">Projected Collections</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Current month */}
+            <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-6">
+              <p className="text-sm text-gray-500 dark:text-zinc-400">{projectedCollections.currentLabel}</p>
+              <p className="text-2xl font-bold text-purple-600 dark:text-purple-400 mt-1">
+                {formatRM(projectedCollections.currentMonth.total)}
+              </p>
+              <div className="mt-3 space-y-1">
+                {projectedCollections.currentMonth.packageRenewals > 0 && (
+                  <p className="text-xs text-gray-500 dark:text-zinc-400">
+                    Package renewals: {formatRM(projectedCollections.currentMonth.packageRenewals)}
+                  </p>
+                )}
+                {projectedCollections.currentMonth.payPerLesson > 0 && (
+                  <p className="text-xs text-gray-500 dark:text-zinc-400">
+                    Pay-per-lesson: {formatRM(projectedCollections.currentMonth.payPerLesson)}
+                  </p>
+                )}
+              </div>
+              {projectedCollections.unpaid > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-[#333333]">
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    Currently unpaid: {formatRM(projectedCollections.unpaid)}
+                  </p>
+                </div>
+              )}
+            </div>
+            {/* Next month */}
+            <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-6">
+              <p className="text-sm text-gray-500 dark:text-zinc-400">{projectedCollections.nextLabel}</p>
+              <p className="text-2xl font-bold text-purple-600 dark:text-purple-400 mt-1">
+                {formatRM(projectedCollections.nextMonth.total)}
+              </p>
+              <div className="mt-3 space-y-1">
+                {projectedCollections.nextMonth.packageRenewals > 0 && (
+                  <p className="text-xs text-gray-500 dark:text-zinc-400">
+                    Package renewals: {formatRM(projectedCollections.nextMonth.packageRenewals)}
+                  </p>
+                )}
+                {projectedCollections.nextMonth.payPerLesson > 0 && (
+                  <p className="text-xs text-gray-500 dark:text-zinc-400">
+                    Pay-per-lesson: {formatRM(projectedCollections.nextMonth.payPerLesson)}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
