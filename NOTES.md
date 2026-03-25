@@ -30,11 +30,11 @@
 
 ## Ideas (not urgent)
 
-- (2026-03-23) Run full E2E bug hunt using Chrome MCP — let Claude click through the app and find edge cases, broken flows, and UI issues
+- ✅ (2026-03-25) Run full E2E bug hunt using Chrome MCP — fixed 12 UI/UX bugs, wrote 65 unit tests, fixed prepaidUsed increment bug for non-package students
 - (2026-03-23) UI/UX design overhaul — revisit the overall app design
 - WhatsApp/SMS notifications
 - Custom domains
 - ✅ (2026-03-24) Production guardrails: prevent marking done for future dates
 - Production guardrails: restrict prepaid package editing (admin mode or audit log)
 - Production guardrails: lesson log deletion safeguards (confirmation dialog, soft-delete, time-limited)
-- (2026-03-24) Income page: projected collected income — estimate how much the coach will likely collect from students (based on active packages, lesson rates, pending payments, etc.)
+- ✅ (2026-03-25) Income page: projected collected income — shows current & next month projections based on package renewals (day-by-day exhaustion calculation) and pay-per-lesson charges (primary bookings only, remaining days for current month)
