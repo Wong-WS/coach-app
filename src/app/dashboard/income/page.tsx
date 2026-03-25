@@ -30,7 +30,6 @@ interface ProjectedCollection {
   packageRenewals: number;
   payPerLesson: number;
   total: number;
-  pplDebug: string[];
 }
 
 function computeProjectedCollections(
@@ -72,7 +71,6 @@ function computeProjectedCollections(
 
   let packageRenewals = 0;
   let payPerLessonTotal = 0;
-  const pplDebug: string[] = [];
 
   for (const student of students) {
     // Use lessonRate if set, otherwise fall back to the booking price
@@ -90,7 +88,6 @@ function computeProjectedCollections(
         const rate = getRate(b);
         if (rate <= 0) continue;
         const count = countDayOccurrencesInMonth(b.dayOfWeek, year, month, fromDay);
-        pplDebug.push(`${student.clientName} → "${b.clientName}" (${b.dayOfWeek}) rate=${rate} count=${count} = ${count * rate}`);
         payPerLessonTotal += count * rate;
       }
     } else if (student.prepaidTotal > 0) {
@@ -130,7 +127,6 @@ function computeProjectedCollections(
     packageRenewals,
     payPerLesson: payPerLessonTotal,
     total: packageRenewals + payPerLessonTotal,
-    pplDebug,
   };
 }
 
@@ -301,11 +297,6 @@ export default function IncomePage() {
                   <p className="text-xs text-gray-500 dark:text-zinc-400">
                     Pay-per-lesson: {formatRM(projectedCollections.currentMonth.payPerLesson)}
                   </p>
-                )}
-                {projectedCollections.currentMonth.pplDebug.length > 0 && (
-                  <div className="text-[10px] text-red-400 mt-1 space-y-0.5">
-                    {projectedCollections.currentMonth.pplDebug.map((d, i) => <p key={i}>{d}</p>)}
-                  </div>
                 )}
               </div>
               {projectedCollections.unpaid > 0 && (
