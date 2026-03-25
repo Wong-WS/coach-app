@@ -39,8 +39,9 @@ function computeProjectedCollections(
   month: number,
   fromDay = 1,
 ): ProjectedCollection {
-  // Build student → bookings map
-  const studentBookingsMap = new Map<string, Booking[]>();
+  // Build student → bookings map (separate primary vs linked)
+  const primaryBookingsMap = new Map<string, Booking[]>();
+  const linkedBookingsMap = new Map<string, Booking[]>();
   for (const booking of recurringBookings) {
     // Check booking is active during this month
     const monthStart = `${year}-${String(month + 1).padStart(2, '0')}-01`;
@@ -54,16 +55,16 @@ function computeProjectedCollections(
       (s) => s.clientName === booking.clientName && s.clientPhone === (booking.clientPhone || '')
     );
     if (primary) {
-      const existing = studentBookingsMap.get(primary.id) ?? [];
+      const existing = primaryBookingsMap.get(primary.id) ?? [];
       existing.push(booking);
-      studentBookingsMap.set(primary.id, existing);
+      primaryBookingsMap.set(primary.id, existing);
     }
     // Linked students
     if (booking.linkedStudentIds) {
       for (const linkedId of booking.linkedStudentIds) {
-        const existing = studentBookingsMap.get(linkedId) ?? [];
+        const existing = linkedBookingsMap.get(linkedId) ?? [];
         existing.push(booking);
-        studentBookingsMap.set(linkedId, existing);
+        linkedBookingsMap.set(linkedId, existing);
       }
     }
   }
@@ -72,11 +73,7 @@ function computeProjectedCollections(
   let payPerLessonTotal = 0;
 
   for (const student of students) {
-    const studentBookings = studentBookingsMap.get(student.id);
-    if (!studentBookings || studentBookings.length === 0) continue;
-
     // Use lessonRate if set, otherwise fall back to the booking price
-    // For linked students, use studentPrices from the booking if available
     const getRate = (b: Booking) => {
       if (student.lessonRate != null && student.lessonRate > 0) return student.lessonRate;
       if (b.studentPrices?.[student.id] != null) return b.studentPrices[student.id];
@@ -84,15 +81,22 @@ function computeProjectedCollections(
     };
 
     if (student.payPerLesson) {
-      // Count lessons in the target month × rate per lesson
-      for (const b of studentBookings) {
+      // Only count primary bookings (not linked) for pay-per-lesson
+      const bookings = primaryBookingsMap.get(student.id);
+      if (!bookings || bookings.length === 0) continue;
+      for (const b of bookings) {
         const rate = getRate(b);
         if (rate <= 0) continue;
         const count = countDayOccurrencesInMonth(b.dayOfWeek, year, month, fromDay);
         payPerLessonTotal += count * rate;
       }
     } else if (student.prepaidTotal > 0) {
-      // Package student — figure out when package exhausts
+      // Package student — use both primary and linked bookings
+      const primary = primaryBookingsMap.get(student.id) ?? [];
+      const linked = linkedBookingsMap.get(student.id) ?? [];
+      const studentBookings = [...primary, ...linked];
+      if (studentBookings.length === 0) continue;
+
       const rate = getRate(studentBookings[0]);
       if (rate <= 0) continue;
 
