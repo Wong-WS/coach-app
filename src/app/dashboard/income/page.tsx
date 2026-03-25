@@ -12,11 +12,11 @@ const DAY_TO_JS: Record<DayOfWeek, number> = {
   thursday: 4, friday: 5, saturday: 6,
 };
 
-function countDayOccurrencesInMonth(dayOfWeek: DayOfWeek, year: number, month: number): number {
+function countDayOccurrencesInMonth(dayOfWeek: DayOfWeek, year: number, month: number, fromDay = 1): number {
   const targetDay = DAY_TO_JS[dayOfWeek];
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   let count = 0;
-  for (let d = 1; d <= daysInMonth; d++) {
+  for (let d = fromDay; d <= daysInMonth; d++) {
     if (new Date(year, month, d).getDay() === targetDay) count++;
   }
   return count;
@@ -37,6 +37,7 @@ function computeProjectedCollections(
   recurringBookings: Booking[],
   year: number,
   month: number,
+  fromDay = 1,
 ): ProjectedCollection {
   // Build student → bookings map
   const studentBookingsMap = new Map<string, Booking[]>();
@@ -87,7 +88,7 @@ function computeProjectedCollections(
       for (const b of studentBookings) {
         const rate = getRate(b);
         if (rate <= 0) continue;
-        const count = countDayOccurrencesInMonth(b.dayOfWeek, year, month);
+        const count = countDayOccurrencesInMonth(b.dayOfWeek, year, month, fromDay);
         payPerLessonTotal += count * rate;
       }
     } else if (student.prepaidTotal > 0) {
@@ -209,7 +210,7 @@ export default function IncomePage() {
 
   const projectedCollections = useMemo(() => {
     const now = new Date();
-    const currentMonth = computeProjectedCollections(students, recurringBookings, now.getFullYear(), now.getMonth());
+    const currentMonth = computeProjectedCollections(students, recurringBookings, now.getFullYear(), now.getMonth(), now.getDate());
     const nextDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     const nextMonth = computeProjectedCollections(students, recurringBookings, nextDate.getFullYear(), nextDate.getMonth());
     const currentLabel = getMonthLabel(now.getFullYear(), now.getMonth());
