@@ -106,12 +106,28 @@ function computeProjectedCollections(
       if (remaining === 0) {
         // Package already exhausted — already captured in "Currently unpaid", skip
       } else {
-        // Calculate when package runs out
-        const weeksUntilExhaustion = Math.ceil(remaining / lessonsPerWeek);
-        const exhaustionDate = new Date();
-        exhaustionDate.setDate(exhaustionDate.getDate() + weeksUntilExhaustion * 7);
+        // Count actual lesson days from today to find when package exhausts
+        const now = new Date();
+        let lessonsLeft = remaining;
+        let checkDate = new Date(now);
 
-        if (exhaustionDate.getFullYear() === year && exhaustionDate.getMonth() === month) {
+        // Walk forward day by day, counting lesson days
+        const bookingDays = new Set(studentBookings.map((b) => DAY_TO_JS[b.dayOfWeek]));
+        let exhaustionMonth = -1;
+        let exhaustionYear = -1;
+
+        for (let i = 0; i < 365 && lessonsLeft > 0; i++) {
+          checkDate.setDate(checkDate.getDate() + 1);
+          if (bookingDays.has(checkDate.getDay())) {
+            lessonsLeft--;
+            if (lessonsLeft === 0) {
+              exhaustionMonth = checkDate.getMonth();
+              exhaustionYear = checkDate.getFullYear();
+            }
+          }
+        }
+
+        if (exhaustionYear === year && exhaustionMonth === month) {
           packageRenewals += rate * student.prepaidTotal;
         }
       }
