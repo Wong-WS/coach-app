@@ -239,10 +239,13 @@ export default function DashboardPage() {
         batch.set(logRef, logData);
 
         const studentRef = doc(firestore, 'coaches', coach.id, 'students', studentId);
+        const studentRecord = students.find((s) => s.id === studentId);
         const updateData: Record<string, unknown> = {
-          prepaidUsed: increment(1),
           updatedAt: serverTimestamp(),
         };
+        if ((studentRecord?.prepaidTotal ?? 0) > 0) {
+          updateData.prepaidUsed = increment(1);
+        }
 
         // For split payment, compare against the student's own price, not the total
         const studentBasePrice = (hasLinkedStudents && booking.studentPrices?.[studentId] != null)
@@ -252,7 +255,6 @@ export default function DashboardPage() {
           updateData.credit = increment(studentBasePrice - price);
         }
 
-        const studentRecord = students.find((s) => s.id === studentId);
         if (studentRecord?.payPerLesson && price > 0) {
           updateData.pendingPayment = increment(price);
         }
