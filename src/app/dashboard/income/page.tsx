@@ -230,8 +230,7 @@ export default function IncomePage() {
     const nextMonth = computeProjectedCollections(students, recurringBookings, nextDate.getFullYear(), nextDate.getMonth());
     const currentLabel = getMonthLabel(now.getFullYear(), now.getMonth());
     const nextLabel = getMonthLabel(nextDate.getFullYear(), nextDate.getMonth());
-    const unpaid = students.reduce((sum, s) => sum + Math.max(0, (s.pendingPayment ?? 0) - (s.credit ?? 0)), 0);
-    return { currentMonth, nextMonth, currentLabel, nextLabel, unpaid };
+    return { currentMonth, nextMonth, currentLabel, nextLabel };
   }, [students, recurringBookings]);
 
   const formatRM = (amount: number) =>
@@ -288,7 +287,7 @@ export default function IncomePage() {
       )}
 
       {/* Projected Collections */}
-      {(projectedCollections.currentMonth.total > 0 || projectedCollections.nextMonth.total > 0 || projectedCollections.unpaid > 0) && (
+      {(projectedCollections.currentMonth.total > 0 || projectedCollections.nextMonth.total > 0) && (
         <div>
           <h2 className="text-sm font-medium text-gray-500 dark:text-zinc-400 mb-3 uppercase tracking-wide">Projected Collections</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -310,13 +309,6 @@ export default function IncomePage() {
                   </p>
                 )}
               </div>
-              {projectedCollections.unpaid > 0 && (
-                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-[#333333]">
-                  <p className="text-xs text-amber-600 dark:text-amber-400">
-                    Currently unpaid: {formatRM(projectedCollections.unpaid)}
-                  </p>
-                </div>
-              )}
             </div>
             {/* Next month */}
             <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-6">
