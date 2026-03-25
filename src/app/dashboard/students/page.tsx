@@ -1563,9 +1563,9 @@ export default function StudentsPage() {
                 try {
                   await updateDoc(
                     doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
-                    { payPerLesson: true, pendingPayment: 0, credit: 0, updatedAt: serverTimestamp() }
+                    { payPerLesson: true, prepaidTotal: 0, prepaidUsed: 0, pendingPayment: 0, credit: 0, updatedAt: serverTimestamp() }
                   );
-                  setSelectedStudent((prev) => prev ? { ...prev, payPerLesson: true, pendingPayment: 0, credit: 0 } : null);
+                  setSelectedStudent((prev) => prev ? { ...prev, payPerLesson: true, prepaidTotal: 0, prepaidUsed: 0, pendingPayment: 0, credit: 0 } : null);
                   showToast('Switched to pay per lesson', 'success');
                   setShowClearPendingModal(false);
                 } catch {
