@@ -88,6 +88,7 @@ function computeProjectedCollections(
         const rate = getRate(b);
         if (rate <= 0) continue;
         const count = countDayOccurrencesInMonth(b.dayOfWeek, year, month, fromDay);
+        console.log(`[projected] pay-per-lesson: ${student.clientName} → booking "${b.clientName}" (${b.dayOfWeek}), rate=${rate}, count=${count}, subtotal=${count * rate}`);
         payPerLessonTotal += count * rate;
       }
     } else if (student.prepaidTotal > 0) {
