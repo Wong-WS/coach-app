@@ -93,6 +93,7 @@ export default function BookingsPage() {
   const [saving, setSaving] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
+  const [zeroOutStudentIds, setZeroOutStudentIds] = useState<Set<string>>(new Set());
   const [studentSearch, setStudentSearch] = useState('');
   const [showStudentDropdown, setShowStudentDropdown] = useState(false);
 
@@ -358,16 +359,30 @@ export default function BookingsPage() {
     setCancellingId(bookingId);
 
     try {
+      // Cancel the booking
       await updateDoc(doc(db, 'coaches', coach.id, 'bookings', bookingId), {
         status: 'cancelled',
         cancelledAt: serverTimestamp(),
       });
+
+      // Zero out remaining prepaid lessons for selected students
+      for (const studentId of zeroOutStudentIds) {
+        const student = students.find((s) => s.id === studentId);
+        if (student && student.prepaidTotal > student.prepaidUsed) {
+          await updateDoc(doc(db, 'coaches', coach.id, 'students', studentId), {
+            prepaidTotal: student.prepaidUsed,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
       showToast('Booking cancelled', 'success');
     } catch (error) {
       console.error('Error cancelling booking:', error);
       showToast('Failed to cancel booking', 'error');
     } finally {
       setCancellingId(null);
+      setZeroOutStudentIds(new Set());
     }
   };
 
@@ -488,12 +503,57 @@ export default function BookingsPage() {
       {/* Cancel Booking Confirmation Modal */}
       <Modal
         isOpen={confirmCancelId !== null}
-        onClose={() => setConfirmCancelId(null)}
+        onClose={() => { setConfirmCancelId(null); setZeroOutStudentIds(new Set()); }}
         title="Cancel Booking"
       >
-        <p className="text-gray-600 dark:text-zinc-400 mb-6">Are you sure you want to cancel this booking?</p>
+        <p className="text-gray-600 dark:text-zinc-400 mb-4">Are you sure you want to cancel this booking?</p>
+        {(() => {
+          const booking = bookings.find((b) => b.id === confirmCancelId);
+          if (!booking) return null;
+          // Find primary student by name+phone match
+          const primaryStudent = students.find(
+            (s) => s.clientName === booking.clientName && s.clientPhone === booking.clientPhone
+          );
+          // Gather all linked student IDs
+          const allStudentIds = [
+            ...(primaryStudent ? [primaryStudent.id] : []),
+            ...(booking.linkedStudentIds || []),
+          ];
+          // Filter to students with remaining prepaid lessons
+          const studentsWithRemaining = allStudentIds
+            .map((id) => students.find((s) => s.id === id))
+            .filter((s): s is typeof s & { prepaidTotal: number; prepaidUsed: number } =>
+              s != null && s.prepaidTotal > s.prepaidUsed
+            );
+          if (studentsWithRemaining.length === 0) return null;
+          return (
+            <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300 mb-2">
+                Zero out remaining prepaid lessons?
+              </p>
+              {studentsWithRemaining.map((s) => (
+                <label key={s.id} className="flex items-center gap-2 py-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={zeroOutStudentIds.has(s.id)}
+                    onChange={(e) => {
+                      const next = new Set(zeroOutStudentIds);
+                      if (e.target.checked) next.add(s.id);
+                      else next.delete(s.id);
+                      setZeroOutStudentIds(next);
+                    }}
+                    className="rounded border-gray-300 dark:border-zinc-600"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-zinc-300">
+                    {s.clientName} — {s.prepaidTotal - s.prepaidUsed} lesson{s.prepaidTotal - s.prepaidUsed !== 1 ? 's' : ''} remaining
+                  </span>
+                </label>
+              ))}
+            </div>
+          );
+        })()}
         <div className="flex justify-end gap-3">
-          <Button variant="secondary" onClick={() => setConfirmCancelId(null)}>
+          <Button variant="secondary" onClick={() => { setConfirmCancelId(null); setZeroOutStudentIds(new Set()); }}>
             No, Keep It
           </Button>
           <Button variant="danger" onClick={() => confirmCancelId && handleCancel(confirmCancelId)}>
