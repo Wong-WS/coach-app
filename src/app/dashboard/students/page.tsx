@@ -91,6 +91,26 @@ export default function StudentsPage() {
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [allLogs, selectedStudent]);
 
+  // Compute credit earned per lesson log (for audit display)
+  const logCreditMap = useMemo(() => {
+    if (!selectedStudent) return new Map<string, number>();
+    const map = new Map<string, number>();
+    for (const log of studentLogs) {
+      // Find the booking to determine base price
+      const booking = log.bookingId ? bookings.find((b) => b.id === log.bookingId) : null;
+      let basePrice = 0;
+      if (selectedStudent.lessonRate != null && selectedStudent.lessonRate > 0) {
+        basePrice = selectedStudent.lessonRate;
+      } else if (booking) {
+        basePrice = booking.studentPrices?.[selectedStudent.id] ?? booking.price ?? 0;
+      }
+      if (basePrice > 0 && log.price < basePrice) {
+        map.set(log.id, basePrice - log.price);
+      }
+    }
+    return map;
+  }, [studentLogs, selectedStudent, bookings]);
+
   // Student's payment history
   const studentPayments = useMemo(() => {
     if (!selectedStudent) return [];
@@ -1295,6 +1315,11 @@ export default function StudentsPage() {
                         {log.price > 0 && (
                           <span className="text-green-600 dark:text-green-400 font-medium">
                             RM {log.price}
+                          </span>
+                        )}
+                        {logCreditMap.has(log.id) && (
+                          <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded">
+                            +RM {logCreditMap.get(log.id)} credit
                           </span>
                         )}
                         <button
