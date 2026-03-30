@@ -248,10 +248,17 @@ export default function DashboardPage() {
         }
 
         // For split payment, compare against the student's own price, not the total
-        const studentBasePrice = (hasLinkedStudents && booking.studentPrices?.[studentId] != null)
-          ? booking.studentPrices[studentId]
-          : (booking.price ?? 0);
-        if (price < studentBasePrice && studentBasePrice > 0) {
+        // Priority: student's lessonRate > studentPrices on booking > booking.price (only if no linked students)
+        let studentBasePrice = 0;
+        if (studentRecord?.lessonRate != null && studentRecord.lessonRate > 0) {
+          studentBasePrice = studentRecord.lessonRate;
+        } else if (hasLinkedStudents && booking.studentPrices?.[studentId] != null) {
+          studentBasePrice = booking.studentPrices[studentId];
+        } else if (!hasLinkedStudents) {
+          studentBasePrice = booking.price ?? 0;
+        }
+        // Only add credit if we have a valid base price to compare against
+        if (studentBasePrice > 0 && price < studentBasePrice) {
           updateData.credit = increment(studentBasePrice - price);
         }
 
@@ -273,8 +280,14 @@ export default function DashboardPage() {
         if (student && student.prepaidTotal > 0) {
           const remainingAfter = student.prepaidTotal - (student.prepaidUsed + 1);
           if (remainingAfter <= 0) {
-            const perLessonPrice = student.lessonRate
-              ?? (booking.studentPrices?.[studentId] != null ? booking.studentPrices[studentId] : (booking.price ?? 0));
+            let perLessonPrice = 0;
+            if (student.lessonRate != null && student.lessonRate > 0) {
+              perLessonPrice = student.lessonRate;
+            } else if (hasLinkedStudents && booking.studentPrices?.[studentId] != null) {
+              perLessonPrice = booking.studentPrices[studentId];
+            } else if (!hasLinkedStudents) {
+              perLessonPrice = booking.price ?? 0;
+            }
             const packagePrice = perLessonPrice * student.prepaidTotal;
             const currentCredit = (student.credit ?? 0) + (price < perLessonPrice ? perLessonPrice - price : 0);
 
