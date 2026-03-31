@@ -101,29 +101,35 @@ function computeProjectedCollections(
       const rate = getRate(studentBookings[0]);
       if (rate <= 0) continue;
 
-      let remaining = Math.max(0, student.prepaidTotal - student.prepaidUsed);
-      const bookingDays = new Set(studentBookings.map((b) => DAY_TO_JS[b.dayOfWeek]));
-      const now = new Date();
-      const checkDate = new Date(now);
+      const remaining = Math.max(0, student.prepaidTotal - student.prepaidUsed);
+      const lessonsPerWeek = studentBookings.length;
 
-      // Walk forward day by day, simulating renewals when packages exhaust.
-      // Each time a package runs out, assume the student renews with the same size.
-      // Count how many renewals fall in the target month.
-      for (let i = 0; i < 365; i++) {
-        checkDate.setDate(checkDate.getDate() + 1);
-        // Stop once we're past the target month
-        if (checkDate.getFullYear() > year || (checkDate.getFullYear() === year && checkDate.getMonth() > month)) break;
+      if (remaining === 0) {
+        // Package already exhausted — already captured in "Currently unpaid", skip
+      } else {
+        // Count actual lesson days from today to find when package exhausts
+        const now = new Date();
+        let lessonsLeft = remaining;
+        let checkDate = new Date(now);
 
-        if (bookingDays.has(checkDate.getDay())) {
-          if (remaining > 0) remaining--;
-          if (remaining === 0) {
-            // Package exhausted — renewal happens
-            if (checkDate.getFullYear() === year && checkDate.getMonth() === month) {
-              packageRenewals += rate * student.prepaidTotal;
+        // Walk forward day by day, counting lesson days
+        const bookingDays = new Set(studentBookings.map((b) => DAY_TO_JS[b.dayOfWeek]));
+        let exhaustionMonth = -1;
+        let exhaustionYear = -1;
+
+        for (let i = 0; i < 365 && lessonsLeft > 0; i++) {
+          checkDate.setDate(checkDate.getDate() + 1);
+          if (bookingDays.has(checkDate.getDay())) {
+            lessonsLeft--;
+            if (lessonsLeft === 0) {
+              exhaustionMonth = checkDate.getMonth();
+              exhaustionYear = checkDate.getFullYear();
             }
-            // Simulate renewal: reset remaining for next cycle
-            remaining = student.prepaidTotal;
           }
+        }
+
+        if (exhaustionYear === year && exhaustionMonth === month) {
+          packageRenewals += rate * student.prepaidTotal;
         }
       }
     }
