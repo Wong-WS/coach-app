@@ -202,44 +202,55 @@ export default function DashboardPage() {
     const booking = markDoneBooking;
     if (!coach || !db || !booking) return;
     setMarking(booking.id);
-    try {
-      const firestore = db as Firestore;
-      const hasLinkedStudents = markDoneAttendees.length > 1;
 
+    const firestore = db as Firestore;
+    const hasLinkedStudents = markDoneAttendees.length > 1;
+    const noteText = markDoneNote.trim();
+    const price = markDonePrice;
+
+    // Close modal immediately (optimistic UI)
+    setMarkDoneBooking(null);
+    showToast('Class marked as done!', 'success');
+
+    try {
       // Determine which students to process
       const attendeesToProcess = hasLinkedStudents
         ? markDoneAttendees.filter((a) => a.attended)
-        : [{ studentId: '', studentName: booking.clientName, attended: true, price: markDonePrice, isPrimary: true }];
+        : [{ studentId: '', studentName: booking.clientName, attended: true, price, isPrimary: true }];
+
+      // Resolve student IDs first (requires async lookup)
+      const resolvedAttendees = await Promise.all(
+        attendeesToProcess.map(async (attendee) => ({
+          ...attendee,
+          studentId: attendee.studentId || await findOrCreateStudent(
+            firestore, coach.id, booking.clientName, booking.clientPhone
+          ),
+          price: hasLinkedStudents ? attendee.price : price,
+        }))
+      );
 
       const batch = writeBatch(firestore);
-      const processedStudents: Array<{ studentId: string; studentName: string; price: number }> = [];
 
-      for (const attendee of attendeesToProcess) {
-        // Resolve student ID
-        const studentId = attendee.studentId || await findOrCreateStudent(
-          firestore, coach.id, booking.clientName, booking.clientPhone
-        );
-        const price = hasLinkedStudents ? attendee.price : markDonePrice;
-
+      for (const attendee of resolvedAttendees) {
         const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
         const logData: Record<string, unknown> = {
           date: selectedDateStr,
           bookingId: booking.id,
-          studentId,
+          studentId: attendee.studentId,
           studentName: attendee.studentName,
           locationName: booking.locationName,
           startTime: booking.startTime,
           endTime: booking.endTime,
-          price,
+          price: attendee.price,
           createdAt: serverTimestamp(),
         };
-        if (markDoneNote.trim()) {
-          logData.note = markDoneNote.trim();
+        if (noteText) {
+          logData.note = noteText;
         }
         batch.set(logRef, logData);
 
-        const studentRef = doc(firestore, 'coaches', coach.id, 'students', studentId);
-        const studentRecord = students.find((s) => s.id === studentId);
+        const studentRef = doc(firestore, 'coaches', coach.id, 'students', attendee.studentId);
+        const studentRecord = students.find((s) => s.id === attendee.studentId);
         const updateData: Record<string, unknown> = {
           updatedAt: serverTimestamp(),
         };
@@ -247,87 +258,91 @@ export default function DashboardPage() {
           updateData.prepaidUsed = increment(1);
         }
 
-        // For split payment, compare against the student's own price, not the total
-        // Priority: student's lessonRate > studentPrices on booking > booking.price (only if no linked students)
         let studentBasePrice = 0;
         if (studentRecord?.lessonRate != null && studentRecord.lessonRate > 0) {
           studentBasePrice = studentRecord.lessonRate;
-        } else if (hasLinkedStudents && booking.studentPrices?.[studentId] != null) {
-          studentBasePrice = booking.studentPrices[studentId];
+        } else if (hasLinkedStudents && booking.studentPrices?.[attendee.studentId] != null) {
+          studentBasePrice = booking.studentPrices[attendee.studentId];
         } else if (!hasLinkedStudents) {
           studentBasePrice = booking.price ?? 0;
         }
-        // Only add credit if we have a valid base price to compare against
-        if (studentBasePrice > 0 && price < studentBasePrice) {
-          updateData.credit = increment(studentBasePrice - price);
+        if (studentBasePrice > 0 && attendee.price < studentBasePrice) {
+          updateData.credit = increment(studentBasePrice - attendee.price);
         }
 
-        if (studentRecord?.payPerLesson && price > 0) {
-          updateData.pendingPayment = increment(price);
+        if (studentRecord?.payPerLesson && attendee.price > 0) {
+          updateData.pendingPayment = increment(attendee.price);
+        }
+
+        // Handle package exhaustion in the same batch
+        if (studentRecord && studentRecord.prepaidTotal > 0) {
+          const remainingAfter = studentRecord.prepaidTotal - (studentRecord.prepaidUsed + 1);
+          if (remainingAfter <= 0) {
+            if (studentRecord.nextPrepaidTotal && studentRecord.nextPrepaidTotal > 0) {
+              // Auto-rollover into next package
+              const overflow = Math.max(0, (studentRecord.prepaidUsed + 1) - studentRecord.prepaidTotal);
+              updateData.prepaidTotal = studentRecord.nextPrepaidTotal;
+              updateData.prepaidUsed = overflow;
+              updateData.nextPrepaidTotal = null;
+              updateData.nextPrepaidPaidAt = null;
+            } else {
+              // Set pending payment for exhausted package
+              let perLessonPrice = 0;
+              if (studentRecord.lessonRate != null && studentRecord.lessonRate > 0) {
+                perLessonPrice = studentRecord.lessonRate;
+              } else if (hasLinkedStudents && booking.studentPrices?.[attendee.studentId] != null) {
+                perLessonPrice = booking.studentPrices[attendee.studentId];
+              } else if (!hasLinkedStudents) {
+                perLessonPrice = booking.price ?? 0;
+              }
+              const packagePrice = perLessonPrice * studentRecord.prepaidTotal;
+              if (packagePrice > 0) {
+                updateData.pendingPayment = packagePrice;
+              }
+            }
+          }
         }
 
         batch.update(studentRef, updateData);
-        processedStudents.push({ studentId, studentName: attendee.studentName, price });
       }
 
       await batch.commit();
-      setMarkDoneBooking(null);
-      showToast('Class marked as done!', 'success');
 
-      // Check package status for each processed student
-      for (const { studentId, studentName, price } of processedStudents) {
-        const student = students.find((s) => s.id === studentId);
-        if (student && student.prepaidTotal > 0) {
-          const remainingAfter = student.prepaidTotal - (student.prepaidUsed + 1);
+      // Show post-commit UI notifications (package warnings, auto-renewals)
+      for (const attendee of resolvedAttendees) {
+        const studentRecord = students.find((s) => s.id === attendee.studentId);
+        if (studentRecord && studentRecord.prepaidTotal > 0) {
+          const remainingAfter = studentRecord.prepaidTotal - (studentRecord.prepaidUsed + 1);
           if (remainingAfter <= 0) {
-            // Auto-rollover if next package is queued
-            if (student.nextPrepaidTotal && student.nextPrepaidTotal > 0) {
-              const overflow = Math.max(0, (student.prepaidUsed + 1) - student.prepaidTotal);
-              const studentRef = doc(firestore, 'coaches', coach.id, 'students', studentId);
-              await updateDoc(studentRef, {
-                prepaidTotal: student.nextPrepaidTotal,
-                prepaidUsed: overflow,
-                nextPrepaidTotal: null,
-                nextPrepaidPaidAt: null,
-                updatedAt: serverTimestamp(),
+            if (studentRecord.nextPrepaidTotal && studentRecord.nextPrepaidTotal > 0) {
+              showToast(`${attendee.studentName}'s package auto-renewed (${studentRecord.nextPrepaidTotal} lessons)!`, 'success');
+            } else {
+              let perLessonPrice = 0;
+              if (studentRecord.lessonRate != null && studentRecord.lessonRate > 0) {
+                perLessonPrice = studentRecord.lessonRate;
+              } else if (hasLinkedStudents && booking.studentPrices?.[attendee.studentId] != null) {
+                perLessonPrice = booking.studentPrices[attendee.studentId];
+              } else if (!hasLinkedStudents) {
+                perLessonPrice = booking.price ?? 0;
+              }
+              const packagePrice = perLessonPrice * studentRecord.prepaidTotal;
+              const currentCredit = (studentRecord.credit ?? 0) + (attendee.price < perLessonPrice ? perLessonPrice - attendee.price : 0);
+
+              setPackageWarning({
+                studentName: attendee.studentName,
+                remaining: remainingAfter,
+                total: studentRecord.prepaidTotal,
+                lastPrice: packagePrice,
+                credit: currentCredit,
               });
-              showToast(`${studentName}'s package auto-renewed (${student.nextPrepaidTotal} lessons)!`, 'success');
-              continue;
+              break;
             }
-
-            let perLessonPrice = 0;
-            if (student.lessonRate != null && student.lessonRate > 0) {
-              perLessonPrice = student.lessonRate;
-            } else if (hasLinkedStudents && booking.studentPrices?.[studentId] != null) {
-              perLessonPrice = booking.studentPrices[studentId];
-            } else if (!hasLinkedStudents) {
-              perLessonPrice = booking.price ?? 0;
-            }
-            const packagePrice = perLessonPrice * student.prepaidTotal;
-            const currentCredit = (student.credit ?? 0) + (price < perLessonPrice ? perLessonPrice - price : 0);
-
-            if (packagePrice > 0) {
-              const studentPayRef = doc(firestore, 'coaches', coach.id, 'students', studentId);
-              await updateDoc(studentPayRef, {
-                pendingPayment: packagePrice,
-                updatedAt: serverTimestamp(),
-              });
-            }
-
-            setPackageWarning({
-              studentName,
-              remaining: remainingAfter,
-              total: student.prepaidTotal,
-              lastPrice: packagePrice,
-              credit: currentCredit,
-            });
-            break; // show one warning at a time
           }
         }
       }
     } catch (error) {
       console.error('Error marking class done:', error);
-      showToast('Failed to mark class as done', 'error');
+      showToast('Failed to mark class as done — please try again', 'error');
     } finally {
       setMarking(null);
     }

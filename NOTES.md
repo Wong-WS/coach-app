@@ -43,3 +43,4 @@
 - (2026-03-31) **Show full credit balance (total paid minus total used)** — currently only tracks "extra" credit from discounted lessons. Should show the full remaining monetary credit (e.g. paid RM500 for 5 lessons, used 3 = RM200 remaining). Data is already there via payments + lessonLogs.
 - (2026-03-31) **Cancellation reasons/data** — track who cancelled (coach, student, weather, etc.) on class exceptions. Add a `reason` or `cancelledBy` field to `classExceptions` so coaches can see patterns.
 - ✅ (2026-03-31) **Early package renewal** — "Renew Early" feature: queue next package + record payment before current package finishes. Auto-rollover on exhaustion.
+- (2026-03-31) **Pagination for lesson logs & payments** — currently limited to 6 months / 100 records. Add "Load more" or date range picker so older data is still accessible. Low priority until data volume grows.
