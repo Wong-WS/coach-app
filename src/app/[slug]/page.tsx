@@ -1,8 +1,6 @@
 'use client';
 
 import { useState, useEffect, use } from 'react';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import { Coach, Location, DayOfWeek, PreferredTime } from '@/types';
 import { getDayDisplayName, formatTimeDisplay, DayAvailability } from '@/lib/availability-engine';
 import { Button } from '@/components/ui/Button';
@@ -134,7 +132,7 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
 
   const handleWaitlistSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!coach || !db || !waitlistForm.clientName.trim() || !waitlistForm.clientPhone.trim()) return;
+    if (!coach || !waitlistForm.clientName.trim() || !waitlistForm.clientPhone.trim()) return;
     setWaitlistSaving(true);
 
     const location = locations.find((l) => l.id === waitlistForm.locationId);
@@ -145,17 +143,22 @@ export default function PublicCoachPage({ params }: { params: Promise<{ slug: st
     }
 
     try {
-      await addDoc(collection(db, 'coaches', coach.id, 'waitlist'), {
-        locationId: waitlistForm.locationId,
-        locationName: location.name,
-        dayOfWeek: waitlistForm.dayOfWeek,
-        preferredTime: waitlistForm.preferredTime,
-        clientName: waitlistForm.clientName.trim(),
-        clientPhone: waitlistForm.clientPhone.trim(),
-        notes: waitlistForm.notes.trim(),
-        status: 'waiting',
-        createdAt: serverTimestamp(),
+      const res = await fetch('/api/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          coachId: coach.id,
+          locationId: waitlistForm.locationId,
+          locationName: location.name,
+          dayOfWeek: waitlistForm.dayOfWeek,
+          preferredTime: waitlistForm.preferredTime,
+          clientName: waitlistForm.clientName.trim(),
+          clientPhone: waitlistForm.clientPhone.trim(),
+          notes: waitlistForm.notes.trim(),
+        }),
       });
+
+      if (!res.ok) throw new Error('Failed to join waitlist');
 
       setWaitlistForm({
         locationId: '',
