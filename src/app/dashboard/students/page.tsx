@@ -83,6 +83,13 @@ export default function StudentsPage() {
   const [renewAmount, setRenewAmount] = useState(0);
   const [renewingPackage, setRenewingPackage] = useState(false);
 
+  // Renew Early state
+  const [showRenewEarlyModal, setShowRenewEarlyModal] = useState(false);
+  const [renewEarlyLessons, setRenewEarlyLessons] = useState(0);
+  const [renewEarlyAmount, setRenewEarlyAmount] = useState(0);
+  const [renewingEarly, setRenewingEarly] = useState(false);
+  const [cancellingNextPackage, setCancellingNextPackage] = useState(false);
+
   // Student's lesson history
   const studentLogs = useMemo(() => {
     if (!selectedStudent) return [];
@@ -458,15 +465,45 @@ export default function StudentsPage() {
 
       batch.update(studentRef, updateData);
       await batch.commit();
-      // Update local state
-      const pendingAdd = selectedStudent.payPerLesson ? lessonPrice : 0;
-      setSelectedStudent((prev) =>
-        prev ? { ...prev, prepaidUsed: prev.prepaidUsed + 1, credit: (prev.credit ?? 0) + creditDiff, pendingPayment: prev.pendingPayment + pendingAdd } : null
-      );
-      setShowAddLesson(false);
-      setLessonNote('');
-      setLessonPrice(basePrice || lessonPrice);
-      showToast('Lesson added!', 'success');
+
+      // Check for auto-rollover: if package just exhausted and next package is queued
+      const newUsed = selectedStudent.prepaidUsed + 1;
+      const justExhausted = selectedStudent.prepaidTotal > 0 && newUsed >= selectedStudent.prepaidTotal;
+      if (justExhausted && selectedStudent.nextPrepaidTotal && selectedStudent.nextPrepaidTotal > 0) {
+        const overflow = Math.max(0, newUsed - selectedStudent.prepaidTotal);
+        await updateDoc(studentRef, {
+          prepaidTotal: selectedStudent.nextPrepaidTotal,
+          prepaidUsed: overflow,
+          nextPrepaidTotal: null,
+          nextPrepaidPaidAt: null,
+          updatedAt: serverTimestamp(),
+        });
+        setSelectedStudent((prev) =>
+          prev ? {
+            ...prev,
+            prepaidTotal: prev.nextPrepaidTotal!,
+            prepaidUsed: overflow,
+            nextPrepaidTotal: undefined,
+            nextPrepaidPaidAt: undefined,
+            credit: (prev.credit ?? 0) + creditDiff,
+            pendingPayment: prev.pendingPayment + (prev.payPerLesson ? lessonPrice : 0),
+          } : null
+        );
+        setShowAddLesson(false);
+        setLessonNote('');
+        setLessonPrice(basePrice || lessonPrice);
+        showToast('Lesson added! Package auto-renewed.', 'success');
+      } else {
+        // Update local state
+        const pendingAdd = selectedStudent.payPerLesson ? lessonPrice : 0;
+        setSelectedStudent((prev) =>
+          prev ? { ...prev, prepaidUsed: prev.prepaidUsed + 1, credit: (prev.credit ?? 0) + creditDiff, pendingPayment: prev.pendingPayment + pendingAdd } : null
+        );
+        setShowAddLesson(false);
+        setLessonNote('');
+        setLessonPrice(basePrice || lessonPrice);
+        showToast('Lesson added!', 'success');
+      }
     } catch (error) {
       console.error('Error adding lesson:', error);
       showToast('Failed to add lesson', 'error');
@@ -781,15 +818,22 @@ export default function StudentsPage() {
                       </span>
                     )}
                     {hasPrepaid ? (
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full ${
-                          expired
-                            ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-                            : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                        }`}
-                      >
-                        {student.prepaidUsed}/{student.prepaidTotal}
-                      </span>
+                      <>
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full ${
+                            expired
+                              ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                          }`}
+                        >
+                          {student.prepaidUsed}/{student.prepaidTotal}
+                        </span>
+                        {student.nextPrepaidTotal && student.nextPrepaidTotal > 0 && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                            Next: {student.nextPrepaidTotal}
+                          </span>
+                        )}
+                      </>
                     ) : student.payPerLesson ? (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
                         Pay per lesson
@@ -885,8 +929,8 @@ export default function StudentsPage() {
                         prev ? { ...prev, pendingPayment: 0, credit: 0 } : null
                       );
                       showToast('Payment marked as received!', 'success');
-                      // If package is exhausted, prompt to renew
-                      if (!selectedStudent.payPerLesson && selectedStudent.prepaidTotal > 0 && selectedStudent.prepaidUsed >= selectedStudent.prepaidTotal) {
+                      // If package is exhausted and no next package queued, prompt to renew
+                      if (!selectedStudent.payPerLesson && selectedStudent.prepaidTotal > 0 && selectedStudent.prepaidUsed >= selectedStudent.prepaidTotal && !selectedStudent.nextPrepaidTotal) {
                         setRenewAmount(selectedStudent.prepaidTotal);
                         setShowRenewModal(true);
                       }
@@ -1154,10 +1198,47 @@ export default function StudentsPage() {
                           }}
                         />
                       </div>
-                      {needsRenewal && (
+                      {needsRenewal && !selectedStudent.nextPrepaidTotal && (
                         <p className="text-xs font-medium text-red-600 dark:text-red-400">
                           Time to renew!
                         </p>
+                      )}
+                      {/* Next package queued indicator */}
+                      {selectedStudent.nextPrepaidTotal && selectedStudent.nextPrepaidTotal > 0 && (
+                        <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-2 mt-2">
+                          <div>
+                            <p className="text-xs font-medium text-green-700 dark:text-green-300">
+                              Next package: {selectedStudent.nextPrepaidTotal} lessons (paid)
+                            </p>
+                            {selectedStudent.nextPrepaidPaidAt && (
+                              <p className="text-xs text-green-600 dark:text-green-400">
+                                Paid on {formatDateMedium(selectedStudent.nextPrepaidPaidAt)}
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            disabled={cancellingNextPackage}
+                            onClick={async () => {
+                              if (!coach || !db || !selectedStudent) return;
+                              setCancellingNextPackage(true);
+                              try {
+                                await updateDoc(
+                                  doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                                  { nextPrepaidTotal: null, nextPrepaidPaidAt: null, updatedAt: serverTimestamp() }
+                                );
+                                setSelectedStudent((prev) => prev ? { ...prev, nextPrepaidTotal: undefined, nextPrepaidPaidAt: undefined } : null);
+                                showToast('Next package cancelled', 'success');
+                              } catch {
+                                showToast('Failed to cancel next package', 'error');
+                              } finally {
+                                setCancellingNextPackage(false);
+                              }
+                            }}
+                            className="text-xs text-red-500 dark:text-red-400 hover:underline disabled:opacity-50"
+                          >
+                            {cancellingNextPackage ? '...' : 'Cancel'}
+                          </button>
+                        </div>
                       )}
                       {(selectedStudent.credit ?? 0) > 0 && (
                         <div className="flex items-center justify-between text-sm mt-2">
@@ -1196,6 +1277,19 @@ export default function StudentsPage() {
                     <Button variant="secondary" size="sm" onClick={() => addPrepaid(10)}>
                       + 10 Lessons
                     </Button>
+                    {remaining > 0 && !selectedStudent.nextPrepaidTotal && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setRenewEarlyLessons(selectedStudent.prepaidTotal);
+                          setRenewEarlyAmount((selectedStudent.lessonRate ?? 0) * selectedStudent.prepaidTotal);
+                          setShowRenewEarlyModal(true);
+                        }}
+                      >
+                        Renew Early
+                      </Button>
+                    )}
                   </div>
                 </>
               )}
@@ -1660,6 +1754,90 @@ export default function StudentsPage() {
             </Button>
             <Button variant="secondary" className="flex-1" onClick={() => setShowRenewModal(false)}>
               Skip
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Renew Early Modal */}
+      <Modal
+        isOpen={showRenewEarlyModal}
+        onClose={() => setShowRenewEarlyModal(false)}
+        title="Renew Early"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-zinc-400">
+            Queue the next package now. It will automatically start when the current package finishes.
+          </p>
+          <Input
+            label="Number of lessons"
+            type="number"
+            min={1}
+            value={String(renewEarlyLessons)}
+            onChange={(e) => {
+              const lessons = Math.max(1, Number(e.target.value) || 1);
+              setRenewEarlyLessons(lessons);
+              setRenewEarlyAmount((selectedStudent?.lessonRate ?? 0) * lessons);
+            }}
+          />
+          <Input
+            label="Payment amount (RM)"
+            type="number"
+            min={0}
+            value={String(renewEarlyAmount)}
+            onChange={(e) => setRenewEarlyAmount(Math.max(0, Number(e.target.value) || 0))}
+          />
+          <div className="flex gap-2">
+            <Button
+              className="flex-1"
+              loading={renewingEarly}
+              onClick={async () => {
+                if (!coach || !db || !selectedStudent) return;
+                setRenewingEarly(true);
+                try {
+                  const firestore = db as Firestore;
+                  const batch = writeBatch(firestore);
+
+                  // Set next package on student
+                  batch.update(
+                    doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                    {
+                      nextPrepaidTotal: renewEarlyLessons,
+                      nextPrepaidPaidAt: serverTimestamp(),
+                      updatedAt: serverTimestamp(),
+                    }
+                  );
+
+                  // Record payment if amount > 0
+                  if (renewEarlyAmount > 0) {
+                    const paymentRef = doc(collection(firestore, 'coaches', coach.id, 'payments'));
+                    batch.set(paymentRef, {
+                      studentId: selectedStudent.id,
+                      studentName: selectedStudent.clientName,
+                      amount: renewEarlyAmount,
+                      collectedAt: serverTimestamp(),
+                      createdAt: serverTimestamp(),
+                    });
+                  }
+
+                  await batch.commit();
+                  setSelectedStudent((prev) =>
+                    prev ? { ...prev, nextPrepaidTotal: renewEarlyLessons, nextPrepaidPaidAt: new Date() } : null
+                  );
+                  showToast(`Next package (${renewEarlyLessons} lessons) queued!`, 'success');
+                  setShowRenewEarlyModal(false);
+                } catch (error) {
+                  console.error('Error renewing early:', error);
+                  showToast('Failed to queue next package', 'error');
+                } finally {
+                  setRenewingEarly(false);
+                }
+              }}
+            >
+              Confirm &amp; Record Payment
+            </Button>
+            <Button variant="secondary" className="flex-1" onClick={() => setShowRenewEarlyModal(false)}>
+              Cancel
             </Button>
           </div>
         </div>

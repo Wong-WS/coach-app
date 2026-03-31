@@ -280,6 +280,21 @@ export default function DashboardPage() {
         if (student && student.prepaidTotal > 0) {
           const remainingAfter = student.prepaidTotal - (student.prepaidUsed + 1);
           if (remainingAfter <= 0) {
+            // Auto-rollover if next package is queued
+            if (student.nextPrepaidTotal && student.nextPrepaidTotal > 0) {
+              const overflow = Math.max(0, (student.prepaidUsed + 1) - student.prepaidTotal);
+              const studentRef = doc(firestore, 'coaches', coach.id, 'students', studentId);
+              await updateDoc(studentRef, {
+                prepaidTotal: student.nextPrepaidTotal,
+                prepaidUsed: overflow,
+                nextPrepaidTotal: null,
+                nextPrepaidPaidAt: null,
+                updatedAt: serverTimestamp(),
+              });
+              showToast(`${studentName}'s package auto-renewed (${student.nextPrepaidTotal} lessons)!`, 'success');
+              continue;
+            }
+
             let perLessonPrice = 0;
             if (student.lessonRate != null && student.lessonRate > 0) {
               perLessonPrice = student.lessonRate;

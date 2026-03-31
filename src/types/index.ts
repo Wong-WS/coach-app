@@ -113,6 +113,8 @@ export interface Student {
   lessonRate?: number; // per-lesson rate (RM) for this student
   payPerLesson?: boolean;
   linkedToStudentId?: string; // if set, this is a secondary student linked to a primary
+  nextPrepaidTotal?: number; // queued next package (set when student renews early)
+  nextPrepaidPaidAt?: Date;  // when the next package payment was recorded
   notes: string;
   createdAt: Date;
   updatedAt: Date;
