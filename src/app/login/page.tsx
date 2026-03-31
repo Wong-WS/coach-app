@@ -3,11 +3,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useAuth } from '@/lib/auth-context';
+import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { Button, Input } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 
-export default function LoginPage() {
+function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -76,5 +76,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <AuthProvider>
+      <LoginForm />
+    </AuthProvider>
   );
 }

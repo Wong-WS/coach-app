@@ -3,11 +3,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useAuth } from '@/lib/auth-context';
+import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { Button, Input, PhoneInput } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 
-export default function SignupPage() {
+function SignupForm() {
   const [formData, setFormData] = useState({
     displayName: '',
     email: '',
@@ -179,5 +179,13 @@ export default function SignupPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <AuthProvider>
+      <SignupForm />
+    </AuthProvider>
   );
 }

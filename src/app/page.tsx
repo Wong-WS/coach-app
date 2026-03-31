@@ -1,26 +1,17 @@
-'use client';
-
 import Link from 'next/link';
-import { useAuth } from '@/lib/auth-context';
-import { Button } from '@/components/ui/Button';
 
 export default function Home() {
-  const { user, loading } = useAuth();
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <nav className="flex items-center justify-between px-6 py-4 max-w-6xl mx-auto">
         <div className="text-2xl font-bold text-blue-600">CoachApp</div>
         <div className="flex gap-4">
-          {loading ? null : user ? (
-            <Link href="/dashboard">
-              <Button>Dashboard</Button>
-            </Link>
-          ) : (
-            <Link href="/login">
-              <Button>Log in</Button>
-            </Link>
-          )}
+          <Link
+            href="/login"
+            className="inline-flex items-center justify-center rounded-lg text-sm font-medium px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+          >
+            Log in
+          </Link>
         </div>
       </nav>
 
@@ -34,8 +25,11 @@ export default function Home() {
             Share your public schedule page with clients.
           </p>
           <div className="flex gap-4 justify-center">
-            <Link href="/signup">
-              <Button size="lg">Get Started</Button>
+            <Link
+              href="/signup"
+              className="inline-flex items-center justify-center rounded-lg text-sm font-medium px-6 py-3 bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+            >
+              Get Started
             </Link>
           </div>
         </div>

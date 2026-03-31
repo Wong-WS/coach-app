@@ -38,3 +38,8 @@
 - Production guardrails: restrict prepaid package editing (admin mode or audit log)
 - Production guardrails: lesson log deletion safeguards (confirmation dialog, soft-delete, time-limited)
 - ✅ (2026-03-25) Income page: projected collected income — shows current & next month projections based on package renewals (day-by-day exhaustion calculation) and pay-per-lesson charges (primary bookings only, remaining days for current month)
+- (2026-03-31) **Consolidate booking creation to one place** — currently bookings can be created from multiple pages. Unify to a single entry point to keep data clean.
+- (2026-03-31) **Student self-service replacement scheduling** — let students check available replacement times and schedule via their portal page (`/student/[token]`).
+- (2026-03-31) **Show full credit balance (total paid minus total used)** — currently only tracks "extra" credit from discounted lessons. Should show the full remaining monetary credit (e.g. paid RM500 for 5 lessons, used 3 = RM200 remaining). Data is already there via payments + lessonLogs.
+- (2026-03-31) **Cancellation reasons/data** — track who cancelled (coach, student, weather, etc.) on class exceptions. Add a `reason` or `cancelledBy` field to `classExceptions` so coaches can see patterns.
+- ✅ (2026-03-31) **Early package renewal** — "Renew Early" feature: queue next package + record payment before current package finishes. Auto-rollover on exhaustion.
