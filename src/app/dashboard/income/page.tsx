@@ -178,8 +178,8 @@ function getMonthRange(): { start: string; end: string } {
 export default function IncomePage() {
   const { coach } = useAuth();
   const { bookings, loading } = useBookings(coach?.id, 'confirmed');
-  const { lessonLogs, loading: logsLoading } = useLessonLogs(coach?.id);
-  const { payments, loading: paymentsLoading } = usePayments(coach?.id);
+  const { lessonLogs, loading: logsLoading } = useLessonLogs(coach?.id, undefined, undefined, 6);
+  const { payments, loading: paymentsLoading } = usePayments(coach?.id, 100);
   const { students, loading: studentsLoading } = useStudents(coach?.id);
 
   // Only recurring bookings (no endDate) for projections

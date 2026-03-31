@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, doc, onSnapshot, query, where, orderBy, Firestore } from 'firebase/firestore';
+import { collection, doc, onSnapshot, query, where, orderBy, limit, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Booking, Location, WorkingHours, DayOfWeek, WaitlistEntry, WaitlistStatus, Student, LessonLog, ClassException, Payment } from '@/types';
 
@@ -204,7 +204,7 @@ export function useStudents(coachId: string | undefined) {
   return { students, loading };
 }
 
-export function useLessonLogs(coachId: string | undefined, dateFilter?: string, studentIdFilter?: string) {
+export function useLessonLogs(coachId: string | undefined, dateFilter?: string, studentIdFilter?: string, monthsBack?: number) {
   const [lessonLogs, setLessonLogs] = useState<LessonLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -215,12 +215,20 @@ export function useLessonLogs(coachId: string | undefined, dateFilter?: string, 
     }
 
     const firestore = db as Firestore;
-    let q = query(collection(firestore, 'coaches', coachId, 'lessonLogs'), orderBy('date', 'desc'));
+    const col = collection(firestore, 'coaches', coachId, 'lessonLogs');
+    let q;
 
     if (dateFilter) {
-      q = query(collection(firestore, 'coaches', coachId, 'lessonLogs'), where('date', '==', dateFilter));
+      q = query(col, where('date', '==', dateFilter));
     } else if (studentIdFilter) {
-      q = query(collection(firestore, 'coaches', coachId, 'lessonLogs'), where('studentId', '==', studentIdFilter), orderBy('date', 'desc'));
+      q = query(col, where('studentId', '==', studentIdFilter), orderBy('date', 'desc'));
+    } else if (monthsBack) {
+      const cutoff = new Date();
+      cutoff.setMonth(cutoff.getMonth() - monthsBack);
+      const cutoffStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-01`;
+      q = query(col, where('date', '>=', cutoffStr), orderBy('date', 'desc'));
+    } else {
+      q = query(col, orderBy('date', 'desc'));
     }
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -242,7 +250,7 @@ export function useLessonLogs(coachId: string | undefined, dateFilter?: string, 
     });
 
     return () => unsubscribe();
-  }, [coachId, dateFilter, studentIdFilter]);
+  }, [coachId, dateFilter, studentIdFilter, monthsBack]);
 
   return { lessonLogs, loading };
 }
@@ -285,7 +293,7 @@ export function useClassExceptions(coachId: string | undefined) {
   return { classExceptions, loading };
 }
 
-export function usePayments(coachId: string | undefined) {
+export function usePayments(coachId: string | undefined, limitCount?: number) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -296,8 +304,11 @@ export function usePayments(coachId: string | undefined) {
     }
 
     const firestore = db as Firestore;
-    const unsubscribe = onSnapshot(
-      query(collection(firestore, 'coaches', coachId, 'payments'), orderBy('collectedAt', 'desc')),
+    const col = collection(firestore, 'coaches', coachId, 'payments');
+    const q = limitCount
+      ? query(col, orderBy('collectedAt', 'desc'), limit(limitCount))
+      : query(col, orderBy('collectedAt', 'desc'));
+    const unsubscribe = onSnapshot(q,
       (snapshot) => {
         const items: Payment[] = snapshot.docs.map((d) => ({
           id: d.id,
@@ -313,7 +324,7 @@ export function usePayments(coachId: string | undefined) {
     );
 
     return () => unsubscribe();
-  }, [coachId]);
+  }, [coachId, limitCount]);
 
   return { payments, loading };
 }

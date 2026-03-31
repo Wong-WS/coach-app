@@ -15,10 +15,10 @@ import { formatDateMedium, parseDateString } from '@/lib/date-format';
 export default function StudentsPage() {
   const { coach } = useAuth();
   const { students, loading } = useStudents(coach?.id);
-  const { lessonLogs: allLogs } = useLessonLogs(coach?.id);
+  const { lessonLogs: allLogs } = useLessonLogs(coach?.id, undefined, undefined, 6);
   const { locations } = useLocations(coach?.id);
   const { bookings } = useBookings(coach?.id, 'confirmed');
-  const { payments } = usePayments(coach?.id);
+  const { payments } = usePayments(coach?.id, 100);
   const { showToast } = useToast();
 
   const [syncing, setSyncing] = useState(false);
