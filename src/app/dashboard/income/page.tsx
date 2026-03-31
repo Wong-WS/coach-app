@@ -29,6 +29,7 @@ function getMonthLabel(year: number, month: number): string {
 interface ProjectedCollection {
   packageRenewals: number;
   payPerLesson: number;
+  unpaidBalance: number;
   total: number;
 }
 
@@ -137,6 +138,7 @@ function computeProjectedCollections(
   return {
     packageRenewals,
     payPerLesson: payPerLessonTotal,
+    unpaidBalance: 0,
     total: packageRenewals + payPerLessonTotal,
   };
 }
@@ -228,6 +230,12 @@ export default function IncomePage() {
     const currentMonth = computeProjectedCollections(students, recurringBookings, now.getFullYear(), now.getMonth(), now.getDate());
     const nextDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     const nextMonth = computeProjectedCollections(students, recurringBookings, nextDate.getFullYear(), nextDate.getMonth());
+
+    // Add total unpaid balance to current month
+    const unpaidBalance = students.reduce((sum, s) => sum + (s.pendingPayment ?? 0), 0);
+    currentMonth.unpaidBalance = unpaidBalance;
+    currentMonth.total += unpaidBalance;
+
     const currentLabel = getMonthLabel(now.getFullYear(), now.getMonth());
     const nextLabel = getMonthLabel(nextDate.getFullYear(), nextDate.getMonth());
     return { currentMonth, nextMonth, currentLabel, nextLabel };
@@ -306,6 +314,11 @@ export default function IncomePage() {
                 {projectedCollections.currentMonth.payPerLesson > 0 && (
                   <p className="text-xs text-gray-500 dark:text-zinc-400">
                     Pay-per-lesson: {formatRM(projectedCollections.currentMonth.payPerLesson)}
+                  </p>
+                )}
+                {projectedCollections.currentMonth.unpaidBalance > 0 && (
+                  <p className="text-xs text-orange-600 dark:text-orange-400">
+                    Payment due: {formatRM(projectedCollections.currentMonth.unpaidBalance)}
                   </p>
                 )}
               </div>
