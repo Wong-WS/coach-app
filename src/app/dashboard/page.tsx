@@ -160,7 +160,7 @@ export default function DashboardPage() {
   const openMarkDone = (booking: Booking) => {
     setMarkDoneBooking(booking);
     setMarkDonePrice(booking.price ?? 0);
-    setMarkDoneNote('');
+    setMarkDoneNote(booking.notes || '');
     setMenuOpen(null);
 
     // Build attendees list: primary + linked students
@@ -859,6 +859,9 @@ export default function DashboardPage() {
                         : booking.clientName}
                     </p>
                     <p className="text-xs text-gray-400 dark:text-zinc-500">{booking.locationName}</p>
+                    {booking.notes && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">{booking.notes}</p>
+                    )}
                   </div>
 
                   {/* Price + type */}
@@ -1034,6 +1037,9 @@ export default function DashboardPage() {
                       {group.map((l) => l.studentName).join(', ')}
                     </p>
                     <p className="text-xs text-gray-400 dark:text-zinc-500">{group[0].locationName}</p>
+                    {group[0].note && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">{group[0].note}</p>
+                    )}
                   </div>
                   <div className="text-right flex-shrink-0 flex items-center gap-2">
                     {group.reduce((sum, l) => sum + l.price, 0) > 0 && (
