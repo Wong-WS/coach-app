@@ -569,10 +569,12 @@ export default function DashboardPage() {
       const studentRecord = students.find((s) => s.id === student.studentId);
       let autoPrice = studentRecord?.lessonRate ?? 0;
       if (!autoPrice) {
-        const studentBooking = bookings.find((b) => {
+        const matchingBookings = bookings.filter((b) => {
           if (b.studentPrices?.[student.studentId] != null) return true;
           return b.clientName === studentRecord?.clientName && b.clientPhone === studentRecord?.clientPhone && (b.price ?? 0) > 0;
         });
+        // Prefer recurring bookings (no endDate) over one-time ad-hoc ones
+        const studentBooking = matchingBookings.find((b) => !b.endDate) ?? matchingBookings[0];
         autoPrice = studentBooking?.studentPrices?.[student.studentId] ?? studentBooking?.price ?? 0;
       }
       return [...prev, { studentId: student.studentId, displayName: student.displayName, price: autoPrice }];
