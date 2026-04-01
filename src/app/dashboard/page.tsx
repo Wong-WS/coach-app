@@ -858,10 +858,9 @@ export default function DashboardPage() {
                           })()
                         : booking.clientName}
                     </p>
-                    <p className="text-xs text-gray-400 dark:text-zinc-500">{booking.locationName}</p>
-                    {booking.notes && (
-                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">{booking.notes}</p>
-                    )}
+                    <p className="text-xs text-gray-400 dark:text-zinc-500 truncate">
+                      {booking.locationName}{booking.notes ? <span className="text-amber-500 dark:text-amber-400"> · {booking.notes}</span> : null}
+                    </p>
                   </div>
 
                   {/* Price + type */}
@@ -1036,10 +1035,9 @@ export default function DashboardPage() {
                     <p className="text-sm text-gray-600 dark:text-zinc-400 mt-0.5">
                       {group.map((l) => l.studentName).join(', ')}
                     </p>
-                    <p className="text-xs text-gray-400 dark:text-zinc-500">{group[0].locationName}</p>
-                    {group[0].note && (
-                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">{group[0].note}</p>
-                    )}
+                    <p className="text-xs text-gray-400 dark:text-zinc-500 truncate">
+                      {group[0].locationName}{group[0].note ? <span className="text-amber-500 dark:text-amber-400"> · {group[0].note}</span> : null}
+                    </p>
                   </div>
                   <div className="text-right flex-shrink-0 flex items-center gap-2">
                     {group.reduce((sum, l) => sum + l.price, 0) > 0 && (
