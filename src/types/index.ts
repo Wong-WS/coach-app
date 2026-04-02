@@ -145,6 +145,7 @@ export interface ClassException {
   newLocationId?: string;     // optional location override for rescheduled
   newLocationName?: string;
   newPrice?: number;
+  newNote?: string;
   createdAt: Date;
 }
 

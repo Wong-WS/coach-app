@@ -106,6 +106,7 @@ export default function DashboardPage() {
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
   const [editPrice, setEditPrice] = useState(0);
+  const [editNote, setEditNote] = useState('');
   const [showEditSaveOptions, setShowEditSaveOptions] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
 
@@ -457,6 +458,7 @@ export default function DashboardPage() {
     setEditStartTime(booking.startTime);
     setEditEndTime(booking.endTime);
     setEditPrice(booking.price ?? 0);
+    setEditNote(booking.notes || '');
     setShowEditSaveOptions(false);
     setMenuOpen(null);
   };
@@ -466,7 +468,8 @@ export default function DashboardPage() {
     return editLocationId !== editBooking.locationId ||
       editStartTime !== editBooking.startTime ||
       editEndTime !== editBooking.endTime ||
-      editPrice !== (editBooking.price ?? 0);
+      editPrice !== (editBooking.price ?? 0) ||
+      editNote !== (editBooking.notes || '');
   };
 
   const handleEditSave = async (mode: 'this' | 'all' | 'future') => {
@@ -496,6 +499,7 @@ export default function DashboardPage() {
           newLocationId: editLocationId,
           newLocationName: newLocationName,
           newPrice: editPrice,
+          newNote: editNote,
           createdAt: serverTimestamp(),
         });
         await batch.commit();
@@ -508,6 +512,7 @@ export default function DashboardPage() {
           startTime: editStartTime,
           endTime: editEndTime,
           price: editPrice,
+          notes: editNote,
           updatedAt: serverTimestamp(),
         });
         showToast('All events updated', 'success');
@@ -534,7 +539,7 @@ export default function DashboardPage() {
           clientPhone: editBooking.clientPhone,
           lessonType: editBooking.lessonType,
           groupSize: editBooking.groupSize,
-          notes: editBooking.notes,
+          notes: editNote,
           price: editPrice,
           linkedStudentIds: editBooking.linkedStudentIds ?? null,
           studentPrices: editBooking.studentPrices ?? null,
@@ -1250,6 +1255,19 @@ export default function DashboardPage() {
               onChange={(e) => setEditPrice(parseFloat(e.target.value) || 0)}
               min={0}
             />
+
+            <div>
+              <label htmlFor="editNote" className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
+                Note (optional)
+              </label>
+              <input
+                id="editNote"
+                value={editNote}
+                onChange={(e) => setEditNote(e.target.value)}
+                placeholder="e.g. Riwoo only"
+                className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm"
+              />
+            </div>
 
             <div className="flex gap-2 justify-end">
               <Button variant="secondary" onClick={() => setEditBooking(null)}>

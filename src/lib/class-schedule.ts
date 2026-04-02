@@ -45,6 +45,7 @@ export function getClassesForDate(
       if (exception.newLocationId) overrides.locationId = exception.newLocationId;
       if (exception.newLocationName) overrides.locationName = exception.newLocationName;
       if (exception.newPrice !== undefined) overrides.price = exception.newPrice;
+      if (exception.newNote !== undefined) overrides.notes = exception.newNote;
 
       const existingIdx = classes.findIndex((c) => c.id === originalBooking.id);
       if (existingIdx >= 0) {
