@@ -376,6 +376,25 @@ export default function BookingsPage() {
         }
       }
 
+      // Clear pendingPayment for students with exhausted packages (it was for a renewal that won't happen)
+      const booking = bookings.find((b) => b.id === bookingId);
+      const primaryStudent = booking
+        ? students.find((s) => s.clientName === booking.clientName && s.clientPhone === booking.clientPhone)
+        : null;
+      const allStudentIds = [
+        ...(primaryStudent ? [primaryStudent.id] : []),
+        ...(booking?.linkedStudentIds || []),
+      ];
+      for (const studentId of allStudentIds) {
+        const student = students.find((s) => s.id === studentId);
+        if (student && student.prepaidTotal > 0 && student.prepaidUsed >= student.prepaidTotal && (student.pendingPayment ?? 0) > 0) {
+          await updateDoc(doc(db, 'coaches', coach.id, 'students', studentId), {
+            pendingPayment: 0,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
       showToast('Booking cancelled', 'success');
     } catch (error) {
       console.error('Error cancelling booking:', error);
