@@ -597,7 +597,6 @@ export default function DashboardPage() {
           const studentId = await findOrCreateStudent(firestore, coach.id, selected.displayName, selected.newPhone || '');
           const studentUpdateData: Record<string, unknown> = { updatedAt: serverTimestamp() };
           if (selected.payPerLesson) studentUpdateData.payPerLesson = true;
-          if (selected.price > 0) studentUpdateData.lessonRate = selected.price;
           if (!selected.payPerLesson && selected.packageSize && selected.packageSize > 0) {
             studentUpdateData.prepaidTotal = selected.packageSize;
             studentUpdateData.prepaidUsed = 0;

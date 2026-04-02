@@ -315,8 +315,7 @@ export default function StudentsPage() {
     setShowAddLesson(false);
     setEditingPrepaid(false);
 
-    // Auto-fill lesson form from student's booking
-    // Check: primary on booking, or linked student on booking — prefer recurring (no endDate)
+    // Auto-fill lesson form from student's booking — prefer recurring (no endDate)
     const matchingBookings = bookings.filter(
       (b) =>
         (b.clientName === student.clientName && b.clientPhone === (student.clientPhone || '')) ||
@@ -324,6 +323,17 @@ export default function StudentsPage() {
         (b.studentPrices && student.id in b.studentPrices)
     );
     const studentBooking = matchingBookings.find((b) => !b.endDate) ?? matchingBookings[0];
+
+    // If lessonRate not set on student, derive it from recurring booking for display only (no Firestore write)
+    if (!student.lessonRate) {
+      const recurringBooking = matchingBookings.find((b) => !b.endDate);
+      const derivedRate = recurringBooking
+        ? (recurringBooking.studentPrices?.[student.id] ?? recurringBooking.price ?? 0)
+        : 0;
+      if (derivedRate > 0) {
+        setSelectedStudent((prev) => prev ? { ...prev, lessonRate: derivedRate } : null);
+      }
+    }
     if (studentBooking) {
       setLessonLocationName(studentBooking.locationName);
       setLessonStartTime(studentBooking.startTime);
@@ -342,29 +352,6 @@ export default function StudentsPage() {
       setLessonPrice(student.lessonRate ?? lastLog?.price ?? 0);
     }
 
-    // Auto-backfill lessonRate from booking data if not set
-    if (!student.lessonRate && coach && db) {
-      let rate = 0;
-      // Check studentPrices first (split payment) — prefer recurring bookings
-      const recurringFirst = [...bookings].sort((a, b) => (a.endDate ? 1 : 0) - (b.endDate ? 1 : 0));
-      for (const b of recurringFirst) {
-        if (b.studentPrices?.[student.id]) {
-          rate = b.studentPrices[student.id];
-          break;
-        }
-      }
-      // Fallback: non-split booking matched by name+phone (studentBooking already prefers recurring)
-      if (!rate && studentBooking?.price) {
-        rate = studentBooking.price;
-      }
-      if (rate > 0) {
-        updateDoc(
-          doc(db as Firestore, 'coaches', coach.id, 'students', student.id),
-          { lessonRate: rate, updatedAt: serverTimestamp() }
-        ).catch(() => {});
-        setSelectedStudent((prev) => prev ? { ...prev, lessonRate: rate } : null);
-      }
-    }
   };
 
   const handleSave = async () => {
