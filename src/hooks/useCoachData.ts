@@ -280,6 +280,7 @@ export function useClassExceptions(coachId: string | undefined) {
           newLocationId: d.data().newLocationId,
           newLocationName: d.data().newLocationName,
           newPrice: d.data().newPrice,
+          newNote: d.data().newNote,
           createdAt: d.data().createdAt?.toDate() || new Date(),
         }));
         setClassExceptions(items);
