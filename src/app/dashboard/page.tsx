@@ -57,6 +57,7 @@ export default function DashboardPage() {
   const [markDoneBooking, setMarkDoneBooking] = useState<Booking | null>(null);
   const [markDonePrice, setMarkDonePrice] = useState(0);
   const [markDoneNote, setMarkDoneNote] = useState('');
+  const [markDonePaySeparately, setMarkDonePaySeparately] = useState(false);
   const [markDoneAttendees, setMarkDoneAttendees] = useState<Array<{
     studentId: string;
     studentName: string;
@@ -161,6 +162,7 @@ export default function DashboardPage() {
     setMarkDoneBooking(booking);
     setMarkDonePrice(booking.price ?? 0);
     setMarkDoneNote(booking.notes || '');
+    setMarkDonePaySeparately(false);
     setMenuOpen(null);
 
     // Build attendees list: primary + linked students
@@ -207,6 +209,7 @@ export default function DashboardPage() {
     const hasLinkedStudents = markDoneAttendees.length > 1;
     const noteText = markDoneNote.trim();
     const price = markDonePrice;
+    const paySeparately = markDonePaySeparately;
 
     // Close modal immediately (optimistic UI)
     setMarkDoneBooking(null);
@@ -254,6 +257,13 @@ export default function DashboardPage() {
         const updateData: Record<string, unknown> = {
           updatedAt: serverTimestamp(),
         };
+
+        if (paySeparately) {
+          // Paid separately — log the lesson but don't touch package, credit, or pending
+          batch.update(studentRef, updateData);
+          continue;
+        }
+
         if ((studentRecord?.prepaidTotal ?? 0) > 0) {
           updateData.prepaidUsed = increment(1);
         }
@@ -1363,11 +1373,29 @@ export default function DashboardPage() {
                   step={0.01}
                 />
 
-                {markDonePrice < (markDoneBooking.price ?? 0) && (markDoneBooking.price ?? 0) > 0 && (
+                {!markDonePaySeparately && markDonePrice < (markDoneBooking.price ?? 0) && (markDoneBooking.price ?? 0) > 0 && (
                   <p className="text-xs text-blue-600 dark:text-blue-400">
                     RM {((markDoneBooking.price ?? 0) - markDonePrice).toFixed(0)} will be added as credit
                   </p>
                 )}
+
+                {(() => {
+                  const student = students.find((s) =>
+                    s.clientName === markDoneBooking.clientName && s.clientPhone === (markDoneBooking.clientPhone || '')
+                  );
+                  if (!student || (student.prepaidTotal ?? 0) === 0) return null;
+                  return (
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={markDonePaySeparately}
+                        onChange={(e) => setMarkDonePaySeparately(e.target.checked)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-zinc-300">Pay separately <span className="text-xs text-gray-400 dark:text-zinc-500">(won&apos;t use package slot)</span></span>
+                    </label>
+                  );
+                })()}
               </>
             )}
 
