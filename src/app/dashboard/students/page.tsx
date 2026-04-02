@@ -316,13 +316,14 @@ export default function StudentsPage() {
     setEditingPrepaid(false);
 
     // Auto-fill lesson form from student's booking
-    // Check: primary on booking, or linked student on booking
-    const studentBooking = bookings.find(
+    // Check: primary on booking, or linked student on booking — prefer recurring (no endDate)
+    const matchingBookings = bookings.filter(
       (b) =>
         (b.clientName === student.clientName && b.clientPhone === (student.clientPhone || '')) ||
         b.linkedStudentIds?.includes(student.id) ||
         (b.studentPrices && student.id in b.studentPrices)
     );
+    const studentBooking = matchingBookings.find((b) => !b.endDate) ?? matchingBookings[0];
     if (studentBooking) {
       setLessonLocationName(studentBooking.locationName);
       setLessonStartTime(studentBooking.startTime);
@@ -344,14 +345,15 @@ export default function StudentsPage() {
     // Auto-backfill lessonRate from booking data if not set
     if (!student.lessonRate && coach && db) {
       let rate = 0;
-      // Check studentPrices first (split payment — per-student price)
-      for (const b of bookings) {
+      // Check studentPrices first (split payment) — prefer recurring bookings
+      const recurringFirst = [...bookings].sort((a, b) => (a.endDate ? 1 : 0) - (b.endDate ? 1 : 0));
+      for (const b of recurringFirst) {
         if (b.studentPrices?.[student.id]) {
           rate = b.studentPrices[student.id];
           break;
         }
       }
-      // Fallback: non-split booking matched by name+phone
+      // Fallback: non-split booking matched by name+phone (studentBooking already prefers recurring)
       if (!rate && studentBooking?.price) {
         rate = studentBooking.price;
       }
