@@ -64,6 +64,7 @@ export default function DashboardPage() {
     attended: boolean;
     price: number;
     isPrimary: boolean;
+    paySeparately: boolean;
   }>>([]);
   const [packageWarning, setPackageWarning] = useState<{
     studentName: string;
@@ -180,6 +181,7 @@ export default function DashboardPage() {
         attended: true,
         price: studentPrice,
         isPrimary: true,
+        paySeparately: false,
       });
     }
     // Linked students
@@ -194,6 +196,7 @@ export default function DashboardPage() {
             attended: true,
             price: studentPrice,
             isPrimary: false,
+            paySeparately: false,
           });
         }
       }
@@ -220,7 +223,7 @@ export default function DashboardPage() {
       // Determine which students to process
       const attendeesToProcess = hasLinkedStudents
         ? markDoneAttendees.filter((a) => a.attended)
-        : [{ studentId: '', studentName: booking.clientName, attended: true, price, isPrimary: true }];
+        : [{ studentId: '', studentName: booking.clientName, attended: true, price, isPrimary: true, paySeparately }];
 
       // Resolve student IDs first (requires async lookup)
       const resolvedAttendees = await Promise.all(
@@ -259,8 +262,12 @@ export default function DashboardPage() {
           updatedAt: serverTimestamp(),
         };
 
-        if (paySeparately) {
-          // Paid separately — log the lesson but don't touch package, credit, or pending
+        const attendeePaySeparately = hasLinkedStudents ? attendee.paySeparately : paySeparately;
+        if (attendeePaySeparately) {
+          // Pay separately — log lesson, add to pendingPayment, skip package/credit
+          if (attendee.price > 0) {
+            updateData.pendingPayment = increment(attendee.price);
+          }
           batch.update(studentRef, updateData);
           continue;
         }
@@ -1342,39 +1349,56 @@ export default function DashboardPage() {
               <div className="space-y-3">
                 <p className="text-sm font-medium text-gray-700 dark:text-zinc-300">Attendance & Pricing</p>
                 {markDoneAttendees.map((attendee, idx) => (
-                  <div key={attendee.studentId} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-[#1a1a1a] rounded-lg">
-                    <input
-                      type="checkbox"
-                      checked={attendee.attended}
-                      onChange={(e) => {
-                        const updated = [...markDoneAttendees];
-                        updated[idx] = { ...updated[idx], attended: e.target.checked };
-                        setMarkDoneAttendees(updated);
-                      }}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-900 dark:text-zinc-100">
-                        {attendee.studentName}
-                        {!attendee.isPrimary && (
-                          <span className="text-xs text-purple-600 dark:text-purple-400 ml-1">(linked)</span>
-                        )}
-                      </p>
-                    </div>
-                    <div className="w-24">
+                  <div key={attendee.studentId} className="p-3 bg-gray-50 dark:bg-[#1a1a1a] rounded-lg space-y-2">
+                    <div className="flex items-center gap-3">
                       <input
-                        type="number"
-                        value={attendee.price}
+                        type="checkbox"
+                        checked={attendee.attended}
                         onChange={(e) => {
                           const updated = [...markDoneAttendees];
-                          updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
+                          updated[idx] = { ...updated[idx], attended: e.target.checked };
                           setMarkDoneAttendees(updated);
                         }}
-                        disabled={!attendee.attended}
-                        className="block w-full px-2 py-1 text-sm border border-gray-300 dark:border-zinc-500 rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 disabled:opacity-40"
-                        placeholder="RM"
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-900 dark:text-zinc-100">
+                          {attendee.studentName}
+                          {!attendee.isPrimary && (
+                            <span className="text-xs text-purple-600 dark:text-purple-400 ml-1">(linked)</span>
+                          )}
+                        </p>
+                      </div>
+                      <div className="w-24">
+                        <input
+                          type="number"
+                          value={attendee.price}
+                          onChange={(e) => {
+                            const updated = [...markDoneAttendees];
+                            updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
+                            setMarkDoneAttendees(updated);
+                          }}
+                          disabled={!attendee.attended}
+                          className="block w-full px-2 py-1 text-sm border border-gray-300 dark:border-zinc-500 rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 disabled:opacity-40"
+                          placeholder="RM"
+                        />
+                      </div>
                     </div>
+                    {attendee.attended && (
+                      <label className="flex items-center gap-2 cursor-pointer pl-7">
+                        <input
+                          type="checkbox"
+                          checked={attendee.paySeparately}
+                          onChange={(e) => {
+                            const updated = [...markDoneAttendees];
+                            updated[idx] = { ...updated[idx], paySeparately: e.target.checked };
+                            setMarkDoneAttendees(updated);
+                          }}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-xs text-gray-500 dark:text-zinc-400">Pay separately <span className="text-gray-400 dark:text-zinc-500">(won&apos;t use package slot)</span></span>
+                      </label>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1410,7 +1434,7 @@ export default function DashboardPage() {
                         onChange={(e) => setMarkDonePaySeparately(e.target.checked)}
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
-                      <span className="text-sm text-gray-700 dark:text-zinc-300">Pay separately <span className="text-xs text-gray-400 dark:text-zinc-500">(won&apos;t use package slot)</span></span>
+                      <span className="text-sm text-gray-700 dark:text-zinc-300">Pay separately <span className="text-xs text-gray-400 dark:text-zinc-500">(won&apos;t use package slot · adds to pending payment)</span></span>
                     </label>
                   );
                 })()}
