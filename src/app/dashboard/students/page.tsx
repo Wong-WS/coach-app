@@ -511,9 +511,24 @@ export default function StudentsPage() {
 
       const log = studentLogs.find((l) => l.id === logId);
       const updateData: Record<string, unknown> = {
-        prepaidUsed: increment(-1),
         updatedAt: serverTimestamp(),
       };
+
+      if (log?.paySeparately) {
+        // Pay-separately lesson: only reverse pendingPayment, don't touch package or credit
+        if (log.price > 0) {
+          updateData.pendingPayment = increment(-log.price);
+        }
+        batch.update(doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id), updateData);
+        await batch.commit();
+        setSelectedStudent((prev) =>
+          prev ? { ...prev, pendingPayment: Math.max(0, prev.pendingPayment - (log.price ?? 0)) } : null
+        );
+        showToast('Lesson deleted', 'success');
+        return;
+      }
+
+      updateData.prepaidUsed = increment(-1);
 
       // Reverse credit if price was below lessonRate
       const basePrice = selectedStudent.lessonRate ?? 0;
@@ -532,8 +547,7 @@ export default function StudentsPage() {
       if (wasExhausted && willBeAfter < selectedStudent.prepaidTotal) {
         updateData.pendingPayment = 0;
         // Don't zero out credit here — the specific lesson's credit was already
-        // reversed above (lines 467-471). Zeroing it would lose credit accumulated
-        // from other cheaper lessons in the package.
+        // reversed above. Zeroing it would lose credit accumulated from other lessons.
       }
 
       // If deleting the last lesson log, clear any leftover credit
@@ -548,7 +562,6 @@ export default function StudentsPage() {
       let newCredit = selectedStudent.credit ?? 0;
       if (wasExhausted && willBeAfter < selectedStudent.prepaidTotal) {
         newPending = 0;
-        // Only reverse credit for the specific deleted lesson, not all credit
         if (log && log.price < basePrice && basePrice > 0) {
           newCredit = Math.max(0, newCredit - (basePrice - log.price));
         }
