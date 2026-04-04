@@ -223,7 +223,7 @@ export default function DashboardPage() {
       // Determine which students to process
       const attendeesToProcess = hasLinkedStudents
         ? markDoneAttendees.filter((a) => a.attended)
-        : [{ studentId: '', studentName: booking.clientName, attended: true, price, isPrimary: true, paySeparately }];
+        : [{ studentId: markDoneAttendees[0]?.studentId || '', studentName: booking.clientName, attended: true, price, isPrimary: true, paySeparately }];
 
       // Resolve student IDs first (requires async lookup)
       const resolvedAttendees = await Promise.all(
