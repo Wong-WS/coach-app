@@ -111,7 +111,7 @@ export default function StudentsPage() {
       } else if (booking) {
         basePrice = booking.studentPrices?.[selectedStudent.id] ?? booking.price ?? 0;
       }
-      if (basePrice > 0 && log.price < basePrice) {
+      if (basePrice > 0 && log.price < basePrice && !log.paySeparately) {
         map.set(log.id, basePrice - log.price);
       }
     }

@@ -131,6 +131,7 @@ export interface LessonLog {
   endTime: string;
   price: number;
   note?: string;
+  paySeparately?: boolean;
   createdAt: Date;
 }
 

@@ -254,6 +254,10 @@ export default function DashboardPage() {
         if (noteText) {
           logData.note = noteText;
         }
+        const attendeePaySeparatelyForLog = hasLinkedStudents ? attendee.paySeparately : paySeparately;
+        if (attendeePaySeparatelyForLog) {
+          logData.paySeparately = true;
+        }
         batch.set(logRef, logData);
 
         const studentRef = doc(firestore, 'coaches', coach.id, 'students', attendee.studentId);
