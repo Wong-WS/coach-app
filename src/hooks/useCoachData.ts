@@ -243,6 +243,7 @@ export function useLessonLogs(coachId: string | undefined, dateFilter?: string, 
         endTime: d.data().endTime,
         price: d.data().price ?? 0,
         note: d.data().note ?? undefined,
+        paySeparately: d.data().paySeparately ?? false,
         createdAt: d.data().createdAt?.toDate() || new Date(),
       }));
       setLessonLogs(items);
