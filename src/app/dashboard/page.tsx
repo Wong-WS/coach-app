@@ -267,13 +267,14 @@ export default function DashboardPage() {
         };
 
         const attendeePaySeparately = hasLinkedStudents ? attendee.paySeparately : paySeparately;
-        console.log('[MarkDone] paySeparately check:', { attendeePaySeparately, hasLinkedStudents, globalPaySeparately: paySeparately, price: attendee.price });
+        console.log('[MarkDone] paySeparately check:', { attendeePaySeparately, hasLinkedStudents, globalPaySeparately: paySeparately, price: attendee.price, studentId: attendee.studentId, studentRefPath: studentRef.path });
         if (attendeePaySeparately) {
           // Pay separately — log lesson, add to pendingPayment, skip package/credit
-          console.log('[MarkDone] Pay separately path — adding pendingPayment:', attendee.price);
+          console.log('[MarkDone] Pay separately path — adding pendingPayment:', attendee.price, 'to student:', studentRef.path);
           if (attendee.price > 0) {
             updateData.pendingPayment = increment(attendee.price);
           }
+          console.log('[MarkDone] updateData keys:', Object.keys(updateData));
           batch.update(studentRef, updateData);
           continue;
         }
@@ -331,6 +332,7 @@ export default function DashboardPage() {
       }
 
       await batch.commit();
+      console.log('[MarkDone] batch.commit() succeeded');
 
       // Show post-commit UI notifications (package warnings, auto-renewals)
       for (const attendee of resolvedAttendees) {
