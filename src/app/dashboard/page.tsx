@@ -267,8 +267,10 @@ export default function DashboardPage() {
         };
 
         const attendeePaySeparately = hasLinkedStudents ? attendee.paySeparately : paySeparately;
+        console.log('[MarkDone] paySeparately check:', { attendeePaySeparately, hasLinkedStudents, globalPaySeparately: paySeparately, price: attendee.price });
         if (attendeePaySeparately) {
           // Pay separately — log lesson, add to pendingPayment, skip package/credit
+          console.log('[MarkDone] Pay separately path — adding pendingPayment:', attendee.price);
           if (attendee.price > 0) {
             updateData.pendingPayment = increment(attendee.price);
           }
