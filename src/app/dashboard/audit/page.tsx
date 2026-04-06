@@ -142,34 +142,32 @@ export default function AuditPage() {
       };
 
       // --- CHECK prepaidUsed ---
+      // Only flag clearly wrong states — can't reliably compare against lesson count
+      // because package rollovers reset prepaidUsed while old lesson logs remain
       if (student.prepaidUsed < 0) {
         results.push({
           studentId: student.id,
           studentName: student.clientName,
           field: 'prepaidUsed',
           storedValue: student.prepaidUsed,
-          recomputedValue: expectedPrepaidUsed,
-          diff: student.prepaidUsed - expectedPrepaidUsed,
+          recomputedValue: 0,
+          diff: student.prepaidUsed,
           detail: `prepaidUsed is NEGATIVE (${student.prepaidUsed}). Should never be below 0. Likely caused by deleting lessons that wrongly decremented the counter.`,
           severity: 'high',
         });
         summary.hasIssues = true;
-      } else if (student.prepaidTotal > 0 && student.prepaidUsed !== expectedPrepaidUsed) {
-        // Only flag if the student has a package
-        const diff = student.prepaidUsed - expectedPrepaidUsed;
-        if (Math.abs(diff) > 0) {
-          results.push({
-            studentId: student.id,
-            studentName: student.clientName,
-            field: 'prepaidUsed',
-            storedValue: student.prepaidUsed,
-            recomputedValue: expectedPrepaidUsed,
-            diff,
-            detail: `prepaidUsed (${student.prepaidUsed}) doesn't match lesson log count (${normalLogs.length} normal lessons). ${diff > 0 ? 'Counter is too high — lessons may have been deleted without proper reversal.' : 'Counter is too low — may have been wrongly decremented.'} Note: package rollovers can explain some differences.`,
-            severity: Math.abs(diff) > 2 ? 'high' : 'medium',
-          });
-          summary.hasIssues = true;
-        }
+      } else if (student.prepaidTotal > 0 && student.prepaidUsed > student.prepaidTotal) {
+        results.push({
+          studentId: student.id,
+          studentName: student.clientName,
+          field: 'prepaidUsed',
+          storedValue: student.prepaidUsed,
+          recomputedValue: student.prepaidTotal,
+          diff: student.prepaidUsed - student.prepaidTotal,
+          detail: `prepaidUsed (${student.prepaidUsed}) exceeds prepaidTotal (${student.prepaidTotal}). Package should have triggered exhaustion/rollover.`,
+          severity: 'high',
+        });
+        summary.hasIssues = true;
       } else if (student.prepaidTotal === 0 && student.prepaidUsed !== 0) {
         results.push({
           studentId: student.id,
