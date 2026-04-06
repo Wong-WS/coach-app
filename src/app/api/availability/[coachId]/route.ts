@@ -40,24 +40,30 @@ export async function GET(
     .where('status', '==', 'confirmed')
     .get();
 
-  const confirmedBookings: Booking[] = bookingsSnapshot.docs.map((doc) => {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      locationId: data.locationId,
-      locationName: '',
-      dayOfWeek: data.dayOfWeek,
-      startTime: data.startTime,
-      endTime: data.endTime,
-      status: data.status,
-      clientName: '',
-      clientPhone: '',
-      lessonType: 'private' as const,
-      groupSize: 0,
-      notes: '',
-      createdAt: new Date(),
-    };
-  });
+  const confirmedBookings: Booking[] = bookingsSnapshot.docs
+    .filter((doc) => {
+      const data = doc.data();
+      // Only include recurring bookings (no endDate) for public availability
+      return !data.endDate;
+    })
+    .map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        locationId: data.locationId,
+        locationName: '',
+        dayOfWeek: data.dayOfWeek,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        status: data.status,
+        clientName: '',
+        clientPhone: '',
+        lessonType: 'private' as const,
+        groupSize: 0,
+        notes: '',
+        createdAt: new Date(),
+      };
+    });
 
   const availability = calculateAvailability({
     workingHours,
