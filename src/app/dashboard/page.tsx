@@ -295,8 +295,10 @@ export default function DashboardPage() {
           updateData.credit = increment(studentBasePrice - attendee.price);
         }
 
+        let pendingPaymentIncrement = 0;
+
         if (studentRecord?.payPerLesson && attendee.price > 0) {
-          updateData.pendingPayment = increment(attendee.price);
+          pendingPaymentIncrement += attendee.price;
         }
 
         // Handle package exhaustion in the same batch
@@ -311,7 +313,7 @@ export default function DashboardPage() {
               updateData.nextPrepaidTotal = null;
               updateData.nextPrepaidPaidAt = null;
             } else {
-              // Set pending payment for exhausted package
+              // Add package renewal price to pending payment
               let perLessonPrice = 0;
               if (studentRecord.lessonRate != null && studentRecord.lessonRate > 0) {
                 perLessonPrice = studentRecord.lessonRate;
@@ -322,10 +324,14 @@ export default function DashboardPage() {
               }
               const packagePrice = perLessonPrice * studentRecord.prepaidTotal;
               if (packagePrice > 0) {
-                updateData.pendingPayment = packagePrice;
+                pendingPaymentIncrement += packagePrice;
               }
             }
           }
+        }
+
+        if (pendingPaymentIncrement > 0) {
+          updateData.pendingPayment = increment(pendingPaymentIncrement);
         }
 
         batch.update(studentRef, updateData);
@@ -699,22 +705,32 @@ export default function DashboardPage() {
         // Delete the lesson log
         batch.delete(doc(firestore, 'coaches', coach.id, 'lessonLogs', log.id));
 
-        // Reverse student updates: decrement prepaidUsed, reverse credit
+        // Reverse student updates
         const student = students.find((s) => s.id === log.studentId);
         if (student) {
           const updateData: Record<string, unknown> = {
-            prepaidUsed: increment(-1),
             updatedAt: serverTimestamp(),
           };
-          // Reverse credit if price was below lessonRate
-          const basePrice = student.lessonRate ?? 0;
-          if (log.price < basePrice && basePrice > 0) {
-            updateData.credit = increment(-(basePrice - log.price));
+
+          if (log.paySeparately) {
+            // Pay-separately lessons only added to pendingPayment, never touched prepaidUsed
+            if (log.price > 0) {
+              updateData.pendingPayment = increment(-log.price);
+            }
+          } else {
+            // Normal path: reverse prepaidUsed, credit, and pay-per-lesson pendingPayment
+            if ((student.prepaidTotal ?? 0) > 0) {
+              updateData.prepaidUsed = increment(-1);
+            }
+            const basePrice = student.lessonRate ?? 0;
+            if (log.price < basePrice && basePrice > 0) {
+              updateData.credit = increment(-(basePrice - log.price));
+            }
+            if (student.payPerLesson && log.price > 0) {
+              updateData.pendingPayment = increment(-log.price);
+            }
           }
-          // Reverse pendingPayment for pay-per-lesson
-          if (student.payPerLesson && log.price > 0) {
-            updateData.pendingPayment = increment(-log.price);
-          }
+
           batch.update(doc(firestore, 'coaches', coach.id, 'students', log.studentId), updateData);
         }
       }

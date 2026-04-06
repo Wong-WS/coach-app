@@ -185,6 +185,7 @@ export function useStudents(coachId: string | undefined) {
           prepaidUsed: d.data().prepaidUsed ?? 0,
           credit: d.data().credit ?? 0,
           pendingPayment: d.data().pendingPayment ?? 0,
+          lessonRate: d.data().lessonRate ?? undefined,
           payPerLesson: d.data().payPerLesson ?? false,
           linkedToStudentId: d.data().linkedToStudentId ?? undefined,
           nextPrepaidTotal: d.data().nextPrepaidTotal ?? undefined,
