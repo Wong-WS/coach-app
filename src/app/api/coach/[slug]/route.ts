@@ -8,22 +8,24 @@ export async function GET(
   const { slug } = await params;
   const db = getAdminDb();
 
-  // Look up coachId from slug
+  // Look up coachId from slug (must be first — need coachId for subsequent queries)
   const slugDoc = await db.collection('coachSlugs').doc(slug).get();
   if (!slugDoc.exists) {
     return NextResponse.json({ error: 'Coach not found' }, { status: 404 });
   }
   const coachId = slugDoc.data()!.coachId;
 
-  // Fetch coach profile
-  const coachDoc = await db.collection('coaches').doc(coachId).get();
+  // Fetch coach profile and locations in parallel
+  const [coachDoc, locationsSnapshot] = await Promise.all([
+    db.collection('coaches').doc(coachId).get(),
+    db.collection('coaches').doc(coachId).collection('locations').get(),
+  ]);
+
   if (!coachDoc.exists) {
     return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 });
   }
   const coachData = coachDoc.data()!;
 
-  // Fetch locations
-  const locationsSnapshot = await db.collection('coaches').doc(coachId).collection('locations').get();
   const locations = locationsSnapshot.docs.map((doc) => ({
     id: doc.id,
     name: doc.data().name,
@@ -43,5 +45,9 @@ export async function GET(
       // email intentionally omitted
     },
     locations,
+  }, {
+    headers: {
+      'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+    },
   });
 }

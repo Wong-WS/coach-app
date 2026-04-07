@@ -12,8 +12,15 @@ export async function GET(
 
   const db = getAdminDb();
 
-  // Fetch coach settings
-  const coachDoc = await db.collection('coaches').doc(coachId).get();
+  // Fetch coach settings, working hours, and bookings in parallel
+  const [coachDoc, hoursSnapshot, bookingsSnapshot] = await Promise.all([
+    db.collection('coaches').doc(coachId).get(),
+    db.collection('coaches').doc(coachId).collection('workingHours').get(),
+    db.collection('coaches').doc(coachId).collection('bookings')
+      .where('status', '==', 'confirmed')
+      .get(),
+  ]);
+
   if (!coachDoc.exists) {
     return NextResponse.json({ error: 'Coach not found' }, { status: 404 });
   }
@@ -21,8 +28,6 @@ export async function GET(
   const lessonDurationMinutes = coachData.lessonDurationMinutes ?? 60;
   const travelBufferMinutes = coachData.travelBufferMinutes ?? 0;
 
-  // Fetch working hours (with backward compat)
-  const hoursSnapshot = await db.collection('coaches').doc(coachId).collection('workingHours').get();
   const workingHours: WorkingHours[] = hoursSnapshot.docs.map((doc) => {
     const data = doc.data();
     const timeRanges = data.timeRanges
@@ -34,18 +39,9 @@ export async function GET(
     };
   });
 
-  // Fetch confirmed bookings — strip PII
-  const bookingsSnapshot = await db
-    .collection('coaches').doc(coachId).collection('bookings')
-    .where('status', '==', 'confirmed')
-    .get();
-
+  // Only include recurring bookings (no endDate) for public availability
   const confirmedBookings: Booking[] = bookingsSnapshot.docs
-    .filter((doc) => {
-      const data = doc.data();
-      // Only include recurring bookings (no endDate) for public availability
-      return !data.endDate;
-    })
+    .filter((doc) => !doc.data().endDate)
     .map((doc) => {
       const data = doc.data();
       return {
@@ -73,5 +69,9 @@ export async function GET(
     clientLocationId: locationId,
   });
 
-  return NextResponse.json({ availability });
+  return NextResponse.json({ availability }, {
+    headers: {
+      'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+    },
+  });
 }
