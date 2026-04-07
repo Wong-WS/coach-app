@@ -987,7 +987,14 @@ export default function StudentsPage() {
                           collectedAt: collectedDate,
                           createdAt: serverTimestamp(),
                         });
+                        // Reduce pendingPayment by the payment amount (floor at 0)
+                        const newPending = Math.max(0, (selectedStudent.pendingPayment ?? 0) - recordPaymentAmount);
+                        batch.update(
+                          doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                          { pendingPayment: newPending, updatedAt: serverTimestamp() }
+                        );
                         await batch.commit();
+                        setSelectedStudent((prev) => prev ? { ...prev, pendingPayment: newPending } : null);
                         setShowRecordPayment(false);
                         setRecordPaymentAmount(0);
                         showToast(`Recorded RM ${recordPaymentAmount} payment`, 'success');
