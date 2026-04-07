@@ -39,7 +39,6 @@ export default function DashboardPage() {
   const { coach } = useAuth();
   const { locations } = useLocations(coach?.id);
   const { bookings } = useBookings(coach?.id, 'confirmed');
-  const { classExceptions } = useClassExceptions(coach?.id);
   const { students } = useStudents(coach?.id);
   const { showToast } = useToast();
 
@@ -115,6 +114,7 @@ export default function DashboardPage() {
   const todayStr = getDateString(new Date());
   const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
 
+  const { classExceptions } = useClassExceptions(coach?.id, selectedDateStr);
   const { lessonLogs } = useLessonLogs(coach?.id, selectedDateStr);
 
   const dayClasses = useMemo(() => {

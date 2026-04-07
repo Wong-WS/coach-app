@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { collection, doc, onSnapshot, query, where, orderBy, limit, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Booking, Location, WorkingHours, DayOfWeek, WaitlistEntry, WaitlistStatus, Student, LessonLog, ClassException, Payment } from '@/types';
@@ -257,9 +257,23 @@ export function useLessonLogs(coachId: string | undefined, dateFilter?: string, 
   return { lessonLogs, loading };
 }
 
-export function useClassExceptions(coachId: string | undefined) {
+export function useClassExceptions(coachId: string | undefined, referenceDate?: string) {
   const [classExceptions, setClassExceptions] = useState<ClassException[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Build a 4-month window around the reference date (2 months each direction)
+  const dateWindow = useMemo(() => {
+    const ref = referenceDate ? new Date(referenceDate + 'T00:00:00') : new Date();
+    const from = new Date(ref);
+    from.setMonth(from.getMonth() - 2);
+    const to = new Date(ref);
+    to.setMonth(to.getMonth() + 2);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return {
+      from: `${from.getFullYear()}-${pad(from.getMonth() + 1)}-${pad(from.getDate())}`,
+      to: `${to.getFullYear()}-${pad(to.getMonth() + 1)}-${pad(to.getDate())}`,
+    };
+  }, [referenceDate]);
 
   useEffect(() => {
     if (!coachId || !db) {
@@ -268,30 +282,32 @@ export function useClassExceptions(coachId: string | undefined) {
     }
 
     const firestore = db as Firestore;
-    const unsubscribe = onSnapshot(
+    const q = query(
       collection(firestore, 'coaches', coachId, 'classExceptions'),
-      (snapshot) => {
-        const items: ClassException[] = snapshot.docs.map((d) => ({
-          id: d.id,
-          bookingId: d.data().bookingId,
-          originalDate: d.data().originalDate,
-          type: d.data().type,
-          newDate: d.data().newDate,
-          newStartTime: d.data().newStartTime,
-          newEndTime: d.data().newEndTime,
-          newLocationId: d.data().newLocationId,
-          newLocationName: d.data().newLocationName,
-          newPrice: d.data().newPrice,
-          newNote: d.data().newNote,
-          createdAt: d.data().createdAt?.toDate() || new Date(),
-        }));
-        setClassExceptions(items);
-        setLoading(false);
-      }
+      where('originalDate', '>=', dateWindow.from),
+      where('originalDate', '<=', dateWindow.to)
     );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items: ClassException[] = snapshot.docs.map((d) => ({
+        id: d.id,
+        bookingId: d.data().bookingId,
+        originalDate: d.data().originalDate,
+        type: d.data().type,
+        newDate: d.data().newDate,
+        newStartTime: d.data().newStartTime,
+        newEndTime: d.data().newEndTime,
+        newLocationId: d.data().newLocationId,
+        newLocationName: d.data().newLocationName,
+        newPrice: d.data().newPrice,
+        newNote: d.data().newNote,
+        createdAt: d.data().createdAt?.toDate() || new Date(),
+      }));
+      setClassExceptions(items);
+      setLoading(false);
+    });
 
     return () => unsubscribe();
-  }, [coachId]);
+  }, [coachId, dateWindow]);
 
   return { classExceptions, loading };
 }
