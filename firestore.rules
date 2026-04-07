@@ -22,12 +22,13 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Student portal token lookup - authenticated create, no update/delete
+    // Student portal token lookup - only accessed via Admin SDK API route
     match /studentTokens/{token} {
-      allow read: if true;
+      allow read: if false;
       allow create: if request.auth != null
         && request.resource.data.coachId == request.auth.uid;
-      allow update, delete: if false;
+      allow delete: if request.auth != null;
+      allow update: if false;
     }
 
     // Coach profiles - owner only (public page served via API route using admin SDK)
