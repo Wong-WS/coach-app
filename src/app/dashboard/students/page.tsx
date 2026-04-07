@@ -436,9 +436,11 @@ export default function StudentsPage() {
       batch.set(logRef, logData);
       const studentRef = doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id);
       const updateData: Record<string, unknown> = {
-        prepaidUsed: increment(1),
         updatedAt: serverTimestamp(),
       };
+      if ((selectedStudent.prepaidTotal ?? 0) > 0) {
+        updateData.prepaidUsed = increment(1);
+      }
 
       // Pay-per-lesson: add price to pendingPayment
       if (selectedStudent.payPerLesson && lessonPrice > 0) {
