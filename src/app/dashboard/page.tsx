@@ -1435,11 +1435,23 @@ export default function DashboardPage() {
                   step={0.01}
                 />
 
-                {!markDonePaySeparately && markDonePrice < (markDoneBooking.price ?? 0) && (markDoneBooking.price ?? 0) > 0 && (
-                  <p className="text-xs text-blue-600 dark:text-blue-400">
-                    RM {((markDoneBooking.price ?? 0) - markDonePrice).toFixed(0)} will be added as credit
-                  </p>
-                )}
+                {(() => {
+                  if (markDonePaySeparately) return null;
+                  const student = students.find((s) =>
+                    s.clientName === markDoneBooking.clientName && s.clientPhone === (markDoneBooking.clientPhone || '')
+                  );
+                  const basePrice = (student?.lessonRate != null && student.lessonRate > 0)
+                    ? student.lessonRate
+                    : (markDoneBooking.price ?? 0);
+                  if (basePrice > 0 && markDonePrice < basePrice) {
+                    return (
+                      <p className="text-xs text-blue-600 dark:text-blue-400">
+                        RM {(basePrice - markDonePrice).toFixed(0)} will be added as credit
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
 
                 {(() => {
                   const student = students.find((s) =>
