@@ -301,7 +301,13 @@ export default function DashboardPage() {
         // Handle package exhaustion in the same batch
         if (studentRecord && studentRecord.prepaidTotal > 0) {
           const remainingAfter = studentRecord.prepaidTotal - (studentRecord.prepaidUsed + 1);
-          if (remainingAfter <= 0) {
+          const wasAlreadyExhausted = studentRecord.prepaidUsed >= studentRecord.prepaidTotal;
+          if (wasAlreadyExhausted) {
+            // Package already used up — charge single lesson price for the extra lesson
+            if (attendee.price > 0) {
+              pendingPaymentIncrement += attendee.price;
+            }
+          } else if (remainingAfter <= 0) {
             if (studentRecord.nextPrepaidTotal && studentRecord.nextPrepaidTotal > 0) {
               // Auto-rollover into next package
               const overflow = Math.max(0, (studentRecord.prepaidUsed + 1) - studentRecord.prepaidTotal);
