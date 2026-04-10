@@ -303,10 +303,7 @@ export default function DashboardPage() {
           const remainingAfter = studentRecord.prepaidTotal - (studentRecord.prepaidUsed + 1);
           const wasAlreadyExhausted = studentRecord.prepaidUsed >= studentRecord.prepaidTotal;
           if (wasAlreadyExhausted) {
-            // Package already used up — charge single lesson price for the extra lesson
-            if (attendee.price > 0) {
-              pendingPaymentIncrement += attendee.price;
-            }
+            // Package already used up — just increment prepaidUsed, no extra charge
           } else if (remainingAfter <= 0) {
             if (studentRecord.nextPrepaidTotal && studentRecord.nextPrepaidTotal > 0) {
               // Auto-rollover into next package
