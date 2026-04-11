@@ -337,7 +337,7 @@ export default function BookingsPage() {
             studentUpdate.pendingPayment = formData.price * formData.packageSize;
           } else {
             studentUpdate.payPerLesson = true;
-            studentUpdate.pendingPayment = formData.price;
+            studentUpdate.pendingPayment = 0;
           }
           await updateDoc(doc(firestore, 'coaches', coach.id, 'students', primaryStudentId), studentUpdate);
         }
