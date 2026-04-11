@@ -976,6 +976,53 @@ export default function DashboardPage() {
                     </p>
                   </div>
 
+                  {/* Duplicate button for done bookings */}
+                  {isDone && (
+                    <button
+                      onClick={() => {
+                        // Build student list from booking (primary + linked)
+                        const dupStudents: Array<{ studentId: string; displayName: string; price: number }> = [];
+                        const primaryStudent = students.find(
+                          (s) => s.clientName === booking.clientName && s.clientPhone === (booking.clientPhone || '')
+                        );
+                        if (primaryStudent) {
+                          dupStudents.push({
+                            studentId: primaryStudent.id,
+                            displayName: primaryStudent.clientName,
+                            price: booking.studentPrices?.[primaryStudent.id] ?? booking.price ?? 0,
+                          });
+                        }
+                        if (booking.linkedStudentIds?.length) {
+                          for (const linkedId of booking.linkedStudentIds) {
+                            const ls = students.find((s) => s.id === linkedId);
+                            if (ls) {
+                              dupStudents.push({
+                                studentId: ls.id,
+                                displayName: ls.clientName,
+                                price: booking.studentPrices?.[ls.id] ?? 0,
+                              });
+                            }
+                          }
+                        }
+                        setAddClassDate(selectedDateStr);
+                        setAddClassLocationId(booking.locationId || locations[0]?.id || '');
+                        setAddClassStartTime(booking.startTime || '');
+                        setAddClassEndTime(booking.endTime || '');
+                        setAddClassNote(booking.notes || '');
+                        setAddClassSearch('');
+                        setShowNewStudentForm(false);
+                        setAddClassSelectedStudents(dupStudents);
+                        setShowAddClass(true);
+                      }}
+                      className="p-1.5 text-gray-400 hover:text-blue-500 dark:text-zinc-500 dark:hover:text-blue-400 transition-colors flex-shrink-0"
+                      title="Duplicate as ad-hoc class"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    </button>
+                  )}
+
                   {/* Actions menu */}
                   {!isDone && (
                     <div className="relative flex-shrink-0">
