@@ -48,6 +48,21 @@ export default function StudentsPage() {
   const [addingLesson, setAddingLesson] = useState(false);
   const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
 
+  // Bulk Add Lessons state
+  const [showBulkAdd, setShowBulkAdd] = useState(false);
+  const [bulkStartDate, setBulkStartDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
+  const [bulkEndDate, setBulkEndDate] = useState('');
+  const [bulkDays, setBulkDays] = useState<Set<number>>(new Set()); // 0=Sun..6=Sat
+  const [bulkLocationName, setBulkLocationName] = useState('');
+  const [bulkStartTime, setBulkStartTime] = useState('09:00');
+  const [bulkEndTime, setBulkEndTime] = useState('10:00');
+  const [bulkPrice, setBulkPrice] = useState(0);
+  const [bulkNote, setBulkNote] = useState('');
+  const [addingBulk, setAddingBulk] = useState(false);
+
   // Record Payment state
   const [showRecordPayment, setShowRecordPayment] = useState(false);
   const [recordPaymentAmount, setRecordPaymentAmount] = useState(0);
@@ -584,6 +599,108 @@ export default function StudentsPage() {
       showToast('Failed to add lesson', 'error');
     } finally {
       setAddingLesson(false);
+    }
+  };
+
+  // Generate dates for bulk add
+  const bulkDates = useMemo(() => {
+    if (!bulkStartDate || !bulkEndDate || bulkDays.size === 0) return [];
+    const dates: string[] = [];
+    const start = new Date(bulkStartDate + 'T00:00:00');
+    const end = new Date(bulkEndDate + 'T00:00:00');
+    const current = new Date(start);
+    while (current <= end) {
+      if (bulkDays.has(current.getDay())) {
+        const y = current.getFullYear();
+        const m = String(current.getMonth() + 1).padStart(2, '0');
+        const d = String(current.getDate()).padStart(2, '0');
+        dates.push(`${y}-${m}-${d}`);
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    return dates;
+  }, [bulkStartDate, bulkEndDate, bulkDays]);
+
+  const handleBulkAddLessons = async () => {
+    if (!coach || !db || !selectedStudent || !bulkLocationName || bulkDates.length === 0) return;
+    setAddingBulk(true);
+    try {
+      const firestore = db as Firestore;
+      const batch = writeBatch(firestore);
+      const studentRef = doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id);
+
+      // Create lesson logs for each date
+      for (const date of bulkDates) {
+        const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
+        const logData: Record<string, unknown> = {
+          date,
+          studentId: selectedStudent.id,
+          studentName: selectedStudent.clientName,
+          locationName: bulkLocationName,
+          startTime: bulkStartTime,
+          endTime: bulkEndTime,
+          price: bulkPrice,
+          createdAt: serverTimestamp(),
+        };
+        if (bulkNote.trim()) {
+          logData.note = bulkNote.trim();
+        }
+        batch.set(logRef, logData);
+      }
+
+      // Update student record
+      const totalDeduction = bulkPrice * bulkDates.length;
+      const updateData: Record<string, unknown> = { updatedAt: serverTimestamp() };
+
+      if (selectedStudent.useMonetaryBalance) {
+        const newBalance = (selectedStudent.monetaryBalance ?? 0) - totalDeduction;
+        updateData.monetaryBalance = newBalance;
+        updateData.pendingPayment = newBalance < 0 ? Math.abs(newBalance) : 0;
+      } else {
+        if ((selectedStudent.prepaidTotal ?? 0) > 0) {
+          updateData.prepaidUsed = increment(bulkDates.length);
+        }
+        if (selectedStudent.payPerLesson && totalDeduction > 0) {
+          updateData.pendingPayment = increment(totalDeduction);
+        }
+        const basePrice = selectedStudent.lessonRate ?? 0;
+        if (basePrice > 0 && bulkPrice < basePrice) {
+          updateData.credit = increment((basePrice - bulkPrice) * bulkDates.length);
+        }
+      }
+
+      batch.update(studentRef, updateData);
+      await batch.commit();
+
+      // Update local state
+      if (selectedStudent.useMonetaryBalance) {
+        const newBalance = (selectedStudent.monetaryBalance ?? 0) - totalDeduction;
+        setSelectedStudent((prev) => prev ? {
+          ...prev,
+          monetaryBalance: newBalance,
+          pendingPayment: newBalance < 0 ? Math.abs(newBalance) : 0,
+        } : null);
+      } else {
+        const basePrice = selectedStudent.lessonRate ?? 0;
+        const creditAdd = basePrice > 0 && bulkPrice < basePrice ? (basePrice - bulkPrice) * bulkDates.length : 0;
+        const pendingAdd = selectedStudent.payPerLesson ? totalDeduction : 0;
+        setSelectedStudent((prev) => prev ? {
+          ...prev,
+          prepaidUsed: prev.prepaidUsed + bulkDates.length,
+          credit: (prev.credit ?? 0) + creditAdd,
+          pendingPayment: prev.pendingPayment + pendingAdd,
+        } : null);
+      }
+
+      setShowBulkAdd(false);
+      setBulkDays(new Set());
+      setBulkNote('');
+      showToast(`Added ${bulkDates.length} lessons!`, 'success');
+    } catch (error) {
+      console.error('Error bulk adding lessons:', error);
+      showToast('Failed to add lessons', 'error');
+    } finally {
+      setAddingBulk(false);
     }
   };
 
@@ -2019,6 +2136,142 @@ export default function StudentsPage() {
                     disabled={!lessonLocationName || !lessonDate}
                   >
                     Add Lesson
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Bulk Add Lessons */}
+            <div className="border-t border-gray-100 dark:border-[#333333] pt-4">
+              <button
+                onClick={() => {
+                  setShowBulkAdd(!showBulkAdd);
+                  if (!showBulkAdd) {
+                    setBulkPrice(selectedStudent.lessonRate ?? 0);
+                    if (locations.length > 0 && !bulkLocationName) {
+                      setBulkLocationName(locations[0].name);
+                    }
+                  }
+                }}
+                className="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                <svg className={`w-4 h-4 transition-transform ${showBulkAdd ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                Bulk Add Lessons
+              </button>
+              {showBulkAdd && (
+                <div className="mt-3 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      id="bulkStartDate"
+                      label="From"
+                      type="date"
+                      value={bulkStartDate}
+                      onChange={(e) => setBulkStartDate(e.target.value)}
+                    />
+                    <Input
+                      id="bulkEndDate"
+                      label="To"
+                      type="date"
+                      value={bulkEndDate}
+                      onChange={(e) => setBulkEndDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Days</label>
+                    <div className="flex flex-wrap gap-2">
+                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => {
+                            const next = new Set(bulkDays);
+                            if (next.has(idx)) next.delete(idx); else next.add(idx);
+                            setBulkDays(next);
+                          }}
+                          className={`px-3 py-1 text-xs rounded-lg border ${
+                            bulkDays.has(idx)
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'border-gray-300 dark:border-zinc-500 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="bulkLocation" className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
+                      Location
+                    </label>
+                    <select
+                      id="bulkLocation"
+                      value={bulkLocationName}
+                      onChange={(e) => setBulkLocationName(e.target.value)}
+                      className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
+                    >
+                      <option value="">Select location</option>
+                      {locations.map((loc) => (
+                        <option key={loc.id} value={loc.name}>{loc.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      id="bulkStart"
+                      label="Start Time"
+                      type="time"
+                      value={bulkStartTime}
+                      onChange={(e) => setBulkStartTime(e.target.value)}
+                    />
+                    <Input
+                      id="bulkEnd"
+                      label="End Time"
+                      type="time"
+                      value={bulkEndTime}
+                      onChange={(e) => setBulkEndTime(e.target.value)}
+                    />
+                  </div>
+                  <Input
+                    id="bulkPrice"
+                    label="Price per lesson (RM)"
+                    type="number"
+                    value={String(bulkPrice)}
+                    onChange={(e) => setBulkPrice(Number(e.target.value) || 0)}
+                  />
+                  <Input
+                    id="bulkNote"
+                    label="Note (optional)"
+                    value={bulkNote}
+                    onChange={(e) => setBulkNote(e.target.value)}
+                    placeholder="e.g. Holiday intensive"
+                  />
+                  {bulkDates.length > 0 && (
+                    <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3">
+                      <p className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">
+                        {bulkDates.length} lesson{bulkDates.length !== 1 ? 's' : ''} — Total: RM {bulkPrice * bulkDates.length}
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {bulkDates.map((d) => {
+                          const date = new Date(d + 'T00:00:00');
+                          const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
+                          return (
+                            <span key={d} className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                              {dayName} {d.slice(5)}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  <Button
+                    size="sm"
+                    onClick={handleBulkAddLessons}
+                    loading={addingBulk}
+                    disabled={bulkDates.length === 0 || !bulkLocationName}
+                  >
+                    Add {bulkDates.length} Lesson{bulkDates.length !== 1 ? 's' : ''}
                   </Button>
                 </div>
               )}
