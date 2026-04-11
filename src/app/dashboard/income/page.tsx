@@ -91,6 +91,37 @@ function computeProjectedCollections(
         const count = countDayOccurrencesInMonth(b.dayOfWeek, year, month, fromDay);
         payPerLessonTotal += count * rate;
       }
+    } else if (student.useMonetaryBalance && (student.packageSize ?? 0) > 0) {
+      // Monetary balance student — simulate balance depletion day by day
+      const primary = primaryBookingsMap.get(student.id) ?? [];
+      const linked = linkedBookingsMap.get(student.id) ?? [];
+      const studentBookings = [...primary, ...linked];
+      if (studentBookings.length === 0) continue;
+
+      const rate = student.lessonRate ?? 0;
+      if (rate <= 0) continue;
+
+      let balanceRemaining = student.monetaryBalance ?? 0;
+      const pkgSize = student.packageSize ?? 0;
+      const renewalValue = rate * pkgSize;
+      const bookingDays = new Set(studentBookings.map((b) => DAY_TO_JS[b.dayOfWeek]));
+      const now = new Date();
+      const checkDate = new Date(now);
+
+      for (let i = 0; i < 365; i++) {
+        checkDate.setDate(checkDate.getDate() + 1);
+        if (checkDate.getFullYear() > year || (checkDate.getFullYear() === year && checkDate.getMonth() > month)) break;
+
+        if (bookingDays.has(checkDate.getDay())) {
+          balanceRemaining -= rate;
+          if (balanceRemaining <= 0) {
+            if (checkDate.getFullYear() === year && checkDate.getMonth() === month) {
+              packageRenewals += renewalValue;
+            }
+            balanceRemaining += renewalValue;
+          }
+        }
+      }
     } else if (student.prepaidTotal > 0) {
       // Package student — use both primary and linked bookings
       const primary = primaryBookingsMap.get(student.id) ?? [];

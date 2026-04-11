@@ -90,6 +90,19 @@ export default function StudentsPage() {
   const [renewingEarly, setRenewingEarly] = useState(false);
   const [cancellingNextPackage, setCancellingNextPackage] = useState(false);
 
+  // Switch to Balance mode
+  const [showSwitchToBalanceModal, setShowSwitchToBalanceModal] = useState(false);
+  const [switchBalanceAmount, setSwitchBalanceAmount] = useState(0);
+  const [switchBalanceLessonRate, setSwitchBalanceLessonRate] = useState(0);
+  const [switchBalancePackageSize, setSwitchBalancePackageSize] = useState(0);
+
+  // Editable balance state
+  const [editingBalance, setEditingBalance] = useState(false);
+  const [editBalance, setEditBalance] = useState(0);
+  const [editBalanceLessonRate, setEditBalanceLessonRate] = useState(0);
+  const [editBalancePackageSize, setEditBalancePackageSize] = useState(0);
+  const [savingBalance, setSavingBalance] = useState(false);
+
   // Student's lesson history
   const studentLogs = useMemo(() => {
     if (!selectedStudent) return [];
@@ -379,6 +392,35 @@ export default function StudentsPage() {
 
   const addPrepaid = async (amount: number) => {
     if (!coach || !db || !selectedStudent) return;
+
+    if (selectedStudent.useMonetaryBalance) {
+      // Monetary balance: add RM value to balance
+      const rate = selectedStudent.lessonRate ?? 0;
+      const rmValue = rate * amount;
+      const prevStudent = { ...selectedStudent };
+      const newBalance = (selectedStudent.monetaryBalance ?? 0) + rmValue;
+      setSelectedStudent((prev) =>
+        prev ? { ...prev, monetaryBalance: newBalance, packageSize: amount, pendingPayment: newBalance < 0 ? Math.abs(newBalance) : 0 } : null
+      );
+      showToast(`Added ${amount}-lesson package (RM ${rmValue})!`, 'success');
+      try {
+        await updateDoc(
+          doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+          {
+            monetaryBalance: newBalance,
+            packageSize: amount,
+            pendingPayment: newBalance < 0 ? Math.abs(newBalance) : 0,
+            updatedAt: serverTimestamp(),
+          }
+        );
+      } catch (error) {
+        console.error('Error adding balance:', error);
+        setSelectedStudent(prevStudent);
+        showToast('Failed to add balance', 'error');
+      }
+      return;
+    }
+
     const packageFinished = selectedStudent.prepaidUsed >= selectedStudent.prepaidTotal && selectedStudent.prepaidTotal > 0;
     const overflow = packageFinished ? Math.max(0, selectedStudent.prepaidUsed - selectedStudent.prepaidTotal) : 0;
     // Optimistic update — update UI immediately
@@ -438,62 +480,104 @@ export default function StudentsPage() {
       const updateData: Record<string, unknown> = {
         updatedAt: serverTimestamp(),
       };
-      if ((selectedStudent.prepaidTotal ?? 0) > 0) {
-        updateData.prepaidUsed = increment(1);
-      }
 
-      // Pay-per-lesson: add price to pendingPayment
-      if (selectedStudent.payPerLesson && lessonPrice > 0) {
-        updateData.pendingPayment = increment(lessonPrice);
-      }
+      if (selectedStudent.useMonetaryBalance) {
+        // Monetary balance: deduct price from balance
+        const newBalance = (selectedStudent.monetaryBalance ?? 0) - lessonPrice;
+        updateData.monetaryBalance = newBalance;
+        updateData.pendingPayment = newBalance < 0 ? Math.abs(newBalance) : 0;
 
-      // Calculate credit: compare against student's lessonRate
-      const basePrice = selectedStudent.lessonRate ?? 0;
-      const creditDiff = basePrice > 0 && lessonPrice < basePrice ? basePrice - lessonPrice : 0;
-      if (creditDiff > 0) {
-        updateData.credit = increment(creditDiff);
-      }
+        // Check for auto-rollover
+        const oldBalance = selectedStudent.monetaryBalance ?? 0;
+        let toastMsg = 'Lesson added!';
+        let finalBalance = newBalance;
+        if (oldBalance > 0 && newBalance <= 0 && selectedStudent.nextPrepaidTotal && selectedStudent.nextPrepaidTotal > 0) {
+          const renewalValue = (selectedStudent.lessonRate ?? 0) * selectedStudent.nextPrepaidTotal;
+          finalBalance = newBalance + renewalValue;
+          updateData.monetaryBalance = finalBalance;
+          updateData.pendingPayment = finalBalance < 0 ? Math.abs(finalBalance) : 0;
+          updateData.packageSize = selectedStudent.nextPrepaidTotal;
+          updateData.nextPrepaidTotal = null;
+          updateData.nextPrepaidPaidAt = null;
+          toastMsg = 'Lesson added! Package auto-renewed.';
+        }
 
-      batch.update(studentRef, updateData);
-      await batch.commit();
-
-      // Check for auto-rollover: if package just exhausted and next package is queued
-      const newUsed = selectedStudent.prepaidUsed + 1;
-      const justExhausted = selectedStudent.prepaidTotal > 0 && newUsed >= selectedStudent.prepaidTotal;
-      if (justExhausted && selectedStudent.nextPrepaidTotal && selectedStudent.nextPrepaidTotal > 0) {
-        const overflow = Math.max(0, newUsed - selectedStudent.prepaidTotal);
-        await updateDoc(studentRef, {
-          prepaidTotal: selectedStudent.nextPrepaidTotal,
-          prepaidUsed: overflow,
-          nextPrepaidTotal: null,
-          nextPrepaidPaidAt: null,
-          updatedAt: serverTimestamp(),
-        });
+        batch.update(studentRef, updateData);
+        await batch.commit();
         setSelectedStudent((prev) =>
           prev ? {
             ...prev,
-            prepaidTotal: prev.nextPrepaidTotal!,
-            prepaidUsed: overflow,
-            nextPrepaidTotal: undefined,
-            nextPrepaidPaidAt: undefined,
-            credit: (prev.credit ?? 0) + creditDiff,
-            pendingPayment: prev.pendingPayment + (prev.payPerLesson ? lessonPrice : 0),
+            monetaryBalance: finalBalance,
+            pendingPayment: finalBalance < 0 ? Math.abs(finalBalance) : 0,
+            ...(oldBalance > 0 && newBalance <= 0 && prev.nextPrepaidTotal ? {
+              packageSize: prev.nextPrepaidTotal,
+              nextPrepaidTotal: undefined,
+              nextPrepaidPaidAt: undefined,
+            } : {}),
           } : null
         );
         setShowAddLesson(false);
         setLessonNote('');
-        setLessonPrice(basePrice || lessonPrice);
-        showToast('Lesson added! Package auto-renewed.', 'success');
+        setLessonPrice(selectedStudent.lessonRate ?? lessonPrice);
+        showToast(toastMsg, 'success');
       } else {
-        // Update local state
-        const pendingAdd = selectedStudent.payPerLesson ? lessonPrice : 0;
-        setSelectedStudent((prev) =>
-          prev ? { ...prev, prepaidUsed: prev.prepaidUsed + 1, credit: (prev.credit ?? 0) + creditDiff, pendingPayment: prev.pendingPayment + pendingAdd } : null
-        );
-        setShowAddLesson(false);
-        setLessonNote('');
-        setLessonPrice(basePrice || lessonPrice);
-        showToast('Lesson added!', 'success');
+        if ((selectedStudent.prepaidTotal ?? 0) > 0) {
+          updateData.prepaidUsed = increment(1);
+        }
+
+        // Pay-per-lesson: add price to pendingPayment
+        if (selectedStudent.payPerLesson && lessonPrice > 0) {
+          updateData.pendingPayment = increment(lessonPrice);
+        }
+
+        // Calculate credit: compare against student's lessonRate
+        const basePrice = selectedStudent.lessonRate ?? 0;
+        const creditDiff = basePrice > 0 && lessonPrice < basePrice ? basePrice - lessonPrice : 0;
+        if (creditDiff > 0) {
+          updateData.credit = increment(creditDiff);
+        }
+
+        batch.update(studentRef, updateData);
+        await batch.commit();
+
+        // Check for auto-rollover: if package just exhausted and next package is queued
+        const newUsed = selectedStudent.prepaidUsed + 1;
+        const justExhausted = selectedStudent.prepaidTotal > 0 && newUsed >= selectedStudent.prepaidTotal;
+        if (justExhausted && selectedStudent.nextPrepaidTotal && selectedStudent.nextPrepaidTotal > 0) {
+          const overflow = Math.max(0, newUsed - selectedStudent.prepaidTotal);
+          await updateDoc(studentRef, {
+            prepaidTotal: selectedStudent.nextPrepaidTotal,
+            prepaidUsed: overflow,
+            nextPrepaidTotal: null,
+            nextPrepaidPaidAt: null,
+            updatedAt: serverTimestamp(),
+          });
+          setSelectedStudent((prev) =>
+            prev ? {
+              ...prev,
+              prepaidTotal: prev.nextPrepaidTotal!,
+              prepaidUsed: overflow,
+              nextPrepaidTotal: undefined,
+              nextPrepaidPaidAt: undefined,
+              credit: (prev.credit ?? 0) + creditDiff,
+              pendingPayment: prev.pendingPayment + (prev.payPerLesson ? lessonPrice : 0),
+            } : null
+          );
+          setShowAddLesson(false);
+          setLessonNote('');
+          setLessonPrice(basePrice || lessonPrice);
+          showToast('Lesson added! Package auto-renewed.', 'success');
+        } else {
+          // Update local state
+          const pendingAdd = selectedStudent.payPerLesson ? lessonPrice : 0;
+          setSelectedStudent((prev) =>
+            prev ? { ...prev, prepaidUsed: prev.prepaidUsed + 1, credit: (prev.credit ?? 0) + creditDiff, pendingPayment: prev.pendingPayment + pendingAdd } : null
+          );
+          setShowAddLesson(false);
+          setLessonNote('');
+          setLessonPrice(basePrice || lessonPrice);
+          showToast('Lesson added!', 'success');
+        }
       }
     } catch (error) {
       console.error('Error adding lesson:', error);
@@ -525,6 +609,20 @@ export default function StudentsPage() {
         await batch.commit();
         setSelectedStudent((prev) =>
           prev ? { ...prev, pendingPayment: Math.max(0, prev.pendingPayment - (log.price ?? 0)) } : null
+        );
+        showToast('Lesson deleted', 'success');
+        return;
+      }
+
+      if (selectedStudent.useMonetaryBalance) {
+        // Monetary balance: add price back to balance
+        const newBalance = (selectedStudent.monetaryBalance ?? 0) + (log?.price ?? 0);
+        updateData.monetaryBalance = newBalance;
+        updateData.pendingPayment = newBalance < 0 ? Math.abs(newBalance) : 0;
+        batch.update(doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id), updateData);
+        await batch.commit();
+        setSelectedStudent((prev) =>
+          prev ? { ...prev, monetaryBalance: newBalance, pendingPayment: newBalance < 0 ? Math.abs(newBalance) : 0 } : null
         );
         showToast('Lesson deleted', 'success');
         return;
@@ -816,21 +914,22 @@ export default function StudentsPage() {
                         </span>
                       ) : null;
                     })()}
-                    {Math.max(0, student.pendingPayment - (student.credit ?? 0)) > 0 && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                        RM {Math.max(0, student.pendingPayment - (student.credit ?? 0))} unpaid
-                      </span>
-                    )}
-                    {hasPrepaid ? (
+                    {student.useMonetaryBalance ? (
                       <>
+                        {(student.monetaryBalance ?? 0) < 0 && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                            RM {Math.abs(student.monetaryBalance ?? 0)} unpaid
+                          </span>
+                        )}
                         <span
                           className={`text-xs px-2 py-0.5 rounded-full ${
-                            expired
-                              ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                            (student.monetaryBalance ?? 0) > 0
+                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                              : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
                           }`}
                         >
-                          {student.prepaidUsed}/{student.prepaidTotal}
+                          RM {(student.monetaryBalance ?? 0).toFixed(0)}
+                          {(student.lessonRate ?? 0) > 0 && ` (~${Math.max(0, Math.floor((student.monetaryBalance ?? 0) / student.lessonRate!))} lessons)`}
                         </span>
                         {student.nextPrepaidTotal && student.nextPrepaidTotal > 0 && (
                           <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
@@ -838,14 +937,40 @@ export default function StudentsPage() {
                           </span>
                         )}
                       </>
-                    ) : student.payPerLesson ? (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
-                        Pay per lesson
-                      </span>
                     ) : (
-                      <span className="text-xs text-gray-400 dark:text-zinc-500">
-                        No package
-                      </span>
+                      <>
+                        {Math.max(0, student.pendingPayment - (student.credit ?? 0)) > 0 && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                            RM {Math.max(0, student.pendingPayment - (student.credit ?? 0))} unpaid
+                          </span>
+                        )}
+                        {hasPrepaid ? (
+                          <>
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded-full ${
+                                expired
+                                  ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                                  : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                              }`}
+                            >
+                              {student.prepaidUsed}/{student.prepaidTotal}
+                            </span>
+                            {student.nextPrepaidTotal && student.nextPrepaidTotal > 0 && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                                Next: {student.nextPrepaidTotal}
+                              </span>
+                            )}
+                          </>
+                        ) : student.payPerLesson ? (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                            Pay per lesson
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400 dark:text-zinc-500">
+                            No package
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -910,13 +1035,17 @@ export default function StudentsPage() {
                     const amount = Math.max(0, selectedStudent.pendingPayment - (selectedStudent.credit ?? 0));
                     try {
                       const batch = writeBatch(firestore);
+                      const studentUpdateData: Record<string, unknown> = {
+                        pendingPayment: 0,
+                        credit: 0,
+                        updatedAt: serverTimestamp(),
+                      };
+                      if (selectedStudent.useMonetaryBalance) {
+                        studentUpdateData.monetaryBalance = 0;
+                      }
                       batch.update(
                         doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id),
-                        {
-                          pendingPayment: 0,
-                          credit: 0,
-                          updatedAt: serverTimestamp(),
-                        }
+                        studentUpdateData
                       );
                       if (amount > 0) {
                         const paymentRef = doc(collection(firestore, 'coaches', coach.id, 'payments'));
@@ -930,11 +1059,16 @@ export default function StudentsPage() {
                       }
                       await batch.commit();
                       setSelectedStudent((prev) =>
-                        prev ? { ...prev, pendingPayment: 0, credit: 0 } : null
+                        prev ? { ...prev, pendingPayment: 0, credit: 0, ...(prev.useMonetaryBalance ? { monetaryBalance: 0 } : {}) } : null
                       );
                       showToast('Payment marked as received!', 'success');
                       // If package is exhausted and no next package queued, prompt to renew
-                      if (!selectedStudent.payPerLesson && selectedStudent.prepaidTotal > 0 && selectedStudent.prepaidUsed >= selectedStudent.prepaidTotal && !selectedStudent.nextPrepaidTotal) {
+                      if (selectedStudent.useMonetaryBalance) {
+                        if ((selectedStudent.monetaryBalance ?? 0) <= 0 && !selectedStudent.nextPrepaidTotal) {
+                          setRenewAmount(selectedStudent.packageSize ?? 10);
+                          setShowRenewModal(true);
+                        }
+                      } else if (!selectedStudent.payPerLesson && selectedStudent.prepaidTotal > 0 && selectedStudent.prepaidUsed >= selectedStudent.prepaidTotal && !selectedStudent.nextPrepaidTotal) {
                         setRenewAmount(selectedStudent.prepaidTotal);
                         setShowRenewModal(true);
                       }
@@ -989,14 +1123,26 @@ export default function StudentsPage() {
                           collectedAt: collectedDate,
                           createdAt: serverTimestamp(),
                         });
-                        // Reduce pendingPayment by the payment amount (floor at 0)
-                        const newPending = Math.max(0, (selectedStudent.pendingPayment ?? 0) - recordPaymentAmount);
-                        batch.update(
-                          doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id),
-                          { pendingPayment: newPending, updatedAt: serverTimestamp() }
-                        );
-                        await batch.commit();
-                        setSelectedStudent((prev) => prev ? { ...prev, pendingPayment: newPending } : null);
+                        if (selectedStudent.useMonetaryBalance) {
+                          // Monetary balance: add payment to balance
+                          const newBalance = (selectedStudent.monetaryBalance ?? 0) + recordPaymentAmount;
+                          const newPending = newBalance < 0 ? Math.abs(newBalance) : 0;
+                          batch.update(
+                            doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                            { monetaryBalance: newBalance, pendingPayment: newPending, updatedAt: serverTimestamp() }
+                          );
+                          await batch.commit();
+                          setSelectedStudent((prev) => prev ? { ...prev, monetaryBalance: newBalance, pendingPayment: newPending } : null);
+                        } else {
+                          // Reduce pendingPayment by the payment amount (floor at 0)
+                          const newPending = Math.max(0, (selectedStudent.pendingPayment ?? 0) - recordPaymentAmount);
+                          batch.update(
+                            doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                            { pendingPayment: newPending, updatedAt: serverTimestamp() }
+                          );
+                          await batch.commit();
+                          setSelectedStudent((prev) => prev ? { ...prev, pendingPayment: newPending } : null);
+                        }
                         setShowRecordPayment(false);
                         setRecordPaymentAmount(0);
                         showToast(`Recorded RM ${recordPaymentAmount} payment`, 'success');
@@ -1020,9 +1166,11 @@ export default function StudentsPage() {
                   const now = new Date();
                   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
                   setRecordPaymentDate(todayStr);
-                  const defaultAmount = selectedStudent.payPerLesson
-                    ? (selectedStudent.lessonRate ?? 0)
-                    : (selectedStudent.lessonRate ?? 0) * selectedStudent.prepaidTotal;
+                  const defaultAmount = selectedStudent.useMonetaryBalance
+                    ? (selectedStudent.lessonRate ?? 0) * (selectedStudent.packageSize ?? 10)
+                    : selectedStudent.payPerLesson
+                      ? (selectedStudent.lessonRate ?? 0)
+                      : (selectedStudent.lessonRate ?? 0) * selectedStudent.prepaidTotal;
                   setRecordPaymentAmount(defaultAmount);
                   setShowRecordPayment(true);
                 }}
@@ -1036,56 +1184,289 @@ export default function StudentsPage() {
             <div className="border-t border-gray-100 dark:border-[#333333] pt-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300">
-                  {selectedStudent.payPerLesson ? 'Pay per Lesson' : 'Prepaid Package'}
+                  {selectedStudent.useMonetaryBalance ? 'Balance Mode' : selectedStudent.payPerLesson ? 'Pay per Lesson' : 'Prepaid Package'}
                 </h3>
                 <div className="flex items-center gap-3">
-                  <button
-                    onClick={async () => {
-                      if (!coach || !db || !selectedStudent) return;
-                      const newVal = !selectedStudent.payPerLesson;
-                      const hasPending = Math.max(0, selectedStudent.pendingPayment - (selectedStudent.credit ?? 0)) > 0;
-                      // When switching to pay-per-lesson with a pending balance, show confirmation modal
-                      if (newVal && hasPending) {
-                        setClearPendingAmount(Math.max(0, selectedStudent.pendingPayment - (selectedStudent.credit ?? 0)));
-                        setShowClearPendingModal(true);
-                        return;
-                      }
-                      try {
-                        const updateData: Record<string, unknown> = { payPerLesson: newVal, updatedAt: serverTimestamp() };
-                        if (newVal) {
-                          updateData.prepaidTotal = 0;
-                          updateData.prepaidUsed = 0;
-                        }
-                        await updateDoc(
-                          doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
-                          updateData
-                        );
-                        setSelectedStudent((prev) => prev ? { ...prev, payPerLesson: newVal, ...(newVal ? { prepaidTotal: 0, prepaidUsed: 0 } : {}) } : null);
-                        showToast(newVal ? 'Switched to pay per lesson' : 'Switched to package mode', 'success');
-                      } catch {
-                        showToast('Failed to update payment mode', 'error');
-                      }
-                    }}
-                    className="text-xs text-purple-600 dark:text-purple-400 hover:underline"
-                  >
-                    {selectedStudent.payPerLesson ? 'Switch to Package' : 'Pay per Lesson'}
-                  </button>
-                  {!selectedStudent.payPerLesson && !editingPrepaid && (
-                    <button
-                      onClick={() => {
-                        setEditPrepaidTotal(selectedStudent.prepaidTotal);
-                        setEditPrepaidUsed(selectedStudent.prepaidUsed);
-                        setEditLessonRate(selectedStudent.lessonRate ?? 0);
-                        setEditingPrepaid(true);
-                      }}
-                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                    >
-                      Edit
-                    </button>
+                  {selectedStudent.useMonetaryBalance ? (
+                    <>
+                      <button
+                        onClick={async () => {
+                          if (!coach || !db || !selectedStudent) return;
+                          try {
+                            await updateDoc(
+                              doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                              { useMonetaryBalance: false, monetaryBalance: 0, packageSize: null, updatedAt: serverTimestamp() }
+                            );
+                            setSelectedStudent((prev) => prev ? { ...prev, useMonetaryBalance: false, monetaryBalance: 0, packageSize: undefined } : null);
+                            showToast('Switched to package mode', 'success');
+                          } catch {
+                            showToast('Failed to switch mode', 'error');
+                          }
+                        }}
+                        className="text-xs text-purple-600 dark:text-purple-400 hover:underline"
+                      >
+                        Switch to Package
+                      </button>
+                      {!editingBalance && (
+                        <button
+                          onClick={() => {
+                            setEditBalance(selectedStudent.monetaryBalance ?? 0);
+                            setEditBalanceLessonRate(selectedStudent.lessonRate ?? 0);
+                            setEditBalancePackageSize(selectedStudent.packageSize ?? 10);
+                            setEditingBalance(true);
+                          }}
+                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={async () => {
+                          if (!coach || !db || !selectedStudent) return;
+                          if (selectedStudent.payPerLesson) {
+                            // Pay-per-lesson → Package (existing behavior)
+                            try {
+                              await updateDoc(
+                                doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                                { payPerLesson: false, updatedAt: serverTimestamp() }
+                              );
+                              setSelectedStudent((prev) => prev ? { ...prev, payPerLesson: false } : null);
+                              showToast('Switched to package mode', 'success');
+                            } catch {
+                              showToast('Failed to update payment mode', 'error');
+                            }
+                          } else {
+                            // Package → Pay-per-lesson
+                            const hasPending = Math.max(0, selectedStudent.pendingPayment - (selectedStudent.credit ?? 0)) > 0;
+                            if (hasPending) {
+                              setClearPendingAmount(Math.max(0, selectedStudent.pendingPayment - (selectedStudent.credit ?? 0)));
+                              setShowClearPendingModal(true);
+                              return;
+                            }
+                            try {
+                              await updateDoc(
+                                doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                                { payPerLesson: true, prepaidTotal: 0, prepaidUsed: 0, updatedAt: serverTimestamp() }
+                              );
+                              setSelectedStudent((prev) => prev ? { ...prev, payPerLesson: true, prepaidTotal: 0, prepaidUsed: 0 } : null);
+                              showToast('Switched to pay per lesson', 'success');
+                            } catch {
+                              showToast('Failed to update payment mode', 'error');
+                            }
+                          }
+                        }}
+                        className="text-xs text-purple-600 dark:text-purple-400 hover:underline"
+                      >
+                        {selectedStudent.payPerLesson ? 'Switch to Package' : 'Pay per Lesson'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          // Pre-calculate starting balance from current state
+                          const rate = selectedStudent.lessonRate ?? 0;
+                          const remaining = selectedStudent.prepaidTotal - selectedStudent.prepaidUsed;
+                          const startBalance = Math.max(0, remaining * rate) + (selectedStudent.credit ?? 0);
+                          setSwitchBalanceAmount(startBalance);
+                          setSwitchBalanceLessonRate(rate);
+                          setSwitchBalancePackageSize(selectedStudent.prepaidTotal || 10);
+                          setShowSwitchToBalanceModal(true);
+                        }}
+                        className="text-xs text-green-600 dark:text-green-400 hover:underline"
+                      >
+                        Switch to Balance
+                      </button>
+                      {!selectedStudent.payPerLesson && !editingPrepaid && (
+                        <button
+                          onClick={() => {
+                            setEditPrepaidTotal(selectedStudent.prepaidTotal);
+                            setEditPrepaidUsed(selectedStudent.prepaidUsed);
+                            setEditLessonRate(selectedStudent.lessonRate ?? 0);
+                            setEditingPrepaid(true);
+                          }}
+                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
-              {selectedStudent.payPerLesson ? (
+              {selectedStudent.useMonetaryBalance ? (
+                editingBalance ? (
+                  <div className="space-y-3">
+                    <Input
+                      id="editBalance"
+                      label="Current Balance (RM)"
+                      type="number"
+                      value={String(editBalance)}
+                      onChange={(e) => setEditBalance(Number(e.target.value) || 0)}
+                    />
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input
+                        id="editBalanceLessonRate"
+                        label="Rate per Lesson (RM)"
+                        type="number"
+                        value={String(editBalanceLessonRate)}
+                        onChange={(e) => setEditBalanceLessonRate(Math.max(0, Number(e.target.value) || 0))}
+                      />
+                      <Input
+                        id="editBalancePackageSize"
+                        label="Package Size"
+                        type="number"
+                        value={String(editBalancePackageSize)}
+                        onChange={(e) => setEditBalancePackageSize(Math.max(1, Number(e.target.value) || 1))}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" loading={savingBalance} onClick={async () => {
+                        if (!coach || !db || !selectedStudent) return;
+                        setSavingBalance(true);
+                        try {
+                          const newPending = editBalance < 0 ? Math.abs(editBalance) : 0;
+                          await updateDoc(
+                            doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                            {
+                              monetaryBalance: editBalance,
+                              lessonRate: editBalanceLessonRate,
+                              packageSize: editBalancePackageSize,
+                              pendingPayment: newPending,
+                              updatedAt: serverTimestamp(),
+                            }
+                          );
+                          setSelectedStudent((prev) => prev ? {
+                            ...prev,
+                            monetaryBalance: editBalance,
+                            lessonRate: editBalanceLessonRate,
+                            packageSize: editBalancePackageSize,
+                            pendingPayment: newPending,
+                          } : null);
+                          setEditingBalance(false);
+                          showToast('Balance updated!', 'success');
+                        } catch {
+                          showToast('Failed to update balance', 'error');
+                        } finally {
+                          setSavingBalance(false);
+                        }
+                      }}>
+                        Save
+                      </Button>
+                      <Button variant="secondary" size="sm" onClick={() => setEditingBalance(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600 dark:text-zinc-400">Balance</span>
+                        <span className={`font-medium ${(selectedStudent.monetaryBalance ?? 0) > 0 ? 'text-green-600 dark:text-green-400' : (selectedStudent.monetaryBalance ?? 0) < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-zinc-100'}`}>
+                          RM {(selectedStudent.monetaryBalance ?? 0).toFixed(0)}
+                        </span>
+                      </div>
+                      {(selectedStudent.lessonRate ?? 0) > 0 && (
+                        <>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600 dark:text-zinc-400">Rate per lesson</span>
+                            <span className="font-medium text-gray-900 dark:text-zinc-100">RM {selectedStudent.lessonRate}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600 dark:text-zinc-400">Approx. lessons remaining</span>
+                            <span className={`font-medium ${(selectedStudent.monetaryBalance ?? 0) > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'}`}>
+                              ~{Math.max(0, Math.floor((selectedStudent.monetaryBalance ?? 0) / selectedStudent.lessonRate!))} lessons
+                            </span>
+                          </div>
+                        </>
+                      )}
+                      {(selectedStudent.packageSize ?? 0) > 0 && (selectedStudent.lessonRate ?? 0) > 0 && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600 dark:text-zinc-400">Package</span>
+                          <span className="text-gray-500 dark:text-zinc-400">
+                            {selectedStudent.packageSize} lessons = RM {selectedStudent.packageSize! * selectedStudent.lessonRate!}
+                          </span>
+                        </div>
+                      )}
+                      {/* Progress bar based on balance */}
+                      {(selectedStudent.packageSize ?? 0) > 0 && (selectedStudent.lessonRate ?? 0) > 0 && (
+                        <div className="w-full bg-gray-200 dark:bg-[#333333] rounded-full h-2.5">
+                          <div
+                            className={`h-2.5 rounded-full ${(selectedStudent.monetaryBalance ?? 0) > 0 ? 'bg-blue-600' : 'bg-red-500'}`}
+                            style={{
+                              width: `${Math.max(0, Math.min(100, ((selectedStudent.monetaryBalance ?? 0) / (selectedStudent.packageSize! * selectedStudent.lessonRate!)) * 100))}%`,
+                            }}
+                          />
+                        </div>
+                      )}
+                      {(selectedStudent.monetaryBalance ?? 0) <= 0 && !selectedStudent.nextPrepaidTotal && (
+                        <p className="text-xs font-medium text-red-600 dark:text-red-400">
+                          Balance depleted — time to renew!
+                        </p>
+                      )}
+                      {/* Next package queued indicator */}
+                      {selectedStudent.nextPrepaidTotal && selectedStudent.nextPrepaidTotal > 0 && (
+                        <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-2 mt-2">
+                          <div>
+                            <p className="text-xs font-medium text-green-700 dark:text-green-300">
+                              Next package: {selectedStudent.nextPrepaidTotal} lessons (paid)
+                            </p>
+                            {selectedStudent.nextPrepaidPaidAt && (
+                              <p className="text-xs text-green-600 dark:text-green-400">
+                                Paid on {formatDateMedium(selectedStudent.nextPrepaidPaidAt)}
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            disabled={cancellingNextPackage}
+                            onClick={async () => {
+                              if (!coach || !db || !selectedStudent) return;
+                              setCancellingNextPackage(true);
+                              try {
+                                await updateDoc(
+                                  doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                                  { nextPrepaidTotal: null, nextPrepaidPaidAt: null, updatedAt: serverTimestamp() }
+                                );
+                                setSelectedStudent((prev) => prev ? { ...prev, nextPrepaidTotal: undefined, nextPrepaidPaidAt: undefined } : null);
+                                showToast('Next package cancelled', 'success');
+                              } catch {
+                                showToast('Failed to cancel next package', 'error');
+                              } finally {
+                                setCancellingNextPackage(false);
+                              }
+                            }}
+                            className="text-xs text-red-500 dark:text-red-400 hover:underline disabled:opacity-50"
+                          >
+                            {cancellingNextPackage ? '...' : 'Cancel'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-2 mt-3">
+                      <Button variant="secondary" size="sm" onClick={() => addPrepaid(5)}>
+                        + 5 Lessons
+                      </Button>
+                      <Button variant="secondary" size="sm" onClick={() => addPrepaid(10)}>
+                        + 10 Lessons
+                      </Button>
+                      {(selectedStudent.monetaryBalance ?? 0) > 0 && !selectedStudent.nextPrepaidTotal && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            setRenewEarlyLessons(selectedStudent.packageSize ?? 10);
+                            setRenewEarlyAmount((selectedStudent.lessonRate ?? 0) * (selectedStudent.packageSize ?? 10));
+                            setShowRenewEarlyModal(true);
+                          }}
+                        >
+                          Renew Early
+                        </Button>
+                      )}
+                    </div>
+                  </>
+                )
+              ) : selectedStudent.payPerLesson ? (
                 editingPrepaid ? (
                   <div className="space-y-3">
                     <Input
@@ -1721,7 +2102,7 @@ export default function StudentsPage() {
       <Modal
         isOpen={showRenewModal}
         onClose={() => setShowRenewModal(false)}
-        title="Renew Prepaid Package?"
+        title={selectedStudent?.useMonetaryBalance ? 'Renew Package?' : 'Renew Prepaid Package?'}
       >
         <div className="space-y-4">
           <Input
@@ -1731,6 +2112,26 @@ export default function StudentsPage() {
             value={String(renewAmount)}
             onChange={(e) => setRenewAmount(Math.max(1, Number(e.target.value) || 1))}
           />
+          {selectedStudent?.useMonetaryBalance && (selectedStudent.lessonRate ?? 0) > 0 && (
+            <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3 space-y-1">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600 dark:text-zinc-400">Package value</span>
+                <span className="text-gray-900 dark:text-zinc-100">RM {renewAmount * (selectedStudent.lessonRate ?? 0)}</span>
+              </div>
+              {(selectedStudent.monetaryBalance ?? 0) < 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600 dark:text-zinc-400">Outstanding balance</span>
+                  <span className="text-red-600 dark:text-red-400">-RM {Math.abs(selectedStudent.monetaryBalance ?? 0)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-sm font-medium border-t border-gray-200 dark:border-[#333] pt-1 mt-1">
+                <span className="text-gray-700 dark:text-zinc-300">Amount to collect</span>
+                <span className="text-gray-900 dark:text-zinc-100">
+                  RM {Math.max(0, renewAmount * (selectedStudent.lessonRate ?? 0) + (selectedStudent.monetaryBalance ?? 0))}
+                </span>
+              </div>
+            </div>
+          )}
           <div className="flex gap-2">
             <Button
               className="flex-1"
@@ -1739,18 +2140,36 @@ export default function StudentsPage() {
                 if (!coach || !db || !selectedStudent) return;
                 setRenewingPackage(true);
                 try {
-                  const overflow = Math.max(0, selectedStudent.prepaidUsed - selectedStudent.prepaidTotal);
-                  await updateDoc(
-                    doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
-                    {
-                      prepaidTotal: renewAmount,
-                      prepaidUsed: overflow,
-                      updatedAt: serverTimestamp(),
-                    }
-                  );
-                  setSelectedStudent((prev) =>
-                    prev ? { ...prev, prepaidTotal: renewAmount, prepaidUsed: overflow } : null
-                  );
+                  if (selectedStudent.useMonetaryBalance) {
+                    const rate = selectedStudent.lessonRate ?? 0;
+                    const renewalValue = rate * renewAmount;
+                    const newBalance = (selectedStudent.monetaryBalance ?? 0) + renewalValue;
+                    await updateDoc(
+                      doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                      {
+                        monetaryBalance: newBalance,
+                        packageSize: renewAmount,
+                        pendingPayment: newBalance < 0 ? Math.abs(newBalance) : 0,
+                        updatedAt: serverTimestamp(),
+                      }
+                    );
+                    setSelectedStudent((prev) =>
+                      prev ? { ...prev, monetaryBalance: newBalance, packageSize: renewAmount, pendingPayment: newBalance < 0 ? Math.abs(newBalance) : 0 } : null
+                    );
+                  } else {
+                    const overflow = Math.max(0, selectedStudent.prepaidUsed - selectedStudent.prepaidTotal);
+                    await updateDoc(
+                      doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                      {
+                        prepaidTotal: renewAmount,
+                        prepaidUsed: overflow,
+                        updatedAt: serverTimestamp(),
+                      }
+                    );
+                    setSelectedStudent((prev) =>
+                      prev ? { ...prev, prepaidTotal: renewAmount, prepaidUsed: overflow } : null
+                    );
+                  }
                   showToast(`Package renewed with ${renewAmount} lessons!`, 'success');
                   setShowRenewModal(false);
                 } catch (error) {
@@ -1848,6 +2267,95 @@ export default function StudentsPage() {
               Confirm &amp; Record Payment
             </Button>
             <Button variant="secondary" className="flex-1" onClick={() => setShowRenewEarlyModal(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Switch to Balance Mode Modal */}
+      <Modal
+        isOpen={showSwitchToBalanceModal}
+        onClose={() => setShowSwitchToBalanceModal(false)}
+        title="Switch to Balance Mode"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-zinc-400">
+            Balance mode tracks money (RM) instead of lesson counts. Each lesson deducts the actual price from the balance.
+          </p>
+          <Input
+            id="switchBalanceAmount"
+            label="Starting Balance (RM)"
+            type="number"
+            value={String(switchBalanceAmount)}
+            onChange={(e) => setSwitchBalanceAmount(Number(e.target.value) || 0)}
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              id="switchBalanceLessonRate"
+              label="Rate per Lesson (RM)"
+              type="number"
+              value={String(switchBalanceLessonRate)}
+              onChange={(e) => setSwitchBalanceLessonRate(Math.max(0, Number(e.target.value) || 0))}
+            />
+            <Input
+              id="switchBalancePackageSize"
+              label="Package Size (lessons)"
+              type="number"
+              value={String(switchBalancePackageSize)}
+              onChange={(e) => setSwitchBalancePackageSize(Math.max(1, Number(e.target.value) || 1))}
+            />
+          </div>
+          {switchBalanceLessonRate > 0 && switchBalancePackageSize > 0 && (
+            <p className="text-xs text-gray-500 dark:text-zinc-400">
+              Package renewal price: RM {switchBalanceLessonRate * switchBalancePackageSize}
+              {switchBalanceAmount > 0 && ` · ~${Math.floor(switchBalanceAmount / switchBalanceLessonRate)} lessons from starting balance`}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Button
+              className="flex-1"
+              onClick={async () => {
+                if (!coach || !db || !selectedStudent) return;
+                try {
+                  const newPending = switchBalanceAmount < 0 ? Math.abs(switchBalanceAmount) : 0;
+                  await updateDoc(
+                    doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id),
+                    {
+                      useMonetaryBalance: true,
+                      monetaryBalance: switchBalanceAmount,
+                      packageSize: switchBalancePackageSize,
+                      lessonRate: switchBalanceLessonRate,
+                      payPerLesson: false,
+                      prepaidTotal: 0,
+                      prepaidUsed: 0,
+                      credit: 0,
+                      pendingPayment: newPending,
+                      updatedAt: serverTimestamp(),
+                    }
+                  );
+                  setSelectedStudent((prev) => prev ? {
+                    ...prev,
+                    useMonetaryBalance: true,
+                    monetaryBalance: switchBalanceAmount,
+                    packageSize: switchBalancePackageSize,
+                    lessonRate: switchBalanceLessonRate,
+                    payPerLesson: false,
+                    prepaidTotal: 0,
+                    prepaidUsed: 0,
+                    credit: 0,
+                    pendingPayment: newPending,
+                  } : null);
+                  showToast('Switched to balance mode!', 'success');
+                  setShowSwitchToBalanceModal(false);
+                } catch {
+                  showToast('Failed to switch mode', 'error');
+                }
+              }}
+            >
+              Switch to Balance
+            </Button>
+            <Button variant="secondary" className="flex-1" onClick={() => setShowSwitchToBalanceModal(false)}>
               Cancel
             </Button>
           </div>

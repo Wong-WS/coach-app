@@ -276,6 +276,28 @@ export default function DashboardPage() {
           continue;
         }
 
+        if (studentRecord?.useMonetaryBalance) {
+          // Monetary balance mode: deduct price from balance
+          const newBalance = (studentRecord.monetaryBalance ?? 0) - attendee.price;
+          updateData.monetaryBalance = newBalance;
+          updateData.pendingPayment = newBalance < 0 ? Math.abs(newBalance) : 0;
+
+          // Check for auto-rollover when balance crosses zero
+          const oldBalance = studentRecord.monetaryBalance ?? 0;
+          if (oldBalance > 0 && newBalance <= 0 && studentRecord.nextPrepaidTotal && studentRecord.nextPrepaidTotal > 0) {
+            const renewalValue = (studentRecord.lessonRate ?? 0) * studentRecord.nextPrepaidTotal;
+            const postRenewalBalance = newBalance + renewalValue;
+            updateData.monetaryBalance = postRenewalBalance;
+            updateData.pendingPayment = postRenewalBalance < 0 ? Math.abs(postRenewalBalance) : 0;
+            updateData.packageSize = studentRecord.nextPrepaidTotal;
+            updateData.nextPrepaidTotal = null;
+            updateData.nextPrepaidPaidAt = null;
+          }
+
+          batch.update(studentRef, updateData);
+          continue;
+        }
+
         if ((studentRecord?.prepaidTotal ?? 0) > 0) {
           updateData.prepaidUsed = increment(1);
         }
@@ -342,6 +364,29 @@ export default function DashboardPage() {
       // Show post-commit UI notifications (package warnings, auto-renewals)
       for (const attendee of resolvedAttendees) {
         const studentRecord = students.find((s) => s.id === attendee.studentId);
+        // Monetary balance notifications
+        if (studentRecord?.useMonetaryBalance) {
+          const oldBalance = studentRecord.monetaryBalance ?? 0;
+          const newBalance = oldBalance - attendee.price;
+          if (oldBalance > 0 && newBalance <= 0) {
+            if (studentRecord.nextPrepaidTotal && studentRecord.nextPrepaidTotal > 0) {
+              showToast(`${attendee.studentName}'s package auto-renewed (${studentRecord.nextPrepaidTotal} lessons)!`, 'success');
+            } else {
+              const rate = studentRecord.lessonRate ?? 0;
+              const pkgSize = studentRecord.packageSize ?? 0;
+              const packagePrice = rate * pkgSize;
+              setPackageWarning({
+                studentName: attendee.studentName,
+                remaining: 0,
+                total: pkgSize,
+                lastPrice: packagePrice > 0 ? packagePrice : 0,
+                credit: 0,
+              });
+              break;
+            }
+          }
+          continue;
+        }
         if (studentRecord && studentRecord.prepaidTotal > 0) {
           const remainingAfter = studentRecord.prepaidTotal - (studentRecord.prepaidUsed + 1);
           if (remainingAfter <= 0) {
@@ -716,6 +761,11 @@ export default function DashboardPage() {
             if (log.price > 0) {
               updateData.pendingPayment = increment(-log.price);
             }
+          } else if (student.useMonetaryBalance) {
+            // Monetary balance: add price back to balance
+            const newBalance = (student.monetaryBalance ?? 0) + log.price;
+            updateData.monetaryBalance = newBalance;
+            updateData.pendingPayment = newBalance < 0 ? Math.abs(newBalance) : 0;
           } else {
             // Normal path: reverse prepaidUsed, credit, and pay-per-lesson pendingPayment
             if ((student.prepaidTotal ?? 0) > 0) {
@@ -1443,6 +1493,15 @@ export default function DashboardPage() {
                   const student = students.find((s) =>
                     s.clientName === markDoneBooking.clientName && s.clientPhone === (markDoneBooking.clientPhone || '')
                   );
+                  if (student?.useMonetaryBalance) {
+                    const balanceAfter = (student.monetaryBalance ?? 0) - markDonePrice;
+                    return (
+                      <p className={`text-xs ${balanceAfter >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                        Balance after: RM {balanceAfter.toFixed(0)}
+                        {(student.lessonRate ?? 0) > 0 && ` (~${Math.max(0, Math.floor(balanceAfter / student.lessonRate!))} lessons)`}
+                      </p>
+                    );
+                  }
                   const basePrice = (student?.lessonRate != null && student.lessonRate > 0)
                     ? student.lessonRate
                     : (markDoneBooking.price ?? 0);
@@ -1460,7 +1519,7 @@ export default function DashboardPage() {
                   const student = students.find((s) =>
                     s.clientName === markDoneBooking.clientName && s.clientPhone === (markDoneBooking.clientPhone || '')
                   );
-                  if (!student || (student.prepaidTotal ?? 0) === 0) return null;
+                  if (!student || ((student.prepaidTotal ?? 0) === 0 && !student.useMonetaryBalance)) return null;
                   return (
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input

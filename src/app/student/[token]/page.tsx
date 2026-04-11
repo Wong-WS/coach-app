@@ -9,6 +9,10 @@ interface PortalData {
   prepaidUsed: number;
   credit: number;
   pendingPayment: number;
+  useMonetaryBalance: boolean;
+  monetaryBalance: number;
+  lessonRate: number;
+  packageSize: number;
   coachName: string;
   serviceType: string;
   lessons: {
@@ -105,8 +109,39 @@ export default function StudentPortalPage({ params }: { params: Promise<{ token:
           </div>
         )}
 
+        {/* Balance mode status */}
+        {data.useMonetaryBalance && (
+          <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-6">
+            <h2 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-3">Lesson Balance</h2>
+            <div className="flex items-center justify-between text-sm mb-2">
+              <span className="text-gray-600 dark:text-zinc-400">Balance</span>
+              <span className={`font-medium ${data.monetaryBalance > 0 ? 'text-green-600 dark:text-green-400' : data.monetaryBalance < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-zinc-100'}`}>
+                RM {data.monetaryBalance.toFixed(0)}
+              </span>
+            </div>
+            {data.lessonRate > 0 && (
+              <div className="flex items-center justify-between text-sm mb-2">
+                <span className="text-gray-600 dark:text-zinc-400">Approx. lessons remaining</span>
+                <span className={`font-medium ${data.monetaryBalance > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'}`}>
+                  ~{Math.max(0, Math.floor(data.monetaryBalance / data.lessonRate))} lessons
+                </span>
+              </div>
+            )}
+            {data.packageSize > 0 && data.lessonRate > 0 && (
+              <div className="w-full bg-gray-200 dark:bg-zinc-700 rounded-full h-2.5">
+                <div
+                  className={`h-2.5 rounded-full ${data.monetaryBalance > 0 ? 'bg-blue-600' : 'bg-red-500'}`}
+                  style={{
+                    width: `${Math.max(0, Math.min(100, (data.monetaryBalance / (data.packageSize * data.lessonRate)) * 100))}%`,
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Prepaid status */}
-        {hasPrepaid && (
+        {!data.useMonetaryBalance && hasPrepaid && (
           <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-6">
             <h2 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-3">Lesson Package</h2>
             <div className="flex items-center justify-between text-sm mb-2">
@@ -135,7 +170,7 @@ export default function StudentPortalPage({ params }: { params: Promise<{ token:
         )}
 
         {/* Credit balance (standalone if no prepaid package) */}
-        {!hasPrepaid && hasCredit && (
+        {!data.useMonetaryBalance && !hasPrepaid && hasCredit && (
           <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-6">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-gray-700 dark:text-zinc-300">Credit Balance</span>
