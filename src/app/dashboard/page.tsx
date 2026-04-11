@@ -1063,6 +1063,46 @@ export default function DashboardPage() {
                             </button>
                             <button
                               onClick={() => {
+                                const dupStudents: Array<{ studentId: string; displayName: string; price: number }> = [];
+                                const primaryStudent = students.find(
+                                  (s) => s.clientName === booking.clientName && s.clientPhone === (booking.clientPhone || '')
+                                );
+                                if (primaryStudent) {
+                                  dupStudents.push({
+                                    studentId: primaryStudent.id,
+                                    displayName: primaryStudent.clientName,
+                                    price: booking.studentPrices?.[primaryStudent.id] ?? booking.price ?? 0,
+                                  });
+                                }
+                                if (booking.linkedStudentIds?.length) {
+                                  for (const linkedId of booking.linkedStudentIds) {
+                                    const ls = students.find((s) => s.id === linkedId);
+                                    if (ls) {
+                                      dupStudents.push({
+                                        studentId: ls.id,
+                                        displayName: ls.clientName,
+                                        price: booking.studentPrices?.[ls.id] ?? 0,
+                                      });
+                                    }
+                                  }
+                                }
+                                setAddClassDate(selectedDateStr);
+                                setAddClassLocationId(booking.locationId || locations[0]?.id || '');
+                                setAddClassStartTime(booking.startTime || '');
+                                setAddClassEndTime(booking.endTime || '');
+                                setAddClassNote(booking.notes || '');
+                                setAddClassSearch('');
+                                setShowNewStudentForm(false);
+                                setAddClassSelectedStudents(dupStudents);
+                                setShowAddClass(true);
+                                setMenuOpen(null);
+                              }}
+                              className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#333]"
+                            >
+                              Duplicate
+                            </button>
+                            <button
+                              onClick={() => {
                                 setRescheduleBooking(booking);
                                 setRescheduleDate(selectedDateStr);
                                 setRescheduleStartTime(booking.startTime);
