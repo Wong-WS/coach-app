@@ -1317,7 +1317,7 @@ export default function StudentsPage() {
                         label="Package Size"
                         type="number"
                         value={String(editBalancePackageSize)}
-                        onChange={(e) => setEditBalancePackageSize(Math.max(1, Number(e.target.value) || 1))}
+                        onChange={(e) => setEditBalancePackageSize(Math.max(0, Number(e.target.value) || 0))}
                       />
                     </div>
                     <div className="flex gap-2">
@@ -2303,7 +2303,7 @@ export default function StudentsPage() {
               label="Package Size (lessons)"
               type="number"
               value={String(switchBalancePackageSize)}
-              onChange={(e) => setSwitchBalancePackageSize(Math.max(1, Number(e.target.value) || 1))}
+              onChange={(e) => setSwitchBalancePackageSize(Math.max(0, Number(e.target.value) || 0))}
             />
           </div>
           {switchBalanceLessonRate > 0 && switchBalancePackageSize > 0 && (
