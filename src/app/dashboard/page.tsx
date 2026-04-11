@@ -375,15 +375,22 @@ export default function DashboardPage() {
               const rate = studentRecord.lessonRate ?? 0;
               const pkgSize = studentRecord.packageSize ?? 0;
               const packagePrice = rate * pkgSize;
-              setPackageWarning({
-                studentName: attendee.studentName,
-                remaining: 0,
-                total: pkgSize,
-                lastPrice: packagePrice > 0 ? packagePrice : 0,
-                credit: 0,
-              });
+              if (packagePrice > 0) {
+                setPackageWarning({
+                  studentName: attendee.studentName,
+                  remaining: 0,
+                  total: pkgSize,
+                  lastPrice: packagePrice,
+                  credit: 0,
+                });
+              } else {
+                showToast(`${attendee.studentName}'s balance is now -RM ${Math.abs(newBalance)}`, 'info');
+              }
               break;
             }
+          } else if (newBalance < 0 && oldBalance <= 0) {
+            // Already negative — show a reminder
+            showToast(`${attendee.studentName}'s balance: -RM ${Math.abs(newBalance)}`, 'info');
           }
           continue;
         }
