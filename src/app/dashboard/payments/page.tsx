@@ -266,6 +266,16 @@ export default function PaymentsPage() {
   // Wallet detail panel
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
 
+  // Keep selectedWallet in sync with live wallet data
+  useEffect(() => {
+    if (selectedWallet) {
+      const updated = wallets.find((w) => w.id === selectedWallet.id);
+      if (updated) {
+        setSelectedWallet(updated);
+      }
+    }
+  }, [wallets]);
+
   // Create wallet modal
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newWalletName, setNewWalletName] = useState('');
