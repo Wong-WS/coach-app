@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { collection, doc, updateDoc, addDoc, deleteDoc, writeBatch, serverTimestamp, increment, Firestore } from 'firebase/firestore';
+import { collection, doc, updateDoc, addDoc, deleteDoc, writeBatch, serverTimestamp, increment, Firestore, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useStudents, useLessonLogs, useLocations, useBookings, useWallets } from '@/hooks/useCoachData';
@@ -473,6 +473,37 @@ export default function StudentsPage() {
     setDeletingLogId(logId);
     try {
       const firestore = db as Firestore;
+
+      // Find and reverse any wallet transaction for this lesson
+      for (const walletDoc of wallets) {
+        const txnQuery = query(
+          collection(firestore, 'coaches', coach.id, 'wallets', walletDoc.id, 'transactions'),
+          where('lessonLogId', '==', logId)
+        );
+        const txnSnap = await getDocs(txnQuery);
+        if (!txnSnap.empty) {
+          const originalTxn = txnSnap.docs[0].data();
+          const refundAmount = Math.abs(originalTxn.amount);
+          const newBalance = walletDoc.balance + refundAmount;
+          const now = new Date();
+          const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+          await addDoc(collection(firestore, 'coaches', coach.id, 'wallets', walletDoc.id, 'transactions'), {
+            type: 'refund',
+            amount: refundAmount,
+            balanceAfter: newBalance,
+            description: `Reversed: ${originalTxn.description}`,
+            studentId: originalTxn.studentId,
+            date: dateStr,
+            createdAt: serverTimestamp(),
+          });
+          await updateDoc(doc(firestore, 'coaches', coach.id, 'wallets', walletDoc.id), {
+            balance: increment(refundAmount),
+            updatedAt: serverTimestamp(),
+          });
+          break;
+        }
+      }
+
       await deleteDoc(doc(firestore, 'coaches', coach.id, 'lessonLogs', logId));
       showToast('Lesson deleted', 'success');
     } catch (error) {
