@@ -254,7 +254,7 @@ export default function DashboardPage() {
             const txnRef = doc(collection(firestore, 'coaches', coach.id, 'wallets', walletId, 'transactions'));
             batch.set(txnRef, {
               type: 'charge',
-              amount: attendee.price,
+              amount: -attendee.price,
               balanceAfter: newBalance,
               description: `Lesson — ${attendee.studentName} (${booking.startTime})`,
               studentId: attendee.studentId,
@@ -626,10 +626,11 @@ export default function DashboardPage() {
           const txnSnap = await getDocs(txnQuery);
           if (!txnSnap.empty) {
             const originalTxn = txnSnap.docs[0].data();
-            const newBalance = walletDoc.balance + originalTxn.amount;
+            const refundAmount = Math.abs(originalTxn.amount);
+            const newBalance = walletDoc.balance + refundAmount;
             await addDoc(collection(firestore, 'coaches', coach.id, 'wallets', walletDoc.id, 'transactions'), {
               type: 'refund',
-              amount: originalTxn.amount,
+              amount: refundAmount,
               balanceAfter: newBalance,
               description: `Reversed: ${originalTxn.description}`,
               studentId: originalTxn.studentId,
@@ -637,7 +638,7 @@ export default function DashboardPage() {
               createdAt: serverTimestamp(),
             });
             await updateDoc(doc(firestore, 'coaches', coach.id, 'wallets', walletDoc.id), {
-              balance: increment(originalTxn.amount),
+              balance: increment(refundAmount),
               updatedAt: serverTimestamp(),
             });
             break;

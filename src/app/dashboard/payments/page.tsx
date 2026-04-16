@@ -192,12 +192,12 @@ function WalletDetail({
                 </div>
                 <p
                   className={`text-sm font-medium ${
-                    txn.type === 'charge'
+                    txn.amount < 0
                       ? 'text-red-600 dark:text-red-400'
                       : 'text-green-600 dark:text-green-400'
                   }`}
                 >
-                  {txn.type === 'charge' ? '-' : '+'}RM {txn.amount.toFixed(0)}
+                  {txn.amount < 0 ? '' : '+'}RM {Math.abs(txn.amount).toFixed(0)}
                 </p>
               </div>
             ))}
@@ -423,7 +423,7 @@ export default function PaymentsPage() {
       })();
       await addDoc(txnCol, {
         type: 'adjustment',
-        amount,
+        amount: delta,
         balanceAfter: newBalance,
         description,
         date: today,
@@ -631,8 +631,8 @@ export default function PaymentsPage() {
                           {txn.type}
                         </span>
                       </td>
-                      <td className={`px-4 py-3 text-right font-medium ${txn.type === 'charge' ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-                        {txn.type === 'charge' ? '-' : '+'}RM {txn.amount.toFixed(0)}
+                      <td className={`px-4 py-3 text-right font-medium ${txn.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                        {txn.amount < 0 ? '' : '+'}RM {Math.abs(txn.amount).toFixed(0)}
                       </td>
                       <td className="px-4 py-3 text-right text-gray-500 dark:text-zinc-400 hidden md:table-cell">RM {txn.balanceAfter.toFixed(0)}</td>
                     </tr>

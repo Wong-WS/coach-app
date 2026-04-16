@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     if (balance !== 0) {
       await db.collection(`coaches/${coachId}/wallets/${walletRef.id}/transactions`).add({
         type: balance >= 0 ? 'top-up' : 'adjustment',
-        amount: Math.abs(balance),
+        amount: balance,
         balanceAfter: balance,
         description: 'Migrated from previous system',
         studentId,
