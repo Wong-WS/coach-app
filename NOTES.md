@@ -20,7 +20,7 @@
 
 7. (2026-03-23) **No caching on availability API** — every public page load recalculates availability from scratch. Should we add Cache-Control headers or client-side caching?
 
-8. (2026-03-23) **Multiple entry points for creating students/bookings** — bookings can be created from both the Bookings page and the Overview (Today's Classes) page via ad-hoc classes. Students get auto-created in multiple places too. This risks inconsistent data (e.g., pricing, package tracking, lesson logs). Should we consolidate to a single flow for each? Need to balance simplicity vs. convenience — the ad-hoc class feature on Overview is handy, but it bypasses the full booking form. Think about: what's the ideal flow where data stays clean (lesson logs, prepaid tracking, payments) without making the coach jump between pages?
+8. ✅ (2026-04-16) **Multiple entry points for creating students/bookings** — resolved by unified booking creation. Overview page is now the single entry point for both one-time and recurring lessons. Bookings page renamed to Schedule (read-only). Students page creation forms removed.
 
 9. (2026-03-23) **Recurring booking model vs. individual instances** — currently bookings are recurring (one doc per weekly slot) with exceptions tracked separately. This requires loading all bookings + all exceptions to render any single day. Would flattening to individual booking instances be better as data grows?
 
@@ -35,14 +35,14 @@
 - WhatsApp/SMS notifications
 - Custom domains
 - ✅ (2026-03-24) Production guardrails: prevent marking done for future dates
-- Production guardrails: restrict prepaid package editing (admin mode or audit log)
-- Production guardrails: lesson log deletion safeguards (confirmation dialog, soft-delete, time-limited)
+- ✅ (2026-04-16) Production guardrails: restrict prepaid package editing — no longer relevant, UI migrated to wallet system, prepaid fields no longer exposed
+- Production guardrails: lesson log deletion safeguards — wallet refund on delete works, but still no "are you sure?" confirmation modal before deleting
 - ✅ (2026-03-25) Income page: projected collected income — shows current & next month projections based on package renewals (day-by-day exhaustion calculation) and pay-per-lesson charges (primary bookings only, remaining days for current month)
-- (2026-03-31) **Consolidate booking creation to one place** — currently bookings can be created from multiple pages. Unify to a single entry point to keep data clean.
+- ✅ (2026-04-16) **Consolidate booking creation to one place** — unified form on Overview page handles both one-time and recurring. Schedule page is read-only.
 - (2026-03-31) **Student self-service replacement scheduling** — let students check available replacement times and schedule via their portal page (`/student/[token]`).
-- (2026-03-31) **Show full credit balance (total paid minus total used)** — currently only tracks "extra" credit from discounted lessons. Should show the full remaining monetary credit (e.g. paid RM500 for 5 lessons, used 3 = RM200 remaining). Data is already there via payments + lessonLogs.
+- ✅ (2026-04-16) **Show full credit balance (total paid minus total used)** — superseded by wallet system. Each student has a wallet with live RM balance (top-ups credit, lesson charges debit).
 - (2026-03-31) **Cancellation reasons/data** — track who cancelled (coach, student, weather, etc.) on class exceptions. Add a `reason` or `cancelledBy` field to `classExceptions` so coaches can see patterns.
 - ✅ (2026-03-31) **Early package renewal** — "Renew Early" feature: queue next package + record payment before current package finishes. Auto-rollover on exhaustion.
 - (2026-03-31) **Pagination for lesson logs & payments** — currently limited to 6 months / 100 records. Add "Load more" or date range picker so older data is still accessible. Low priority until data volume grows.
 - (2026-04-02) **Refund tracking for mid-package cancellations** — when a student discontinues with remaining prepaid lessons (e.g. 3/5 used), show the refund amount (remaining × lessonRate) on the cancel dialog and optionally record it. Currently the system has no refund concept.
-- (2026-04-01) **Linked student package exhaustion — payment due behavior unclear** — in a group lesson with linked students, if only one student's package runs out, does the unpaid/payment-due amount surface correctly for that student (and not the other)? Need to verify: does `pendingPayment` get calculated independently per student, and does the UI show the right "due" indicator on the correct student card vs. the main student?
+- ✅ (2026-04-16) **Linked student package exhaustion — payment due behavior** — resolved by wallet system. Each linked student has their own wallet charged independently on mark-done. Negative balances surface per-student via wallet balance badge.
