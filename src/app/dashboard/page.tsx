@@ -56,14 +56,12 @@ export default function DashboardPage() {
   const [markDoneBooking, setMarkDoneBooking] = useState<Booking | null>(null);
   const [markDonePrice, setMarkDonePrice] = useState(0);
   const [markDoneNote, setMarkDoneNote] = useState('');
-  const [markDonePaySeparately, setMarkDonePaySeparately] = useState(false);
   const [markDoneAttendees, setMarkDoneAttendees] = useState<Array<{
     studentId: string;
     studentName: string;
     attended: boolean;
     price: number;
     isPrimary: boolean;
-    paySeparately: boolean;
   }>>([]);
   const [deletingAdHocGroup, setDeletingAdHocGroup] = useState<number | null>(null);
 
@@ -82,7 +80,6 @@ export default function DashboardPage() {
     isNew?: boolean;
     newPhone?: string;
     payPerLesson?: boolean;
-    packageSize?: number;
   }>>([]);
   const [addingClass, setAddingClass] = useState(false);
   const [showNewStudentForm, setShowNewStudentForm] = useState(false);
@@ -90,7 +87,6 @@ export default function DashboardPage() {
   const [newStudentPhone, setNewStudentPhone] = useState('');
   const [newStudentPayPerLesson, setNewStudentPayPerLesson] = useState(true);
   const [newStudentPrice, setNewStudentPrice] = useState(0);
-  const [newStudentPackageSize, setNewStudentPackageSize] = useState(5);
 
   // Edit booking modal state
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
@@ -156,7 +152,6 @@ export default function DashboardPage() {
     setMarkDoneBooking(booking);
     setMarkDonePrice(booking.price ?? 0);
     setMarkDoneNote(booking.notes || '');
-    setMarkDonePaySeparately(false);
     setMenuOpen(null);
 
     // Build attendees list: primary + linked students
@@ -173,7 +168,6 @@ export default function DashboardPage() {
         attended: true,
         price: studentPrice,
         isPrimary: true,
-        paySeparately: false,
       });
     }
     // Linked students
@@ -188,7 +182,6 @@ export default function DashboardPage() {
             attended: true,
             price: studentPrice,
             isPrimary: false,
-            paySeparately: false,
           });
         }
       }
@@ -205,7 +198,6 @@ export default function DashboardPage() {
     const hasLinkedStudents = markDoneAttendees.length > 1;
     const noteText = markDoneNote.trim();
     const price = markDonePrice;
-    const paySeparately = markDonePaySeparately;
 
     // Close modal immediately (optimistic UI)
     setMarkDoneBooking(null);
@@ -215,7 +207,7 @@ export default function DashboardPage() {
       // Determine which students to process
       const attendeesToProcess = hasLinkedStudents
         ? markDoneAttendees.filter((a) => a.attended)
-        : [{ studentId: markDoneAttendees[0]?.studentId || '', studentName: booking.clientName, attended: true, price, isPrimary: true, paySeparately }];
+        : [{ studentId: markDoneAttendees[0]?.studentId || '', studentName: booking.clientName, attended: true, price, isPrimary: true }];
 
       // Resolve student IDs first (requires async lookup)
       const resolvedAttendees = await Promise.all(
@@ -245,10 +237,6 @@ export default function DashboardPage() {
         };
         if (noteText) {
           logData.note = noteText;
-        }
-        const attendeePaySeparatelyForLog = hasLinkedStudents ? attendee.paySeparately : paySeparately;
-        if (attendeePaySeparatelyForLog) {
-          logData.paySeparately = true;
         }
         batch.set(logRef, logData);
 
@@ -522,7 +510,6 @@ export default function DashboardPage() {
     setNewStudentPhone('');
     setNewStudentPayPerLesson(true);
     setNewStudentPrice(0);
-    setNewStudentPackageSize(5);
     setShowAddClass(true);
   };
 
@@ -560,13 +547,9 @@ export default function DashboardPage() {
       for (const selected of addClassSelectedStudents) {
         if (selected.isNew) {
           const studentId = await findOrCreateStudent(firestore, coach.id, selected.displayName, selected.newPhone || '');
-          const studentUpdateData: Record<string, unknown> = { updatedAt: serverTimestamp() };
-          if (selected.payPerLesson) studentUpdateData.payPerLesson = true;
-          if (!selected.payPerLesson && selected.packageSize && selected.packageSize > 0) {
-            studentUpdateData.prepaidTotal = selected.packageSize;
-            studentUpdateData.prepaidUsed = 0;
-          }
-          await updateDoc(doc(firestore, 'coaches', coach.id, 'students', studentId), studentUpdateData);
+          await updateDoc(doc(firestore, 'coaches', coach.id, 'students', studentId), {
+            updatedAt: serverTimestamp(),
+          });
           resolvedStudents.push({ ...selected, studentId, isNew: false });
         } else {
           resolvedStudents.push(selected);
@@ -1427,21 +1410,6 @@ export default function DashboardPage() {
                         />
                       </div>
                     </div>
-                    {attendee.attended && (
-                      <label className="flex items-center gap-2 cursor-pointer pl-7">
-                        <input
-                          type="checkbox"
-                          checked={attendee.paySeparately}
-                          onChange={(e) => {
-                            const updated = [...markDoneAttendees];
-                            updated[idx] = { ...updated[idx], paySeparately: e.target.checked };
-                            setMarkDoneAttendees(updated);
-                          }}
-                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <span className="text-xs text-gray-500 dark:text-zinc-400">Pay separately <span className="text-gray-400 dark:text-zinc-500">(won&apos;t use package slot)</span></span>
-                      </label>
-                    )}
                   </div>
                 ))}
               </div>
@@ -1624,33 +1592,6 @@ export default function DashboardPage() {
                   <span className="text-sm text-gray-700 dark:text-zinc-300">Pay per lesson</span>
                 </label>
               </div>
-              {!newStudentPayPerLesson && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-600 dark:text-zinc-400">Package size:</span>
-                  <div className="flex gap-2">
-                    {[5, 10].map((size) => (
-                      <button
-                        key={size}
-                        type="button"
-                        onClick={() => setNewStudentPackageSize(size)}
-                        className={`px-3 py-1 text-sm rounded-lg border ${newStudentPackageSize === size
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'border-gray-300 dark:border-zinc-500 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
-                        }`}
-                      >
-                        {size} lessons
-                      </button>
-                    ))}
-                    <input
-                      type="number"
-                      value={newStudentPackageSize}
-                      onChange={(e) => setNewStudentPackageSize(Math.max(1, parseInt(e.target.value) || 1))}
-                      min={1}
-                      className="w-16 px-2 py-1 text-sm border border-gray-300 dark:border-zinc-500 rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-center"
-                    />
-                  </div>
-                </div>
-              )}
               <div className="flex gap-2">
                 <Button
                   size="sm"
@@ -1666,7 +1607,6 @@ export default function DashboardPage() {
                         isNew: true,
                         newPhone: newStudentPhone.trim(),
                         payPerLesson: newStudentPayPerLesson,
-                        packageSize: newStudentPayPerLesson ? undefined : newStudentPackageSize,
                       },
                     ]);
                     setShowNewStudentForm(false);
@@ -1674,7 +1614,6 @@ export default function DashboardPage() {
                     setNewStudentPhone('');
                     setNewStudentPayPerLesson(true);
                     setNewStudentPrice(0);
-                    setNewStudentPackageSize(5);
                   }}
                 >
                   Add
@@ -1700,9 +1639,6 @@ export default function DashboardPage() {
                       )}
                       {selected.payPerLesson && (
                         <span className="ml-1 text-xs text-gray-400 dark:text-zinc-500">Pay per lesson</span>
-                      )}
-                      {selected.isNew && !selected.payPerLesson && selected.packageSize && (
-                        <span className="ml-1 text-xs text-gray-400 dark:text-zinc-500">{selected.packageSize}-lesson package</span>
                       )}
                     </p>
                   </div>

@@ -654,7 +654,29 @@ export default function PaymentsPage() {
             <p className="text-sm text-gray-500 dark:text-zinc-400">
               {wallets.length} {wallets.length === 1 ? 'wallet' : 'wallets'}
             </p>
-            <Button onClick={() => setShowCreateModal(true)}>+ New Wallet</Button>
+            <div className="flex items-center gap-2">
+              {unassignedStudents.length > 0 && (
+                <Button
+                  variant="ghost"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('/api/migrate-wallets', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ coachId: coach.id }),
+                      });
+                      const data = await res.json();
+                      showToast(`Migrated: ${data.walletsCreated} wallets, ${data.studentsProcessed} students`, 'success');
+                    } catch {
+                      showToast('Migration failed', 'error');
+                    }
+                  }}
+                >
+                  Migrate existing students
+                </Button>
+              )}
+              <Button onClick={() => setShowCreateModal(true)}>+ New Wallet</Button>
+            </div>
           </div>
 
           {/* Wallet cards grid */}
