@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { collection, doc, writeBatch, serverTimestamp, increment, updateDoc, deleteDoc, addDoc, Firestore, getDocs, query, where } from 'firebase/firestore';
+import { collection, doc, writeBatch, serverTimestamp, increment, updateDoc, deleteDoc, addDoc, getDoc, Firestore, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useLocations, useBookings, useLessonLogs, useClassExceptions, useStudents, useWallets } from '@/hooks/useCoachData';
@@ -200,6 +200,30 @@ export default function DashboardPage() {
         firestore, coach.id, primaryRow.displayName, primaryRow.phone
       );
 
+      // Create new wallet if needed, or link to existing
+      let walletId: string | undefined;
+      if (primaryRow.walletOption === 'create' && primaryRow.newWalletName && primaryStudentId) {
+        const walletRef = await addDoc(collection(firestore, 'coaches', coach.id, 'wallets'), {
+          name: primaryRow.newWalletName,
+          balance: 0,
+          studentIds: [primaryStudentId],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        walletId = walletRef.id;
+      } else if (primaryRow.walletOption === 'existing' && primaryRow.existingWalletId && primaryStudentId) {
+        walletId = primaryRow.existingWalletId;
+        const walletRef = doc(firestore, 'coaches', coach.id, 'wallets', walletId);
+        const walletSnap = await getDoc(walletRef);
+        const currentIds: string[] = walletSnap.data()?.studentIds || [];
+        if (!currentIds.includes(primaryStudentId)) {
+          await updateDoc(walletRef, {
+            studentIds: [...currentIds, primaryStudentId],
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
       // Build booking data
       const dayOfWeek = lessonType === 'recurring'
         ? lessonDayOfWeek
@@ -225,6 +249,11 @@ export default function DashboardPage() {
       if (lessonType === 'one-time') {
         bookingData.startDate = lessonDate;
         bookingData.endDate = lessonDate;
+      }
+
+      // Attach wallet to booking if one was selected/created
+      if (walletId) {
+        bookingData.walletId = walletId;
       }
 
       await addDoc(collection(firestore, 'coaches', coach.id, 'bookings'), bookingData);
@@ -1546,7 +1575,15 @@ export default function DashboardPage() {
                 onChange={e => {
                   const val = e.target.value;
                   setStudentSearch(val);
-                  updateStudentRow(0, { displayName: val, isNew: true, studentId: '' });
+                  updateStudentRow(0, {
+                    displayName: val,
+                    isNew: true,
+                    studentId: '',
+                    // Auto-default to create wallet for new students
+                    walletOption: val.trim() ? 'create' : 'none',
+                    newWalletName: val.trim() ? val : '',
+                    existingWalletId: '',
+                  });
                 }}
                 placeholder="Search or type new student name"
                 className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
@@ -1587,6 +1624,46 @@ export default function DashboardPage() {
               placeholder="Phone number"
               className="w-full mt-2 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
             />
+
+            {/* Wallet selection for student row */}
+            <div className="mt-2">
+              <label className="block text-xs font-medium mb-1 text-zinc-400">Wallet</label>
+              <select
+                value={studentRows[0].walletOption === 'existing' ? studentRows[0].existingWalletId : studentRows[0].walletOption}
+                onChange={e => {
+                  const val = e.target.value;
+                  if (val === 'none') {
+                    updateStudentRow(0, { walletOption: 'none', existingWalletId: '', newWalletName: '' });
+                  } else if (val === 'create') {
+                    updateStudentRow(0, { walletOption: 'create', existingWalletId: '', newWalletName: studentRows[0].displayName });
+                  } else {
+                    updateStudentRow(0, { walletOption: 'existing', existingWalletId: val, newWalletName: '' });
+                  }
+                }}
+                className="w-full rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm"
+              >
+                <option value="none">No wallet</option>
+                {wallets.map(w => (
+                  <option key={w.id} value={w.id}>{w.name} (RM {w.balance})</option>
+                ))}
+                <option value="create">+ Create new wallet</option>
+              </select>
+            </div>
+
+            {/* Wallet name input — only when creating new */}
+            {studentRows[0].walletOption === 'create' && (
+              <div className="mt-2">
+                <label className="block text-xs font-medium mb-1 text-zinc-400">Wallet Name</label>
+                <input
+                  type="text"
+                  value={studentRows[0].newWalletName}
+                  onChange={e => updateStudentRow(0, { newWalletName: e.target.value })}
+                  placeholder="e.g. Mrs. Wong"
+                  className="w-full rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm"
+                />
+              </div>
+            )}
+
             <div className="mt-2">
               <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1">Price (RM)</label>
               <input
