@@ -57,6 +57,8 @@ export interface Booking {
   price?: number;
   linkedStudentIds?: string[]; // secondary students sharing this group lesson
   studentPrices?: Record<string, number>; // per-student prices for split payment groups
+  walletId?: string; // which wallet pays for this booking
+  studentWallets?: Record<string, string>; // per-student wallet override for group lessons
   startDate?: string; // YYYY-MM-DD — booking only appears from this date onwards
   endDate?: string;   // YYYY-MM-DD — booking only appears up to and including this date
   createdAt: Date;
@@ -141,6 +143,29 @@ export interface Payment {
   studentName: string;
   amount: number;
   collectedAt: Date;
+  createdAt: Date;
+}
+
+export interface Wallet {
+  id: string;
+  name: string;
+  balance: number;
+  studentIds: string[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type WalletTransactionType = 'top-up' | 'charge' | 'refund' | 'adjustment';
+
+export interface WalletTransaction {
+  id: string;
+  type: WalletTransactionType;
+  amount: number;
+  balanceAfter: number;
+  description: string;
+  studentId?: string;
+  lessonLogId?: string;
+  date: string; // YYYY-MM-DD
   createdAt: Date;
 }
 
