@@ -1760,15 +1760,12 @@ export default function DashboardPage() {
                     {wallets.map(w => (
                       <option key={w.id} value={w.id}>{w.name} (RM {w.balance})</option>
                     ))}
-                    {/* Pending wallets being created by prior rows */}
-                    {studentRows
-                      .filter((r, ri) => ri < i && r.walletOption === 'create' && r.newWalletName)
-                      .map((r, ri) => (
-                        <option key={`pending-${ri}`} value={`pending:${ri}`}>
-                          {r.newWalletName} (new)
-                        </option>
-                      ))
-                    }
+                    {/* Pending wallets being created by prior rows — use original row index as reference */}
+                    {studentRows.flatMap((r, ri) =>
+                      ri < i && r.walletOption === 'create' && r.newWalletName
+                        ? [<option key={`pending-${ri}`} value={`pending:${ri}`}>{r.newWalletName} (new)</option>]
+                        : []
+                    )}
                     <option value="create">+ Create new wallet</option>
                   </select>
                 </div>
