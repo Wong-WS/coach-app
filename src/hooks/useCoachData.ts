@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, doc, onSnapshot, query, where, orderBy, limit, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Booking, Location, WorkingHours, DayOfWeek, WaitlistEntry, WaitlistStatus, Student, LessonLog, ClassException, Payment } from '@/types';
+import { Booking, Location, WorkingHours, DayOfWeek, Student, LessonLog, ClassException, Payment } from '@/types';
 
 export function useWorkingHours(coachId: string | undefined) {
   const [workingHours, setWorkingHours] = useState<WorkingHours[]>([]);
@@ -121,46 +121,6 @@ export function useBookings(coachId: string | undefined, statusFilter?: 'confirm
   return { bookings, loading };
 }
 
-export function useWaitlist(coachId: string | undefined, statusFilter?: WaitlistStatus) {
-  const [waitlist, setWaitlist] = useState<WaitlistEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!coachId || !db) {
-      setLoading(false);
-      return;
-    }
-
-    const firestore = db as Firestore;
-    const waitlistRef = collection(firestore, 'coaches', coachId, 'waitlist');
-    const q = statusFilter
-      ? query(waitlistRef, where('status', '==', statusFilter), orderBy('createdAt', 'desc'))
-      : query(waitlistRef, orderBy('createdAt', 'desc'));
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const entries: WaitlistEntry[] = snapshot.docs.map((d) => ({
-        id: d.id,
-        locationId: d.data().locationId,
-        locationName: d.data().locationName,
-        dayOfWeek: d.data().dayOfWeek,
-        preferredTime: d.data().preferredTime,
-        clientName: d.data().clientName,
-        clientPhone: d.data().clientPhone,
-        notes: d.data().notes,
-        status: d.data().status,
-        createdAt: d.data().createdAt?.toDate() || new Date(),
-        contactedAt: d.data().contactedAt?.toDate(),
-        bookedAt: d.data().bookedAt?.toDate(),
-      }));
-      setWaitlist(entries);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [coachId, statusFilter]);
-
-  return { waitlist, loading };
-}
 
 export function useStudents(coachId: string | undefined) {
   const [students, setStudents] = useState<Student[]>([]);

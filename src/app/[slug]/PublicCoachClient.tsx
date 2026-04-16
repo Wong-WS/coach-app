@@ -1,9 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Location, DayOfWeek, PreferredTime } from '@/types';
-import { getDayDisplayName, formatTimeDisplay, DayAvailability } from '@/lib/availability-engine';
-import { Modal, Input, Select, PhoneInput } from '@/components/ui';
+import { Location, DayOfWeek } from '@/types';
+import { formatTimeDisplay, DayAvailability } from '@/lib/availability-engine';
 import { useToast } from '@/components/ui/Toast';
 import Link from 'next/link';
 
@@ -38,17 +37,7 @@ export default function PublicCoachClient({ coach, locations, initialAvailabilit
   const [availability, setAvailability] = useState<DayAvailability[]>(initialAvailability);
   const [selectedLocation, setSelectedLocation] = useState<string>(initialLocationId);
   const [afterSchool, setAfterSchool] = useState(false);
-  const [isWaitlistModalOpen, setIsWaitlistModalOpen] = useState(false);
-  const [waitlistSaving, setWaitlistSaving] = useState(false);
   const [slotsKey, setSlotsKey] = useState(0);
-  const [waitlistForm, setWaitlistForm] = useState({
-    locationId: '',
-    dayOfWeek: 'monday' as DayOfWeek,
-    preferredTime: 'any' as PreferredTime,
-    clientName: '',
-    clientPhone: '',
-    notes: '',
-  });
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -65,62 +54,6 @@ export default function PublicCoachClient({ coach, locations, initialAvailabilit
       }
     } catch (err) {
       console.error('Error fetching availability:', err);
-    }
-  };
-
-  const openWaitlistModal = () => {
-    setWaitlistForm((prev) => ({
-      ...prev,
-      locationId: selectedLocation || locations[0]?.id || '',
-    }));
-    setIsWaitlistModalOpen(true);
-  };
-
-  const handleWaitlistSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!waitlistForm.clientName.trim() || !waitlistForm.clientPhone.trim()) return;
-    setWaitlistSaving(true);
-
-    const location = locations.find((l) => l.id === waitlistForm.locationId);
-    if (!location) {
-      showToast('Please select a location', 'error');
-      setWaitlistSaving(false);
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/waitlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          coachId: coach.id,
-          locationId: waitlistForm.locationId,
-          locationName: location.name,
-          dayOfWeek: waitlistForm.dayOfWeek,
-          preferredTime: waitlistForm.preferredTime,
-          clientName: waitlistForm.clientName.trim(),
-          clientPhone: waitlistForm.clientPhone.trim(),
-          notes: waitlistForm.notes.trim(),
-        }),
-      });
-
-      if (!res.ok) throw new Error('Failed to join waitlist');
-
-      setWaitlistForm({
-        locationId: '',
-        dayOfWeek: 'monday',
-        preferredTime: 'any',
-        clientName: '',
-        clientPhone: '',
-        notes: '',
-      });
-      setIsWaitlistModalOpen(false);
-      showToast('You\'ve been added to the waitlist!', 'success');
-    } catch (err) {
-      console.error('Error joining waitlist:', err);
-      showToast('Failed to join waitlist. Please try again.', 'error');
-    } finally {
-      setWaitlistSaving(false);
     }
   };
 
@@ -242,25 +175,6 @@ export default function PublicCoachClient({ coach, locations, initialAvailabilit
               Contact via WhatsApp
             </button>
 
-            <button
-              onClick={openWaitlistModal}
-              className="group inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold transition-all duration-200"
-              style={{
-                backgroundColor: 'transparent',
-                color: 'var(--pc-text)',
-                border: '1.5px solid var(--pc-border)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--pc-text-muted)';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--pc-border)';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-            >
-              Join Waitlist
-            </button>
           </div>
         </div>
       </header>
@@ -398,118 +312,9 @@ export default function PublicCoachClient({ coach, locations, initialAvailabilit
               })}
             </div>
 
-            {/* Bottom CTA — waitlist nudge */}
-            <div className="mt-10 text-center">
-              <p className="text-sm mb-3" style={{ color: 'var(--pc-text-muted)' }}>
-                Don&apos;t see a time that works?
-              </p>
-              <button
-                onClick={openWaitlistModal}
-                className="text-sm font-semibold transition-colors duration-150"
-                style={{ color: 'var(--pc-accent)' }}
-                onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.7'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
-              >
-                Join the waitlist &rarr;
-              </button>
-            </div>
           </>
         )}
       </main>
-
-      {/* Waitlist Modal */}
-      <Modal
-        isOpen={isWaitlistModalOpen}
-        onClose={() => setIsWaitlistModalOpen(false)}
-        title="Join the Waitlist"
-      >
-        <form onSubmit={handleWaitlistSubmit} className="space-y-4">
-          <Select
-            id="wl-location"
-            label="Location"
-            value={waitlistForm.locationId}
-            onChange={(e) => setWaitlistForm({ ...waitlistForm, locationId: e.target.value })}
-            options={[
-              { value: '', label: 'Select a location' },
-              ...locations.map((l) => ({ value: l.id, label: l.name })),
-            ]}
-          />
-
-          <div className="grid grid-cols-2 gap-4">
-            <Select
-              id="wl-day"
-              label="Day"
-              value={waitlistForm.dayOfWeek}
-              onChange={(e) => setWaitlistForm({ ...waitlistForm, dayOfWeek: e.target.value as DayOfWeek })}
-              options={DAYS.map((day) => ({
-                value: day,
-                label: getDayDisplayName(day),
-              }))}
-            />
-            <Select
-              id="wl-time"
-              label="Preferred Time"
-              value={waitlistForm.preferredTime}
-              onChange={(e) => setWaitlistForm({ ...waitlistForm, preferredTime: e.target.value as PreferredTime })}
-              options={[
-                { value: 'any', label: 'Any time' },
-                { value: 'morning', label: 'Morning' },
-                { value: 'afternoon', label: 'Afternoon' },
-                { value: 'evening', label: 'Evening' },
-              ]}
-            />
-          </div>
-
-          <Input
-            id="wl-name"
-            label="Your Name"
-            value={waitlistForm.clientName}
-            onChange={(e) => setWaitlistForm({ ...waitlistForm, clientName: e.target.value })}
-            placeholder="Your name"
-            required
-          />
-
-          <PhoneInput
-            id="wl-phone"
-            label="WhatsApp Number"
-            value={waitlistForm.clientPhone}
-            onChange={(val) => setWaitlistForm({ ...waitlistForm, clientPhone: val })}
-            required
-          />
-
-          <div>
-            <label htmlFor="wl-notes" className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
-              Notes (optional)
-            </label>
-            <textarea
-              id="wl-notes"
-              value={waitlistForm.notes}
-              onChange={(e) => setWaitlistForm({ ...waitlistForm, notes: e.target.value })}
-              placeholder="Any preferences or details..."
-              rows={2}
-              className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
-            />
-          </div>
-
-          <div className="flex justify-end gap-3 pt-4">
-            <button
-              type="button"
-              onClick={() => setIsWaitlistModalOpen(false)}
-              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-gray-200 text-gray-900 hover:bg-gray-300 dark:bg-[#1a1a1a] dark:text-zinc-100 dark:hover:bg-zinc-500"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={waitlistSaving}
-              className="px-4 py-2 rounded-full text-sm font-semibold text-white transition-colors disabled:opacity-50"
-              style={{ backgroundColor: 'var(--pc-accent)' }}
-            >
-              {waitlistSaving ? 'Joining...' : 'Join Waitlist'}
-            </button>
-          </div>
-        </form>
-      </Modal>
 
       {/* Footer */}
       <footer style={{ borderTop: '1px solid var(--pc-border)' }}>

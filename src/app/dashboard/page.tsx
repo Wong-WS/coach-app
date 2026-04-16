@@ -43,7 +43,6 @@ export default function DashboardPage() {
   const { showToast } = useToast();
 
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [copied, setCopied] = useState(false);
   const [marking, setMarking] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [rescheduleBooking, setRescheduleBooking] = useState<Booking | null>(null);
@@ -807,19 +806,6 @@ export default function DashboardPage() {
     setSelectedDate(d);
   };
 
-  const publicUrl = coach ? `${window.location.origin}/${coach.slug}` : '';
-
-  const copyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(publicUrl);
-      setCopied(true);
-      showToast('Link copied to clipboard!', 'success');
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      showToast('Failed to copy link', 'error');
-    }
-  };
-
   if (!coach) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -1285,7 +1271,7 @@ export default function DashboardPage() {
       )}
 
       {/* Stats cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
         <div className="bg-white dark:bg-[#1f1f1f] rounded-xl p-6 shadow-sm border border-gray-100 dark:border-[#333333]">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
@@ -1314,21 +1300,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-[#1f1f1f] rounded-xl p-6 shadow-sm border border-gray-100 dark:border-[#333333]">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 dark:text-zinc-400">Public Link</p>
-              <Button variant="ghost" size="sm" onClick={copyLink} className="-ml-3">
-                {copied ? 'Copied!' : 'Copy Link'}
-              </Button>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Quick actions */}
