@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { collection, doc, updateDoc, addDoc, deleteDoc, writeBatch, serverTimestamp, increment, Firestore, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
-import { useStudents, useLessonLogs, useLocations, useBookings, useWallets } from '@/hooks/useCoachData';
+import { useStudents, useLessonLogs, useBookings, useWallets } from '@/hooks/useCoachData';
 import { Button, Input, Modal, PhoneInput } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { Student, DayOfWeek } from '@/types';
@@ -16,7 +16,6 @@ export default function StudentsPage() {
   const { coach } = useAuth();
   const { students, loading } = useStudents(coach?.id);
   const { lessonLogs: allLogs } = useLessonLogs(coach?.id, undefined, undefined, 6);
-  const { locations } = useLocations(coach?.id);
   const { bookings } = useBookings(coach?.id, 'confirmed');
   const { wallets } = useWallets(coach?.id);
   const { showToast } = useToast();
@@ -34,34 +33,7 @@ export default function StudentsPage() {
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Add Lesson form state
-  const [showAddLesson, setShowAddLesson] = useState(false);
-  const [lessonDate, setLessonDate] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  });
-  const [lessonLocationName, setLessonLocationName] = useState('');
-  const [lessonStartTime, setLessonStartTime] = useState('09:00');
-  const [lessonEndTime, setLessonEndTime] = useState('10:00');
-  const [lessonPrice, setLessonPrice] = useState(0);
-  const [lessonNote, setLessonNote] = useState('');
-  const [addingLesson, setAddingLesson] = useState(false);
   const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
-
-  // Bulk Add Lessons state
-  const [showBulkAdd, setShowBulkAdd] = useState(false);
-  const [bulkStartDate, setBulkStartDate] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  });
-  const [bulkEndDate, setBulkEndDate] = useState('');
-  const [bulkDays, setBulkDays] = useState<Set<number>>(new Set()); // 0=Sun..6=Sat
-  const [bulkLocationName, setBulkLocationName] = useState('');
-  const [bulkStartTime, setBulkStartTime] = useState('09:00');
-  const [bulkEndTime, setBulkEndTime] = useState('10:00');
-  const [bulkPrice, setBulkPrice] = useState(0);
-  const [bulkNote, setBulkNote] = useState('');
-  const [addingBulk, setAddingBulk] = useState(false);
 
   // Wallet top-up state
   const [showTopUp, setShowTopUp] = useState(false);
@@ -273,20 +245,16 @@ export default function StudentsPage() {
     setEditName(student.clientName);
     setEditPhone(student.clientPhone);
     setEditNotes(student.notes);
-    setShowAddLesson(false);
     setShowTopUp(false);
-
-    // Auto-fill lesson form from student's booking — prefer recurring (no endDate)
-    const matchingBookings = bookings.filter(
-      (b) =>
-        (b.clientName === student.clientName && b.clientPhone === (student.clientPhone || '')) ||
-        b.linkedStudentIds?.includes(student.id) ||
-        (b.studentPrices && student.id in b.studentPrices)
-    );
-    const studentBooking = matchingBookings.find((b) => !b.endDate) ?? matchingBookings[0];
 
     // If lessonRate not set on student, derive it from recurring booking for display only (no Firestore write)
     if (!student.lessonRate) {
+      const matchingBookings = bookings.filter(
+        (b) =>
+          (b.clientName === student.clientName && b.clientPhone === (student.clientPhone || '')) ||
+          b.linkedStudentIds?.includes(student.id) ||
+          (b.studentPrices && student.id in b.studentPrices)
+      );
       const recurringBooking = matchingBookings.find((b) => !b.endDate);
       const derivedRate = recurringBooking
         ? (recurringBooking.studentPrices?.[student.id] ?? recurringBooking.price ?? 0)
@@ -295,24 +263,6 @@ export default function StudentsPage() {
         setSelectedStudent((prev) => prev ? { ...prev, lessonRate: derivedRate } : null);
       }
     }
-    if (studentBooking) {
-      setLessonLocationName(studentBooking.locationName);
-      setLessonStartTime(studentBooking.startTime);
-      setLessonEndTime(studentBooking.endTime);
-      // Use per-student price if available, then lessonRate, then total booking price
-      const perStudentPrice = studentBooking.studentPrices?.[student.id];
-      setLessonPrice(perStudentPrice ?? student.lessonRate ?? studentBooking.price ?? 0);
-    } else {
-      setLessonLocationName('');
-      setLessonStartTime('09:00');
-      setLessonEndTime('10:00');
-      // Fall back to lessonRate or most recent lesson log price
-      const lastLog = allLogs
-        .filter((l) => l.studentId === student.id)
-        .sort((a, b) => b.date.localeCompare(a.date))[0];
-      setLessonPrice(student.lessonRate ?? lastLog?.price ?? 0);
-    }
-
   };
 
   const handleSave = async () => {
@@ -367,104 +317,6 @@ export default function StudentsPage() {
       showToast('Failed to top up wallet', 'error');
     } finally {
       setToppingUp(false);
-    }
-  };
-
-  const handleAddLesson = async () => {
-    if (!coach || !db || !selectedStudent || !lessonLocationName) return;
-    setAddingLesson(true);
-    try {
-      const firestore = db as Firestore;
-      const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
-      const logData: Record<string, unknown> = {
-        date: lessonDate,
-        studentId: selectedStudent.id,
-        studentName: selectedStudent.clientName,
-        locationName: lessonLocationName,
-        startTime: lessonStartTime,
-        endTime: lessonEndTime,
-        price: lessonPrice,
-        createdAt: serverTimestamp(),
-      };
-      if (lessonNote.trim()) {
-        logData.note = lessonNote.trim();
-      }
-      const batch = writeBatch(firestore);
-      batch.set(logRef, logData);
-      batch.update(doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id), {
-        updatedAt: serverTimestamp(),
-      });
-      await batch.commit();
-      setShowAddLesson(false);
-      setLessonNote('');
-      showToast('Lesson added!', 'success');
-    } catch (error) {
-      console.error('Error adding lesson:', error);
-      showToast('Failed to add lesson', 'error');
-    } finally {
-      setAddingLesson(false);
-    }
-  };
-
-  // Generate dates for bulk add
-  const bulkDates = useMemo(() => {
-    if (!bulkStartDate || !bulkEndDate || bulkDays.size === 0) return [];
-    const dates: string[] = [];
-    const start = new Date(bulkStartDate + 'T00:00:00');
-    const end = new Date(bulkEndDate + 'T00:00:00');
-    const current = new Date(start);
-    while (current <= end) {
-      if (bulkDays.has(current.getDay())) {
-        const y = current.getFullYear();
-        const m = String(current.getMonth() + 1).padStart(2, '0');
-        const d = String(current.getDate()).padStart(2, '0');
-        dates.push(`${y}-${m}-${d}`);
-      }
-      current.setDate(current.getDate() + 1);
-    }
-    return dates;
-  }, [bulkStartDate, bulkEndDate, bulkDays]);
-
-  const handleBulkAddLessons = async () => {
-    if (!coach || !db || !selectedStudent || !bulkLocationName || bulkDates.length === 0) return;
-    setAddingBulk(true);
-    try {
-      const firestore = db as Firestore;
-      const batch = writeBatch(firestore);
-
-      // Create lesson logs for each date
-      for (const date of bulkDates) {
-        const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
-        const logData: Record<string, unknown> = {
-          date,
-          studentId: selectedStudent.id,
-          studentName: selectedStudent.clientName,
-          locationName: bulkLocationName,
-          startTime: bulkStartTime,
-          endTime: bulkEndTime,
-          price: bulkPrice,
-          createdAt: serverTimestamp(),
-        };
-        if (bulkNote.trim()) {
-          logData.note = bulkNote.trim();
-        }
-        batch.set(logRef, logData);
-      }
-
-      batch.update(doc(firestore, 'coaches', coach.id, 'students', selectedStudent.id), {
-        updatedAt: serverTimestamp(),
-      });
-      await batch.commit();
-
-      setShowBulkAdd(false);
-      setBulkDays(new Set());
-      setBulkNote('');
-      showToast(`Added ${bulkDates.length} lessons!`, 'success');
-    } catch (error) {
-      console.error('Error bulk adding lessons:', error);
-      showToast('Failed to add lessons', 'error');
-    } finally {
-      setAddingBulk(false);
     }
   };
 
@@ -1002,221 +854,6 @@ export default function StudentsPage() {
                       </div>
                     </div>
                   ))}
-                </div>
-              )}
-            </div>
-
-            {/* Add Lesson */}
-            <div className="border-t border-gray-100 dark:border-[#333333] pt-4">
-              <button
-                onClick={() => setShowAddLesson(!showAddLesson)}
-                className="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                <svg className={`w-4 h-4 transition-transform ${showAddLesson ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-                Add Lesson
-              </button>
-              {showAddLesson && (
-                <div className="mt-3 space-y-3">
-                  <Input
-                    id="lessonDate"
-                    label="Date"
-                    type="date"
-                    value={lessonDate}
-                    max={new Date().toISOString().split('T')[0]}
-                    onChange={(e) => setLessonDate(e.target.value)}
-                  />
-                  <div>
-                    <label htmlFor="lessonLocation" className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
-                      Location
-                    </label>
-                    <select
-                      id="lessonLocation"
-                      value={lessonLocationName}
-                      onChange={(e) => setLessonLocationName(e.target.value)}
-                      className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
-                    >
-                      <option value="">Select location</option>
-                      {locations.map((loc) => (
-                        <option key={loc.id} value={loc.name}>{loc.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Input
-                      id="lessonStart"
-                      label="Start Time"
-                      type="time"
-                      value={lessonStartTime}
-                      onChange={(e) => setLessonStartTime(e.target.value)}
-                    />
-                    <Input
-                      id="lessonEnd"
-                      label="End Time"
-                      type="time"
-                      value={lessonEndTime}
-                      onChange={(e) => setLessonEndTime(e.target.value)}
-                    />
-                  </div>
-                  <Input
-                    id="lessonPrice"
-                    label="Price (RM)"
-                    type="number"
-                    value={String(lessonPrice)}
-                    onChange={(e) => setLessonPrice(Number(e.target.value) || 0)}
-                  />
-                  <Input
-                    id="lessonNote"
-                    label="Note (optional)"
-                    value={lessonNote}
-                    onChange={(e) => setLessonNote(e.target.value)}
-                    placeholder="e.g. Aaron only"
-                  />
-                  <Button
-                    size="sm"
-                    onClick={handleAddLesson}
-                    loading={addingLesson}
-                    disabled={!lessonLocationName || !lessonDate}
-                  >
-                    Add Lesson
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            {/* Bulk Add Lessons */}
-            <div className="border-t border-gray-100 dark:border-[#333333] pt-4">
-              <button
-                onClick={() => {
-                  setShowBulkAdd(!showBulkAdd);
-                  if (!showBulkAdd) {
-                    setBulkPrice(selectedStudent.lessonRate ?? 0);
-                    if (locations.length > 0 && !bulkLocationName) {
-                      setBulkLocationName(locations[0].name);
-                    }
-                  }
-                }}
-                className="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                <svg className={`w-4 h-4 transition-transform ${showBulkAdd ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-                Bulk Add Lessons
-              </button>
-              {showBulkAdd && (
-                <div className="mt-3 space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <Input
-                      id="bulkStartDate"
-                      label="From"
-                      type="date"
-                      value={bulkStartDate}
-                      onChange={(e) => setBulkStartDate(e.target.value)}
-                    />
-                    <Input
-                      id="bulkEndDate"
-                      label="To"
-                      type="date"
-                      value={bulkEndDate}
-                      onChange={(e) => setBulkEndDate(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Days</label>
-                    <div className="flex flex-wrap gap-2">
-                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => (
-                        <button
-                          key={day}
-                          type="button"
-                          onClick={() => {
-                            const next = new Set(bulkDays);
-                            if (next.has(idx)) next.delete(idx); else next.add(idx);
-                            setBulkDays(next);
-                          }}
-                          className={`px-3 py-1 text-xs rounded-lg border ${
-                            bulkDays.has(idx)
-                              ? 'bg-blue-600 text-white border-blue-600'
-                              : 'border-gray-300 dark:border-zinc-500 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
-                          }`}
-                        >
-                          {day}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label htmlFor="bulkLocation" className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
-                      Location
-                    </label>
-                    <select
-                      id="bulkLocation"
-                      value={bulkLocationName}
-                      onChange={(e) => setBulkLocationName(e.target.value)}
-                      className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
-                    >
-                      <option value="">Select location</option>
-                      {locations.map((loc) => (
-                        <option key={loc.id} value={loc.name}>{loc.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Input
-                      id="bulkStart"
-                      label="Start Time"
-                      type="time"
-                      value={bulkStartTime}
-                      onChange={(e) => setBulkStartTime(e.target.value)}
-                    />
-                    <Input
-                      id="bulkEnd"
-                      label="End Time"
-                      type="time"
-                      value={bulkEndTime}
-                      onChange={(e) => setBulkEndTime(e.target.value)}
-                    />
-                  </div>
-                  <Input
-                    id="bulkPrice"
-                    label="Price per lesson (RM)"
-                    type="number"
-                    value={String(bulkPrice)}
-                    onChange={(e) => setBulkPrice(Number(e.target.value) || 0)}
-                  />
-                  <Input
-                    id="bulkNote"
-                    label="Note (optional)"
-                    value={bulkNote}
-                    onChange={(e) => setBulkNote(e.target.value)}
-                    placeholder="e.g. Holiday intensive"
-                  />
-                  {bulkDates.length > 0 && (
-                    <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3">
-                      <p className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">
-                        {bulkDates.length} lesson{bulkDates.length !== 1 ? 's' : ''} — Total: RM {bulkPrice * bulkDates.length}
-                      </p>
-                      <div className="flex flex-wrap gap-1">
-                        {bulkDates.map((d) => {
-                          const date = new Date(d + 'T00:00:00');
-                          const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
-                          return (
-                            <span key={d} className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                              {dayName} {d.slice(5)}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  <Button
-                    size="sm"
-                    onClick={handleBulkAddLessons}
-                    loading={addingBulk}
-                    disabled={bulkDates.length === 0 || !bulkLocationName}
-                  >
-                    Add {bulkDates.length} Lesson{bulkDates.length !== 1 ? 's' : ''}
-                  </Button>
                 </div>
               )}
             </div>
