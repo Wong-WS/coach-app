@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { collection, doc, writeBatch, serverTimestamp, increment, updateDoc, deleteDoc, addDoc, getDoc, Firestore, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
@@ -93,11 +93,21 @@ export default function DashboardPage() {
     walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
   }]);
   const [studentSearches, setStudentSearches] = useState<string[]>(['']);
-  // Legacy alias for row 0 search (used in filteredStudentList)
-  const studentSearch = studentSearches[0] ?? '';
 
   // Overlap warning
   const [overlapWarning, setOverlapWarning] = useState('');
+
+  const checkOverlap = useCallback((dayOfWeek: string, startTime: string, endTime: string): string => {
+    const recurringOnDay = bookings.filter(
+      b => b.dayOfWeek === dayOfWeek && b.status === 'confirmed' && !(b.startDate && b.startDate === b.endDate)
+    );
+    for (const b of recurringOnDay) {
+      if (startTime < b.endTime && endTime > b.startTime) {
+        return `This overlaps with ${b.clientName} (${formatTimeDisplay(b.startTime)}–${formatTimeDisplay(b.endTime)})`;
+      }
+    }
+    return '';
+  }, [bookings]);
 
   // Check for overlaps when lesson type or time fields change
   useEffect(() => {
@@ -106,7 +116,7 @@ export default function DashboardPage() {
     } else {
       setOverlapWarning('');
     }
-  }, [lessonType, lessonDayOfWeek, lessonStartTime, lessonEndTime, bookings]);
+  }, [lessonType, lessonDayOfWeek, lessonStartTime, lessonEndTime, checkOverlap]);
 
   // Edit booking modal state
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
@@ -162,12 +172,6 @@ export default function DashboardPage() {
     }));
   }, [students]);
 
-  const filteredStudentList = useMemo(() => {
-    if (!studentSearch.trim()) return selectableStudentList;
-    const q = studentSearch.toLowerCase();
-    return selectableStudentList.filter((s) => s.displayName.toLowerCase().includes(q));
-  }, [selectableStudentList, studentSearch]);
-
   const getFilteredStudentsForRow = (rowIndex: number) => {
     const search = studentSearches[rowIndex] ?? '';
     if (!search.trim()) return selectableStudentList;
@@ -183,18 +187,6 @@ export default function DashboardPage() {
       }
     }
     return options;
-  };
-
-  const checkOverlap = (dayOfWeek: string, startTime: string, endTime: string): string => {
-    const recurringOnDay = bookings.filter(
-      b => b.dayOfWeek === dayOfWeek && b.status === 'confirmed' && !(b.startDate && b.startDate === b.endDate)
-    );
-    for (const b of recurringOnDay) {
-      if (startTime < b.endTime && endTime > b.startTime) {
-        return `This overlaps with ${b.clientName} (${formatTimeDisplay(b.startTime)}–${formatTimeDisplay(b.endTime)})`;
-      }
-    }
-    return '';
   };
 
   const updateStudentRow = (index: number, updates: Partial<StudentRow>) => {
@@ -220,6 +212,14 @@ export default function DashboardPage() {
 
   const handleCreateLesson = async () => {
     if (!coach || !db || studentRows.length === 0 || !studentRows[0].displayName) return;
+    if (lessonType === 'one-time' && !lessonDate) {
+      showToast('Please select a date', 'error');
+      return;
+    }
+    if (!lessonLocationId) {
+      showToast('Please select a location', 'error');
+      return;
+    }
     setAddingLesson(true);
     try {
       const firestore = db as Firestore;
@@ -271,7 +271,7 @@ export default function DashboardPage() {
         lessonType: lessonMode,
         groupSize: lessonMode === 'group' ? studentRows.length : 1,
         notes: lessonNote,
-        price: primaryRow.price,
+        price: lessonMode === 'group' ? studentRows.reduce((sum, r) => sum + r.price, 0) : primaryRow.price,
         createdAt: serverTimestamp(),
       };
 
@@ -956,9 +956,6 @@ export default function DashboardPage() {
                   {isDone && (
                     <button
                       onClick={() => {
-                        const primaryStudent = students.find(
-                          (s) => s.clientName === booking.clientName && s.clientPhone === (booking.clientPhone || '')
-                        );
                         resetLessonForm();
                         setLessonType('one-time');
                         setLessonDate(selectedDateStr);
@@ -966,16 +963,35 @@ export default function DashboardPage() {
                         setLessonStartTime(booking.startTime || '09:00');
                         setLessonEndTime(booking.endTime || '10:00');
                         setLessonNote(booking.notes || '');
-                        setStudentRows([{
-                          studentId: primaryStudent?.id || '',
-                          displayName: booking.clientName,
-                          phone: booking.clientPhone || '',
-                          isNew: !primaryStudent,
-                          walletOption: 'none',
-                          existingWalletId: '',
-                          newWalletName: '',
-                          price: booking.studentPrices?.[primaryStudent?.id || ''] ?? booking.price ?? 0,
+                        const dupRows: StudentRow[] = [];
+                        const primaryStudent = students.find(s => s.clientName === booking.clientName);
+                        if (primaryStudent) {
+                          dupRows.push({
+                            studentId: primaryStudent.id, displayName: primaryStudent.clientName,
+                            phone: primaryStudent.clientPhone || '', isNew: false,
+                            walletOption: 'none', existingWalletId: '', newWalletName: '',
+                            price: booking.studentPrices?.[primaryStudent.id] ?? booking.price ?? 0,
+                          });
+                        }
+                        if (booking.linkedStudentIds?.length) {
+                          for (const linkedId of booking.linkedStudentIds) {
+                            const ls = students.find(s => s.id === linkedId);
+                            if (ls) {
+                              dupRows.push({
+                                studentId: ls.id, displayName: ls.clientName,
+                                phone: ls.clientPhone || '', isNew: false,
+                                walletOption: 'none', existingWalletId: '', newWalletName: '',
+                                price: booking.studentPrices?.[ls.id] ?? 0,
+                              });
+                            }
+                          }
+                        }
+                        setStudentRows(dupRows.length ? dupRows : [{
+                          studentId: '', displayName: '', phone: '', isNew: true,
+                          walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
                         }]);
+                        setLessonMode(dupRows.length > 1 ? 'group' : 'private');
+                        setStudentSearches(dupRows.length ? dupRows.map(() => '') : ['']);
                         setShowAddLesson(true);
                       }}
                       className="p-1.5 text-gray-400 hover:text-blue-500 dark:text-zinc-500 dark:hover:text-blue-400 transition-colors flex-shrink-0"
@@ -1027,9 +1043,6 @@ export default function DashboardPage() {
                             </button>
                             <button
                               onClick={() => {
-                                const primaryStudent = students.find(
-                                  (s) => s.clientName === booking.clientName && s.clientPhone === (booking.clientPhone || '')
-                                );
                                 resetLessonForm();
                                 setLessonType('one-time');
                                 setLessonDate(selectedDateStr);
@@ -1037,16 +1050,35 @@ export default function DashboardPage() {
                                 setLessonStartTime(booking.startTime || '09:00');
                                 setLessonEndTime(booking.endTime || '10:00');
                                 setLessonNote(booking.notes || '');
-                                setStudentRows([{
-                                  studentId: primaryStudent?.id || '',
-                                  displayName: booking.clientName,
-                                  phone: booking.clientPhone || '',
-                                  isNew: !primaryStudent,
-                                  walletOption: 'none',
-                                  existingWalletId: '',
-                                  newWalletName: '',
-                                  price: booking.studentPrices?.[primaryStudent?.id || ''] ?? booking.price ?? 0,
+                                const dupRows: StudentRow[] = [];
+                                const primaryStudent = students.find(s => s.clientName === booking.clientName);
+                                if (primaryStudent) {
+                                  dupRows.push({
+                                    studentId: primaryStudent.id, displayName: primaryStudent.clientName,
+                                    phone: primaryStudent.clientPhone || '', isNew: false,
+                                    walletOption: 'none', existingWalletId: '', newWalletName: '',
+                                    price: booking.studentPrices?.[primaryStudent.id] ?? booking.price ?? 0,
+                                  });
+                                }
+                                if (booking.linkedStudentIds?.length) {
+                                  for (const linkedId of booking.linkedStudentIds) {
+                                    const ls = students.find(s => s.id === linkedId);
+                                    if (ls) {
+                                      dupRows.push({
+                                        studentId: ls.id, displayName: ls.clientName,
+                                        phone: ls.clientPhone || '', isNew: false,
+                                        walletOption: 'none', existingWalletId: '', newWalletName: '',
+                                        price: booking.studentPrices?.[ls.id] ?? 0,
+                                      });
+                                    }
+                                  }
+                                }
+                                setStudentRows(dupRows.length ? dupRows : [{
+                                  studentId: '', displayName: '', phone: '', isNew: true,
+                                  walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
                                 }]);
+                                setLessonMode(dupRows.length > 1 ? 'group' : 'private');
+                                setStudentSearches(dupRows.length ? dupRows.map(() => '') : ['']);
                                 setShowAddLesson(true);
                                 setMenuOpen(null);
                               }}
@@ -1197,16 +1229,14 @@ export default function DashboardPage() {
                         setLessonStartTime(firstLog.startTime || '09:00');
                         setLessonEndTime(firstLog.endTime || '10:00');
                         setLessonNote(firstLog.note || '');
-                        setStudentRows([{
-                          studentId: firstLog.studentId,
-                          displayName: firstLog.studentName,
-                          phone: '',
-                          isNew: false,
-                          walletOption: 'none',
-                          existingWalletId: '',
-                          newWalletName: '',
-                          price: firstLog.price,
-                        }]);
+                        setStudentRows(group.map(l => ({
+                          studentId: l.studentId || '', displayName: l.studentName,
+                          phone: '', isNew: false,
+                          walletOption: 'none' as const, existingWalletId: '', newWalletName: '',
+                          price: l.price,
+                        })));
+                        setLessonMode(group.length > 1 ? 'group' : 'private');
+                        setStudentSearches(group.map(() => ''));
                         setShowAddLesson(true);
                       }}
                       className="p-1.5 text-gray-400 hover:text-blue-500 dark:text-zinc-500 dark:hover:text-blue-400 transition-colors"
