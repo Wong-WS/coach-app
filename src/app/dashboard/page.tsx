@@ -784,9 +784,16 @@ export default function DashboardPage() {
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-gray-900 dark:text-zinc-100">
-                        {formatTimeDisplay(booking.startTime)} – {formatTimeDisplay(booking.endTime)}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {!(booking.startDate && booking.startDate === booking.endDate) && (
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0">
+                            <path fillRule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H4.598a.75.75 0 00-.75.75v3.634a.75.75 0 001.5 0v-2.033l.312.311a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm-9.624-2.848a5.5 5.5 0 019.201-2.466l.312.311H12.768a.75.75 0 000 1.5h3.634a.75.75 0 00.75-.75V3.537a.75.75 0 00-1.5 0v2.033l-.312-.311A7 7 0 003.628 8.397a.75.75 0 001.449.39z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                        <span className="font-medium text-gray-900 dark:text-zinc-100">
+                          {formatTimeDisplay(booking.startTime)} – {formatTimeDisplay(booking.endTime)}
+                        </span>
+                      </div>
                       {isDone && (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
                           Done
