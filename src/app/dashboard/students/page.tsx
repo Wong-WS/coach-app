@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { collection, doc, updateDoc, deleteDoc, writeBatch, serverTimestamp, increment, Timestamp, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
-import { useStudents, useLessonLogs, useLocations, useBookings, usePayments } from '@/hooks/useCoachData';
+import { useStudents, useLessonLogs, useLocations, useBookings, usePayments, useWallets } from '@/hooks/useCoachData';
 import { Button, Input, Modal, PhoneInput } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { Student, LessonLog, DayOfWeek } from '@/types';
@@ -19,6 +19,7 @@ export default function StudentsPage() {
   const { locations } = useLocations(coach?.id);
   const { bookings } = useBookings(coach?.id, 'confirmed');
   const { payments } = usePayments(coach?.id, 100);
+  const { wallets } = useWallets(coach?.id);
   const { showToast } = useToast();
 
   const [syncing, setSyncing] = useState(false);
@@ -1089,6 +1090,14 @@ export default function StudentsPage() {
                         )}
                       </>
                     )}
+                    {(() => {
+                      const studentWallet = wallets.find((w) => w.studentIds.includes(student.id));
+                      return studentWallet ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-zinc-700 dark:text-zinc-300">
+                          {studentWallet.name}
+                        </span>
+                      ) : null;
+                    })()}
                   </div>
                 </div>
               </button>

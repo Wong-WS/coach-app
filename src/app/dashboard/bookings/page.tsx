@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { collection, addDoc, updateDoc, doc, serverTimestamp, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
-import { useLocations, useBookings, useStudents } from '@/hooks/useCoachData';
+import { useLocations, useBookings, useStudents, useWallets } from '@/hooks/useCoachData';
 import { Button, Input, Select, Modal, PhoneInput } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { DayOfWeek, LessonType, Booking } from '@/types';
@@ -85,6 +85,7 @@ export default function BookingsPage() {
   const { locations } = useLocations(coach?.id);
   const { bookings, loading } = useBookings(coach?.id);
   const { students } = useStudents(coach?.id);
+  const { wallets } = useWallets(coach?.id);
   const { showToast } = useToast();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -96,6 +97,7 @@ export default function BookingsPage() {
   const [zeroOutStudentIds, setZeroOutStudentIds] = useState<Set<string>>(new Set());
   const [studentSearch, setStudentSearch] = useState('');
   const [showStudentDropdown, setShowStudentDropdown] = useState(false);
+  const [selectedWalletId, setSelectedWalletId] = useState('');
 
   const confirmedBookings = bookings.filter((b) =>
     b.status === 'confirmed' &&
@@ -130,6 +132,7 @@ export default function BookingsPage() {
       endTime: calcEndTime(EMPTY_FORM.startTime, duration),
     });
     setEditingBookingId(null);
+    setSelectedWalletId('');
     setIsModalOpen(true);
   };
 
@@ -184,6 +187,8 @@ export default function BookingsPage() {
       paymentGroups,
     });
     setEditingBookingId(booking.id);
+    // Auto-select the wallet saved on the booking, if any
+    setSelectedWalletId(booking.walletId ?? '');
     setIsModalOpen(true);
   };
 
@@ -231,6 +236,7 @@ export default function BookingsPage() {
       groupSize: formData.lessonType === 'group' ? formData.groupSize : 1,
       notes: formData.notes.trim(),
       price: formData.price,
+      walletId: selectedWalletId || null,
     };
 
     try {
@@ -262,6 +268,17 @@ export default function BookingsPage() {
 
           payload.linkedStudentIds = linkedStudentIds;
           payload.studentPrices = studentPrices;
+
+          // Build per-student wallet map for group bookings
+          const studentWallets: Record<string, string> = {};
+          if (selectedWalletId) studentWallets[primaryStudentId] = selectedWalletId;
+          for (const sid of linkedStudentIds) {
+            const w = wallets.find((wl) => wl.studentIds.includes(sid));
+            if (w) studentWallets[sid] = w.id;
+          }
+          if (Object.keys(studentWallets).length > 0) {
+            payload.studentWallets = studentWallets;
+          }
         }
         await updateDoc(doc(db, 'coaches', coach.id, 'bookings', editingBookingId), payload);
 
@@ -315,6 +332,17 @@ export default function BookingsPage() {
 
           payload.linkedStudentIds = linkedStudentIds;
           payload.studentPrices = studentPrices;
+
+          // Build per-student wallet map for group bookings
+          const studentWallets: Record<string, string> = {};
+          if (selectedWalletId) studentWallets[primaryStudentId] = selectedWalletId;
+          for (const sid of linkedStudentIds) {
+            const w = wallets.find((wl) => wl.studentIds.includes(sid));
+            if (w) studentWallets[sid] = w.id;
+          }
+          if (Object.keys(studentWallets).length > 0) {
+            payload.studentWallets = studentWallets;
+          }
         }
 
         await addDoc(collection(firestore, 'coaches', coach.id, 'bookings'), {
@@ -716,6 +744,9 @@ export default function BookingsPage() {
                                   endTime: studentBooking?.endTime ?? formData.endTime,
                                   locationId: studentBooking?.locationId ?? formData.locationId,
                                 });
+                                // Auto-select wallet for this student
+                                const studentWallet = wallets.find((w) => w.studentIds.includes(s.id));
+                                setSelectedWalletId(studentWallet?.id ?? '');
                                 setShowStudentDropdown(false);
                                 setStudentSearch('');
                               }}
@@ -745,6 +776,22 @@ export default function BookingsPage() {
                 onChange={(val) => setFormData({ ...formData, clientPhone: val })}
               />
             </>
+          )}
+
+          {wallets.length > 0 && (
+            <Select
+              id="walletId"
+              label="Wallet"
+              value={selectedWalletId}
+              onChange={(e) => setSelectedWalletId(e.target.value)}
+              options={[
+                { value: '', label: 'No wallet' },
+                ...wallets.map((w) => ({
+                  value: w.id,
+                  label: `${w.name} (RM ${w.balance.toFixed(0)})`,
+                })),
+              ]}
+            />
           )}
 
           <Input
