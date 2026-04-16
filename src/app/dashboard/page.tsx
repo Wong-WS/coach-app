@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { Booking } from '@/types';
 import { formatTimeDisplay } from '@/lib/availability-engine';
 import { findOrCreateStudent } from '@/lib/students';
-import { getClassesForDate, getDayOfWeekForDate, isRescheduledToDate, getCancelledClassesForDate } from '@/lib/class-schedule';
+import { getClassesForDate, isRescheduledToDate, getCancelledClassesForDate } from '@/lib/class-schedule';
 import { formatDateFull, formatDateShort } from '@/lib/date-format';
 
 function getDateString(date: Date): string {
@@ -65,28 +65,37 @@ export default function DashboardPage() {
   }>>([]);
   const [deletingAdHocGroup, setDeletingAdHocGroup] = useState<number | null>(null);
 
-  // Add Class modal state
-  const [showAddClass, setShowAddClass] = useState(false);
-  const [addClassDate, setAddClassDate] = useState('');
-  const [addClassLocationId, setAddClassLocationId] = useState('');
-  const [addClassStartTime, setAddClassStartTime] = useState('');
-  const [addClassEndTime, setAddClassEndTime] = useState('');
-  const [addClassNote, setAddClassNote] = useState('');
-  const [addClassSearch, setAddClassSearch] = useState('');
-  const [addClassSelectedStudents, setAddClassSelectedStudents] = useState<Array<{
+  // Unified Add Lesson form state
+  const [showAddLesson, setShowAddLesson] = useState(false);
+  const [lessonType, setLessonType] = useState<'one-time' | 'recurring'>('one-time');
+  const [lessonMode, setLessonMode] = useState<'private' | 'group'>('private');
+  const [lessonDate, setLessonDate] = useState('');
+  const [lessonDayOfWeek, setLessonDayOfWeek] = useState<string>('monday');
+  const [lessonLocationId, setLessonLocationId] = useState('');
+  const [lessonStartTime, setLessonStartTime] = useState('09:00');
+  const [lessonEndTime, setLessonEndTime] = useState('10:00');
+  const [lessonNote, setLessonNote] = useState('');
+  const [addingLesson, setAddingLesson] = useState(false);
+
+  // Student rows for the unified form
+  interface StudentRow {
     studentId: string;
     displayName: string;
+    phone: string;
+    isNew: boolean;
+    walletOption: 'none' | 'existing' | 'create';
+    existingWalletId: string;
+    newWalletName: string;
     price: number;
-    isNew?: boolean;
-    newPhone?: string;
-    payPerLesson?: boolean;
-  }>>([]);
-  const [addingClass, setAddingClass] = useState(false);
-  const [showNewStudentForm, setShowNewStudentForm] = useState(false);
-  const [newStudentName, setNewStudentName] = useState('');
-  const [newStudentPhone, setNewStudentPhone] = useState('');
-  const [newStudentPayPerLesson, setNewStudentPayPerLesson] = useState(true);
-  const [newStudentPrice, setNewStudentPrice] = useState(0);
+  }
+  const [studentRows, setStudentRows] = useState<StudentRow[]>([{
+    studentId: '', displayName: '', phone: '', isNew: true,
+    walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
+  }]);
+  const [studentSearch, setStudentSearch] = useState('');
+
+  // Overlap warning
+  const [overlapWarning, setOverlapWarning] = useState('');
 
   // Edit booking modal state
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
@@ -143,10 +152,100 @@ export default function DashboardPage() {
   }, [students]);
 
   const filteredStudentList = useMemo(() => {
-    if (!addClassSearch.trim()) return selectableStudentList;
-    const q = addClassSearch.toLowerCase();
+    if (!studentSearch.trim()) return selectableStudentList;
+    const q = studentSearch.toLowerCase();
     return selectableStudentList.filter((s) => s.displayName.toLowerCase().includes(q));
-  }, [selectableStudentList, addClassSearch]);
+  }, [selectableStudentList, studentSearch]);
+
+  const generateTimeOptions = () => {
+    const options: string[] = [];
+    for (let h = 6; h < 24; h++) {
+      for (let m = 0; m < 60; m += 5) {
+        options.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+      }
+    }
+    return options;
+  };
+
+  const updateStudentRow = (index: number, updates: Partial<StudentRow>) => {
+    setStudentRows(rows => rows.map((r, i) => i === index ? { ...r, ...updates } : r));
+  };
+
+  const resetLessonForm = () => {
+    setLessonType('one-time');
+    setLessonMode('private');
+    setLessonDate(getDateString(selectedDate));
+    setLessonDayOfWeek('monday');
+    setLessonLocationId(locations[0]?.id || '');
+    setLessonStartTime('09:00');
+    setLessonEndTime('10:00');
+    setLessonNote('');
+    setStudentRows([{
+      studentId: '', displayName: '', phone: '', isNew: true,
+      walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
+    }]);
+    setStudentSearch('');
+    setOverlapWarning('');
+  };
+
+  const handleCreateLesson = async () => {
+    if (!coach || !db || studentRows.length === 0 || !studentRows[0].displayName) return;
+    setAddingLesson(true);
+    try {
+      const firestore = db as Firestore;
+      const primaryRow = studentRows[0];
+
+      // Resolve primary student
+      const primaryStudentId = await findOrCreateStudent(
+        firestore, coach.id, primaryRow.displayName, primaryRow.phone
+      );
+
+      // Build booking data
+      const dayOfWeek = lessonType === 'recurring'
+        ? lessonDayOfWeek
+        : ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][new Date(lessonDate).getDay()];
+
+      const bookingData: Record<string, unknown> = {
+        locationId: lessonLocationId,
+        locationName: locations.find(l => l.id === lessonLocationId)?.name || '',
+        dayOfWeek,
+        startTime: lessonStartTime,
+        endTime: lessonEndTime,
+        status: 'confirmed',
+        clientName: primaryRow.displayName,
+        clientPhone: primaryRow.phone,
+        lessonType: lessonMode,
+        groupSize: lessonMode === 'group' ? studentRows.length : 1,
+        notes: lessonNote,
+        price: primaryRow.price,
+        createdAt: serverTimestamp(),
+      };
+
+      // One-time: set startDate === endDate
+      if (lessonType === 'one-time') {
+        bookingData.startDate = lessonDate;
+        bookingData.endDate = lessonDate;
+      }
+
+      await addDoc(collection(firestore, 'coaches', coach.id, 'bookings'), bookingData);
+
+      // Touch the student record
+      if (primaryStudentId) {
+        await updateDoc(doc(firestore, 'coaches', coach.id, 'students', primaryStudentId), {
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      showToast('Lesson created!', 'success');
+      setShowAddLesson(false);
+      resetLessonForm();
+    } catch (error) {
+      console.error('Error creating lesson:', error);
+      showToast('Failed to create lesson', 'error');
+    } finally {
+      setAddingLesson(false);
+    }
+  };
 
   const openMarkDone = (booking: Booking) => {
     setMarkDoneBooking(booking);
@@ -497,114 +596,6 @@ export default function DashboardPage() {
     }
   };
 
-  const openAddClass = () => {
-    setAddClassDate(selectedDateStr);
-    setAddClassLocationId(locations[0]?.id || '');
-    setAddClassStartTime('');
-    setAddClassEndTime('');
-    setAddClassNote('');
-    setAddClassSearch('');
-    setAddClassSelectedStudents([]);
-    setShowNewStudentForm(false);
-    setNewStudentName('');
-    setNewStudentPhone('');
-    setNewStudentPayPerLesson(true);
-    setNewStudentPrice(0);
-    setShowAddClass(true);
-  };
-
-  const toggleAddClassStudent = (student: { studentId: string; displayName: string }) => {
-    setAddClassSelectedStudents((prev) => {
-      const exists = prev.find((s) => s.studentId === student.studentId);
-      if (exists) return prev.filter((s) => s.studentId !== student.studentId);
-      // Auto-fill price from student's lessonRate, or their booking price
-      const studentRecord = students.find((s) => s.id === student.studentId);
-      let autoPrice = studentRecord?.lessonRate ?? 0;
-      if (!autoPrice) {
-        const matchingBookings = bookings.filter((b) => {
-          if (b.studentPrices?.[student.studentId] != null) return true;
-          return b.clientName === studentRecord?.clientName && b.clientPhone === studentRecord?.clientPhone && (b.price ?? 0) > 0;
-        });
-        // Prefer recurring bookings (no endDate) over one-time ad-hoc ones
-        const studentBooking = matchingBookings.find((b) => !b.endDate) ?? matchingBookings[0];
-        autoPrice = studentBooking?.studentPrices?.[student.studentId] ?? studentBooking?.price ?? 0;
-      }
-      return [...prev, { studentId: student.studentId, displayName: student.displayName, price: autoPrice }];
-    });
-  };
-
-  const handleAddClass = async () => {
-    if (!coach || !db || !addClassLocationId || addClassSelectedStudents.length === 0 || !addClassStartTime || !addClassEndTime) return;
-    setAddingClass(true);
-    try {
-      const firestore = db as Firestore;
-      const location = locations.find((l) => l.id === addClassLocationId);
-      const locationName = location?.name || '';
-      const dayOfWeek = getDayOfWeekForDate(addClassDate);
-
-      // Create new students first (outside batch, since findOrCreateStudent does its own writes)
-      const resolvedStudents: typeof addClassSelectedStudents = [];
-      for (const selected of addClassSelectedStudents) {
-        if (selected.isNew) {
-          const studentId = await findOrCreateStudent(firestore, coach.id, selected.displayName, selected.newPhone || '');
-          await updateDoc(doc(firestore, 'coaches', coach.id, 'students', studentId), {
-            updatedAt: serverTimestamp(),
-          });
-          resolvedStudents.push({ ...selected, studentId, isNew: false });
-        } else {
-          resolvedStudents.push(selected);
-        }
-      }
-
-      // Determine primary student (first selected)
-      const primary = resolvedStudents[0];
-      const primaryStudent = students.find((s) => s.id === primary.studentId);
-      const primaryName = primaryStudent?.clientName || primary.displayName;
-      const primaryPhone = primaryStudent?.clientPhone || primary.newPhone || '';
-      const totalPrice = resolvedStudents.reduce((sum, s) => sum + s.price, 0);
-
-      // Build booking payload
-      const bookingData: Record<string, unknown> = {
-        locationId: addClassLocationId,
-        locationName,
-        dayOfWeek,
-        startTime: addClassStartTime,
-        endTime: addClassEndTime,
-        clientName: primaryName,
-        clientPhone: primaryPhone,
-        lessonType: resolvedStudents.length > 1 ? 'group' : 'private',
-        groupSize: resolvedStudents.length,
-        notes: addClassNote.trim(),
-        price: totalPrice,
-        startDate: addClassDate,
-        endDate: addClassDate, // One-time class
-        status: 'confirmed',
-        createdAt: serverTimestamp(),
-      };
-
-      // Handle multiple students (linked students + split prices)
-      if (resolvedStudents.length > 1) {
-        const linkedStudentIds: string[] = [];
-        const studentPrices: Record<string, number> = {};
-        studentPrices[primary.studentId] = primary.price;
-        for (let i = 1; i < resolvedStudents.length; i++) {
-          linkedStudentIds.push(resolvedStudents[i].studentId);
-          studentPrices[resolvedStudents[i].studentId] = resolvedStudents[i].price;
-        }
-        bookingData.linkedStudentIds = linkedStudentIds;
-        bookingData.studentPrices = studentPrices;
-      }
-
-      await addDoc(collection(firestore, 'coaches', coach.id, 'bookings'), bookingData);
-      setShowAddClass(false);
-      showToast('Class added!', 'success');
-    } catch (error) {
-      console.error('Error adding class:', error);
-      showToast('Failed to add class', 'error');
-    } finally {
-      setAddingClass(false);
-    }
-  };
 
   const handleDeleteAdHocGroup = async (group: typeof adHocLogs, groupIndex: number) => {
     if (!coach || !db) return;
@@ -744,8 +735,8 @@ export default function DashboardPage() {
             {dayClasses.length} class{dayClasses.length !== 1 ? 'es' : ''}
           </p>
         </div>
-        <Button variant="secondary" size="sm" onClick={openAddClass}>
-          + Add Class
+        <Button variant="secondary" size="sm" onClick={() => { resetLessonForm(); setShowAddLesson(true); }}>
+          + Add Lesson
         </Button>
       </div>
 
@@ -836,39 +827,27 @@ export default function DashboardPage() {
                   {isDone && (
                     <button
                       onClick={() => {
-                        // Build student list from booking (primary + linked)
-                        const dupStudents: Array<{ studentId: string; displayName: string; price: number }> = [];
                         const primaryStudent = students.find(
                           (s) => s.clientName === booking.clientName && s.clientPhone === (booking.clientPhone || '')
                         );
-                        if (primaryStudent) {
-                          dupStudents.push({
-                            studentId: primaryStudent.id,
-                            displayName: primaryStudent.clientName,
-                            price: booking.studentPrices?.[primaryStudent.id] ?? booking.price ?? 0,
-                          });
-                        }
-                        if (booking.linkedStudentIds?.length) {
-                          for (const linkedId of booking.linkedStudentIds) {
-                            const ls = students.find((s) => s.id === linkedId);
-                            if (ls) {
-                              dupStudents.push({
-                                studentId: ls.id,
-                                displayName: ls.clientName,
-                                price: booking.studentPrices?.[ls.id] ?? 0,
-                              });
-                            }
-                          }
-                        }
-                        setAddClassDate(selectedDateStr);
-                        setAddClassLocationId(booking.locationId || locations[0]?.id || '');
-                        setAddClassStartTime(booking.startTime || '');
-                        setAddClassEndTime(booking.endTime || '');
-                        setAddClassNote(booking.notes || '');
-                        setAddClassSearch('');
-                        setShowNewStudentForm(false);
-                        setAddClassSelectedStudents(dupStudents);
-                        setShowAddClass(true);
+                        resetLessonForm();
+                        setLessonType('one-time');
+                        setLessonDate(selectedDateStr);
+                        setLessonLocationId(booking.locationId || locations[0]?.id || '');
+                        setLessonStartTime(booking.startTime || '09:00');
+                        setLessonEndTime(booking.endTime || '10:00');
+                        setLessonNote(booking.notes || '');
+                        setStudentRows([{
+                          studentId: primaryStudent?.id || '',
+                          displayName: booking.clientName,
+                          phone: booking.clientPhone || '',
+                          isNew: !primaryStudent,
+                          walletOption: 'none',
+                          existingWalletId: '',
+                          newWalletName: '',
+                          price: booking.studentPrices?.[primaryStudent?.id || ''] ?? booking.price ?? 0,
+                        }]);
+                        setShowAddLesson(true);
                       }}
                       className="p-1.5 text-gray-400 hover:text-blue-500 dark:text-zinc-500 dark:hover:text-blue-400 transition-colors flex-shrink-0"
                       title="Duplicate as ad-hoc class"
@@ -919,38 +898,27 @@ export default function DashboardPage() {
                             </button>
                             <button
                               onClick={() => {
-                                const dupStudents: Array<{ studentId: string; displayName: string; price: number }> = [];
                                 const primaryStudent = students.find(
                                   (s) => s.clientName === booking.clientName && s.clientPhone === (booking.clientPhone || '')
                                 );
-                                if (primaryStudent) {
-                                  dupStudents.push({
-                                    studentId: primaryStudent.id,
-                                    displayName: primaryStudent.clientName,
-                                    price: booking.studentPrices?.[primaryStudent.id] ?? booking.price ?? 0,
-                                  });
-                                }
-                                if (booking.linkedStudentIds?.length) {
-                                  for (const linkedId of booking.linkedStudentIds) {
-                                    const ls = students.find((s) => s.id === linkedId);
-                                    if (ls) {
-                                      dupStudents.push({
-                                        studentId: ls.id,
-                                        displayName: ls.clientName,
-                                        price: booking.studentPrices?.[ls.id] ?? 0,
-                                      });
-                                    }
-                                  }
-                                }
-                                setAddClassDate(selectedDateStr);
-                                setAddClassLocationId(booking.locationId || locations[0]?.id || '');
-                                setAddClassStartTime(booking.startTime || '');
-                                setAddClassEndTime(booking.endTime || '');
-                                setAddClassNote(booking.notes || '');
-                                setAddClassSearch('');
-                                setShowNewStudentForm(false);
-                                setAddClassSelectedStudents(dupStudents);
-                                setShowAddClass(true);
+                                resetLessonForm();
+                                setLessonType('one-time');
+                                setLessonDate(selectedDateStr);
+                                setLessonLocationId(booking.locationId || locations[0]?.id || '');
+                                setLessonStartTime(booking.startTime || '09:00');
+                                setLessonEndTime(booking.endTime || '10:00');
+                                setLessonNote(booking.notes || '');
+                                setStudentRows([{
+                                  studentId: primaryStudent?.id || '',
+                                  displayName: booking.clientName,
+                                  phone: booking.clientPhone || '',
+                                  isNew: !primaryStudent,
+                                  walletOption: 'none',
+                                  existingWalletId: '',
+                                  newWalletName: '',
+                                  price: booking.studentPrices?.[primaryStudent?.id || ''] ?? booking.price ?? 0,
+                                }]);
+                                setShowAddLesson(true);
                                 setMenuOpen(null);
                               }}
                               className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#333]"
@@ -1092,21 +1060,25 @@ export default function DashboardPage() {
                     <button
                       onClick={() => {
                         const loc = locations.find((l) => l.name === group[0].locationName);
-                        setAddClassDate(selectedDateStr);
-                        setAddClassLocationId(loc?.id || locations[0]?.id || '');
-                        setAddClassStartTime(group[0].startTime || '');
-                        setAddClassEndTime(group[0].endTime || '');
-                        setAddClassNote(group[0].note || '');
-                        setAddClassSearch('');
-                        setShowNewStudentForm(false);
-                        setAddClassSelectedStudents(
-                          group.map((l) => ({
-                            studentId: l.studentId,
-                            displayName: l.studentName,
-                            price: l.price,
-                          }))
-                        );
-                        setShowAddClass(true);
+                        const firstLog = group[0];
+                        resetLessonForm();
+                        setLessonType('one-time');
+                        setLessonDate(selectedDateStr);
+                        setLessonLocationId(loc?.id || locations[0]?.id || '');
+                        setLessonStartTime(firstLog.startTime || '09:00');
+                        setLessonEndTime(firstLog.endTime || '10:00');
+                        setLessonNote(firstLog.note || '');
+                        setStudentRows([{
+                          studentId: firstLog.studentId,
+                          displayName: firstLog.studentName,
+                          phone: '',
+                          isNew: false,
+                          walletOption: 'none',
+                          existingWalletId: '',
+                          newWalletName: '',
+                          price: firstLog.price,
+                        }]);
+                        setShowAddLesson(true);
                       }}
                       className="p-1.5 text-gray-400 hover:text-blue-500 dark:text-zinc-500 dark:hover:text-blue-400 transition-colors"
                       title="Duplicate ad-hoc class"
@@ -1481,216 +1453,174 @@ export default function DashboardPage() {
         )}
       </Modal>
 
-      {/* Add Class modal */}
+      {/* Add Lesson modal */}
       <Modal
-        isOpen={showAddClass}
-        onClose={() => setShowAddClass(false)}
-        title="Add Class"
+        isOpen={showAddLesson}
+        onClose={() => setShowAddLesson(false)}
+        title="Add Lesson"
       >
-        <div className="space-y-4">
-          <Input
-            id="addClassDate"
-            label="Date"
-            type="date"
-            value={addClassDate}
-            onChange={(e) => setAddClassDate(e.target.value)}
-          />
-
-          <Select
-            id="addClassLocation"
-            label="Location"
-            value={addClassLocationId}
-            onChange={(e) => setAddClassLocationId(e.target.value)}
-            options={locations.map((l) => ({ value: l.id, label: l.name }))}
-          />
-
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              id="addClassStartTime"
-              label="Start Time"
-              type="time"
-              value={addClassStartTime}
-              onChange={(e) => setAddClassStartTime(e.target.value)}
-            />
-            <Input
-              id="addClassEndTime"
-              label="End Time"
-              type="time"
-              value={addClassEndTime}
-              onChange={(e) => setAddClassEndTime(e.target.value)}
-            />
+        <div className="space-y-3">
+          {/* Type toggle */}
+          <div className="flex gap-2">
+            <button
+              className={`flex-1 py-2 rounded-lg text-sm font-medium ${lessonType === 'one-time' ? 'bg-blue-600 text-white' : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300'}`}
+              onClick={() => setLessonType('one-time')}
+            >One-time</button>
+            <button
+              className={`flex-1 py-2 rounded-lg text-sm font-medium ${lessonType === 'recurring' ? 'bg-blue-600 text-white' : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300'}`}
+              onClick={() => setLessonType('recurring')}
+            >Recurring</button>
           </div>
 
-          {/* Student selector */}
+          {/* Date or Day of Week */}
+          {lessonType === 'one-time' ? (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Date</label>
+              <input type="date" value={lessonDate} onChange={e => setLessonDate(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100" />
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Day</label>
+              <select value={lessonDayOfWeek} onChange={e => setLessonDayOfWeek(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100">
+                {['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map(d => (
+                  <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Location */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
-              Students
-            </label>
-            <input
-              value={addClassSearch}
-              onChange={(e) => setAddClassSearch(e.target.value)}
-              placeholder="Search students..."
-              className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm"
-            />
-            <div className="mt-2 max-h-40 overflow-y-auto border border-gray-200 dark:border-zinc-600 rounded-lg divide-y divide-gray-100 dark:divide-[#333]">
-              {filteredStudentList.length === 0 ? (
-                <p className="p-3 text-sm text-gray-400 dark:text-zinc-500 text-center">No students found</p>
-              ) : (
-                filteredStudentList.map((student) => {
-                  const isSelected = addClassSelectedStudents.some((s) => s.studentId === student.studentId);
-                  return (
-                    <label
-                      key={student.studentId}
-                      className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-[#2a2a2a] cursor-pointer"
+            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Location</label>
+            <select value={lessonLocationId} onChange={e => setLessonLocationId(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100">
+              <option value="">Select location</option>
+              {locations.map(loc => (
+                <option key={loc.id} value={loc.id}>{loc.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Start / End Time — 5-min increments */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Start Time</label>
+              <select value={lessonStartTime} onChange={e => setLessonStartTime(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100">
+                {generateTimeOptions().map(t => <option key={t} value={t}>{formatTimeDisplay(t)}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">End Time</label>
+              <select value={lessonEndTime} onChange={e => setLessonEndTime(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100">
+                {generateTimeOptions().map(t => <option key={t} value={t}>{formatTimeDisplay(t)}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Lesson mode toggle */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Lesson Type</label>
+            <div className="flex gap-2">
+              <button
+                className={`flex-1 py-2 rounded-lg text-sm font-medium ${lessonMode === 'private' ? 'bg-blue-600 text-white' : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300'}`}
+                onClick={() => { setLessonMode('private'); setStudentRows(rows => [rows[0]]); }}
+              >Private</button>
+              <button
+                className={`flex-1 py-2 rounded-lg text-sm font-medium ${lessonMode === 'group' ? 'bg-blue-600 text-white' : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300'}`}
+                onClick={() => setLessonMode('group')}
+              >Group</button>
+            </div>
+          </div>
+
+          {/* Student */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Student</label>
+            <div className="relative">
+              <input
+                type="text"
+                value={studentRows[0].displayName}
+                onChange={e => {
+                  const val = e.target.value;
+                  setStudentSearch(val);
+                  updateStudentRow(0, { displayName: val, isNew: true, studentId: '' });
+                }}
+                placeholder="Search or type new student name"
+                className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
+              />
+              {studentSearch && (
+                <div className="absolute z-10 mt-1 w-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg max-h-40 overflow-y-auto shadow-lg">
+                  {filteredStudentList.map(s => (
+                    <button
+                      key={s.studentId}
+                      className="w-full text-left px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 hover:bg-gray-50 dark:hover:bg-zinc-700"
+                      onClick={() => {
+                        const studentRecord = students.find(st => st.id === s.studentId);
+                        const linkedWallet = wallets.find(w => w.studentIds.includes(s.studentId));
+                        updateStudentRow(0, {
+                          studentId: s.studentId,
+                          displayName: s.displayName,
+                          phone: studentRecord?.clientPhone || '',
+                          isNew: false,
+                          walletOption: linkedWallet ? 'existing' : 'none',
+                          existingWalletId: linkedWallet?.id || '',
+                        });
+                        setStudentSearch('');
+                      }}
                     >
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleAddClassStudent(student)}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm text-gray-900 dark:text-zinc-100">{student.displayName}</span>
-                    </label>
-                  );
-                })
+                      {s.displayName}
+                    </button>
+                  ))}
+                  {filteredStudentList.length === 0 && (
+                    <p className="px-3 py-2 text-sm text-gray-400 dark:text-zinc-500">No students found — will create new</p>
+                  )}
+                </div>
               )}
             </div>
+            <input
+              type="tel"
+              value={studentRows[0].phone}
+              onChange={e => updateStudentRow(0, { phone: e.target.value })}
+              placeholder="Phone number"
+              className="w-full mt-2 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
+            />
+            <div className="mt-2">
+              <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1">Price (RM)</label>
+              <input
+                type="number"
+                value={studentRows[0].price || ''}
+                onChange={e => updateStudentRow(0, { price: Number(e.target.value) })}
+                placeholder="0"
+                className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
+              />
+            </div>
           </div>
 
-          {/* Add new student */}
-          {!showNewStudentForm ? (
-            <button
-              type="button"
-              onClick={() => setShowNewStudentForm(true)}
-              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-            >
-              + Add new student
-            </button>
-          ) : (
-            <div className="border border-blue-200 dark:border-blue-700 rounded-lg p-3 space-y-3 bg-blue-50/50 dark:bg-blue-900/10">
-              <p className="text-sm font-medium text-gray-700 dark:text-zinc-300">New Student</p>
-              <input
-                value={newStudentName}
-                onChange={(e) => setNewStudentName(e.target.value)}
-                placeholder="Name"
-                className="block w-full px-3 py-2 text-sm border border-gray-300 dark:border-zinc-500 rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
-              />
-              <input
-                value={newStudentPhone}
-                onChange={(e) => setNewStudentPhone(e.target.value)}
-                placeholder="Phone number"
-                className="block w-full px-3 py-2 text-sm border border-gray-300 dark:border-zinc-500 rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
-              />
-              <div className="flex items-center gap-3">
-                <input
-                  type="number"
-                  value={newStudentPrice}
-                  onChange={(e) => setNewStudentPrice(parseFloat(e.target.value) || 0)}
-                  placeholder="Price (RM)"
-                  min={0}
-                  className="w-28 px-3 py-2 text-sm border border-gray-300 dark:border-zinc-500 rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
-                />
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={newStudentPayPerLesson}
-                    onChange={(e) => setNewStudentPayPerLesson(e.target.checked)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-zinc-300">Pay per lesson</span>
-                </label>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  disabled={!newStudentName.trim()}
-                  onClick={() => {
-                    const tempId = `new_${Date.now()}`;
-                    setAddClassSelectedStudents((prev) => [
-                      ...prev,
-                      {
-                        studentId: tempId,
-                        displayName: newStudentName.trim(),
-                        price: newStudentPrice,
-                        isNew: true,
-                        newPhone: newStudentPhone.trim(),
-                        payPerLesson: newStudentPayPerLesson,
-                      },
-                    ]);
-                    setShowNewStudentForm(false);
-                    setNewStudentName('');
-                    setNewStudentPhone('');
-                    setNewStudentPayPerLesson(true);
-                    setNewStudentPrice(0);
-                  }}
-                >
-                  Add
-                </Button>
-                <Button variant="secondary" size="sm" onClick={() => setShowNewStudentForm(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Selected students with prices */}
-          {addClassSelectedStudents.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-700 dark:text-zinc-300">Pricing</p>
-              {addClassSelectedStudents.map((selected, idx) => (
-                <div key={selected.studentId} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-[#1a1a1a] rounded-lg">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-900 dark:text-zinc-100">
-                      {selected.displayName}
-                      {selected.isNew && (
-                        <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">New</span>
-                      )}
-                      {selected.payPerLesson && (
-                        <span className="ml-1 text-xs text-gray-400 dark:text-zinc-500">Pay per lesson</span>
-                      )}
-                    </p>
-                  </div>
-                  <div className="w-24">
-                    <input
-                      type="number"
-                      value={selected.price}
-                      onChange={(e) => {
-                        const updated = [...addClassSelectedStudents];
-                        updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
-                        setAddClassSelectedStudents(updated);
-                      }}
-                      className="block w-full px-2 py-1 text-sm border border-gray-300 dark:border-zinc-500 rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
-                      placeholder="RM"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
+          {/* Notes */}
           <div>
-            <label htmlFor="addClassNote" className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
-              Note (optional)
-            </label>
-            <input
-              id="addClassNote"
-              value={addClassNote}
-              onChange={(e) => setAddClassNote(e.target.value)}
-              placeholder="e.g. Combined group session"
-              className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm"
+            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Notes (optional)</label>
+            <textarea
+              value={lessonNote}
+              onChange={e => setLessonNote(e.target.value)}
+              placeholder="Additional notes..."
+              className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
+              rows={2}
             />
           </div>
 
-          <div className="flex gap-2 justify-end">
-            <Button variant="secondary" onClick={() => setShowAddClass(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleAddClass}
-              loading={addingClass}
-              disabled={!addClassLocationId || addClassSelectedStudents.length === 0}
-            >
-              Add Class
+          {/* Overlap warning */}
+          {overlapWarning && (
+            <p className="text-sm text-amber-600 dark:text-amber-400">{overlapWarning}</p>
+          )}
+
+          {/* Submit */}
+          <div className="flex justify-end gap-3 pt-1">
+            <button onClick={() => setShowAddLesson(false)} className="px-4 py-2 text-sm text-gray-600 dark:text-zinc-400 hover:underline">Cancel</button>
+            <Button onClick={handleCreateLesson} disabled={addingLesson}>
+              {addingLesson ? 'Creating...' : lessonType === 'recurring' ? 'Create Booking' : 'Create Lesson'}
             </Button>
           </div>
         </div>
