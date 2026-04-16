@@ -36,13 +36,13 @@
 - Custom domains
 - ✅ (2026-03-24) Production guardrails: prevent marking done for future dates
 - ✅ (2026-04-16) Production guardrails: restrict prepaid package editing — no longer relevant, UI migrated to wallet system, prepaid fields no longer exposed
-- Production guardrails: lesson log deletion safeguards — wallet refund on delete works, but still no "are you sure?" confirmation modal before deleting
+- ✅ (2026-04-16) Production guardrails: lesson log deletion safeguards — confirmation modal added, wallet refund on delete works
 - ✅ (2026-03-25) Income page: projected collected income — shows current & next month projections based on package renewals (day-by-day exhaustion calculation) and pay-per-lesson charges (primary bookings only, remaining days for current month)
 - ✅ (2026-04-16) **Consolidate booking creation to one place** — unified form on Overview page handles both one-time and recurring. Schedule page is read-only.
 - (2026-03-31) **Student self-service replacement scheduling** — let students check available replacement times and schedule via their portal page (`/student/[token]`).
 - ✅ (2026-04-16) **Show full credit balance (total paid minus total used)** — superseded by wallet system. Each student has a wallet with live RM balance (top-ups credit, lesson charges debit).
 - (2026-03-31) **Cancellation reasons/data** — track who cancelled (coach, student, weather, etc.) on class exceptions. Add a `reason` or `cancelledBy` field to `classExceptions` so coaches can see patterns.
 - ✅ (2026-03-31) **Early package renewal** — "Renew Early" feature: queue next package + record payment before current package finishes. Auto-rollover on exhaustion.
-- (2026-03-31) **Pagination for lesson logs & payments** — currently limited to 6 months / 100 records. Add "Load more" or date range picker so older data is still accessible. Low priority until data volume grows.
+- ✅ (2026-04-16) **Pagination for lesson logs & payments** — default to 1 month, "Load more" adds a month. Applied to Students page lesson history, Payments page wallet transactions, and History tab. Removed dead usePayments hook and Payment type.
 - ✅ (2026-04-16) **Refund tracking for mid-package cancellations** — handled by wallet adjustment (deduct + "Refund" description). No special UI needed.
 - ✅ (2026-04-16) **Linked student package exhaustion — payment due behavior** — resolved by wallet system. Each linked student has their own wallet charged independently on mark-done. Negative balances surface per-student via wallet balance badge.
