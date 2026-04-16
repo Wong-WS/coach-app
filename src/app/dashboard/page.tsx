@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { collection, doc, writeBatch, serverTimestamp, increment, updateDoc, deleteDoc, addDoc, getDoc, Firestore, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
@@ -99,6 +99,15 @@ export default function DashboardPage() {
   // Overlap warning
   const [overlapWarning, setOverlapWarning] = useState('');
 
+  // Check for overlaps when lesson type or time fields change
+  useEffect(() => {
+    if (lessonType === 'recurring') {
+      setOverlapWarning(checkOverlap(lessonDayOfWeek, lessonStartTime, lessonEndTime));
+    } else {
+      setOverlapWarning('');
+    }
+  }, [lessonType, lessonDayOfWeek, lessonStartTime, lessonEndTime, bookings]);
+
   // Edit booking modal state
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
   const [editLocationId, setEditLocationId] = useState('');
@@ -174,6 +183,18 @@ export default function DashboardPage() {
       }
     }
     return options;
+  };
+
+  const checkOverlap = (dayOfWeek: string, startTime: string, endTime: string): string => {
+    const recurringOnDay = bookings.filter(
+      b => b.dayOfWeek === dayOfWeek && b.status === 'confirmed' && !(b.startDate && b.startDate === b.endDate)
+    );
+    for (const b of recurringOnDay) {
+      if (startTime < b.endTime && endTime > b.startTime) {
+        return `This overlaps with ${b.clientName} (${formatTimeDisplay(b.startTime)}–${formatTimeDisplay(b.endTime)})`;
+      }
+    }
+    return '';
   };
 
   const updateStudentRow = (index: number, updates: Partial<StudentRow>) => {
@@ -1829,7 +1850,9 @@ export default function DashboardPage() {
 
           {/* Overlap warning */}
           {overlapWarning && (
-            <p className="text-sm text-amber-600 dark:text-amber-400">{overlapWarning}</p>
+            <div className="mb-3 p-3 rounded-lg bg-yellow-900/30 border border-yellow-700 text-yellow-400 text-sm">
+              ⚠ {overlapWarning}
+            </div>
           )}
 
           {/* Submit */}
