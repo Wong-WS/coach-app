@@ -67,6 +67,16 @@ service cloud.firestore {
         allow read, write: if isOwner(coachId);
       }
 
+      // Wallets - owner only
+      match /wallets/{walletId} {
+        allow read, write: if isOwner(coachId);
+
+        // Wallet transactions - owner only
+        match /transactions/{txnId} {
+          allow read, write: if isOwner(coachId);
+        }
+      }
+
     }
   }
 }
