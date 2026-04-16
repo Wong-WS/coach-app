@@ -1,16 +1,50 @@
 'use client';
 
-import { useState } from 'react';
-import { collection, doc, addDoc, updateDoc, serverTimestamp, increment, Firestore } from 'firebase/firestore';
+import { useState, useEffect, useMemo } from 'react';
+import { collection, doc, addDoc, updateDoc, serverTimestamp, increment, Firestore, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
-import { useWallets, useWalletTransactions, useStudents } from '@/hooks/useCoachData';
+import { useWallets, useWalletTransactions, useStudents, useBookings, useLessonLogs, usePayments } from '@/hooks/useCoachData';
 import { Button, Input, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
-import type { Wallet } from '@/types';
+import { getDayDisplayName, formatTimeDisplay } from '@/lib/availability-engine';
+import { formatDateMedium } from '@/lib/date-format';
+import type { Wallet, WalletTransaction } from '@/types';
 
 const TABS = ['Overview', 'Wallets', 'History'] as const;
 type Tab = typeof TABS[number];
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function getWeekRange(): { start: string; end: string } {
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + mondayOffset);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const fmt = (d: Date) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+  return { start: fmt(monday), end: fmt(sunday) };
+}
+
+function getMonthRange(): { start: string; end: string } {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const fmt = (d: Date) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+  return { start: fmt(start), end: fmt(end) };
+}
 
 // ─── WalletDetail ────────────────────────────────────────────────────────────
 
@@ -187,6 +221,50 @@ export default function PaymentsPage() {
   const { wallets } = useWallets(coach?.id);
   const { students } = useStudents(coach?.id);
 
+  // Overview data
+  const { bookings } = useBookings(coach?.id, 'confirmed');
+  const { lessonLogs } = useLessonLogs(coach?.id, undefined, undefined, 6);
+  const { payments } = usePayments(coach?.id, 100);
+
+  // All transactions across wallets (for History tab)
+  const [allTransactions, setAllTransactions] = useState<(WalletTransaction & { walletName: string })[]>([]);
+
+  useEffect(() => {
+    if (!coach?.id || !db || wallets.length === 0) return;
+    const firestore = db as Firestore;
+    const unsubs: (() => void)[] = [];
+    const txnsByWallet = new Map<string, (WalletTransaction & { walletName: string })[]>();
+
+    for (const wallet of wallets) {
+      const q = query(
+        collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'),
+        orderBy('createdAt', 'desc'),
+        limit(100)
+      );
+      const unsub = onSnapshot(q, (snap) => {
+        const items = snap.docs.map((d) => ({
+          id: d.id,
+          type: d.data().type as WalletTransaction['type'],
+          amount: d.data().amount ?? 0,
+          balanceAfter: d.data().balanceAfter ?? 0,
+          description: d.data().description ?? '',
+          studentId: d.data().studentId ?? undefined,
+          lessonLogId: d.data().lessonLogId ?? undefined,
+          date: d.data().date,
+          createdAt: d.data().createdAt?.toDate() || new Date(),
+          walletName: wallet.name,
+        }));
+        txnsByWallet.set(wallet.id, items);
+        const merged = Array.from(txnsByWallet.values()).flat();
+        merged.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        setAllTransactions(merged);
+      });
+      unsubs.push(unsub);
+    }
+
+    return () => unsubs.forEach((u) => u());
+  }, [coach?.id, wallets]);
+
   // Wallet detail panel
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
 
@@ -216,6 +294,47 @@ export default function PaymentsPage() {
   const unassignedStudents = students.filter(
     (s) => !wallets.some((w) => w.studentIds.includes(s.id))
   );
+
+  // ── Overview calculations ──────────────────────────────────────────────────
+
+  const recurringBookings = useMemo(() => bookings.filter((b) => !b.endDate), [bookings]);
+  const weeklyTotal = useMemo(() => recurringBookings.reduce((sum, b) => sum + (b.price ?? 0), 0), [recurringBookings]);
+  const monthlyTotal = useMemo(() => weeklyTotal * (52 / 12), [weeklyTotal]);
+
+  const weekRange = useMemo(() => getWeekRange(), []);
+  const monthRange = useMemo(() => getMonthRange(), []);
+
+  const weekActual = useMemo(() => {
+    return lessonLogs
+      .filter((l) => l.date >= weekRange.start && l.date <= weekRange.end)
+      .reduce((sum, l) => sum + l.price, 0);
+  }, [lessonLogs, weekRange]);
+
+  const monthActual = useMemo(() => {
+    return lessonLogs
+      .filter((l) => l.date >= monthRange.start && l.date <= monthRange.end)
+      .reduce((sum, l) => sum + l.price, 0);
+  }, [lessonLogs, monthRange]);
+
+  const totalBalance = useMemo(
+    () => wallets.filter((w) => w.balance > 0).reduce((sum, w) => sum + w.balance, 0),
+    [wallets]
+  );
+
+  const totalUnpaid = useMemo(
+    () => wallets.filter((w) => w.balance < 0).reduce((sum, w) => sum + Math.abs(w.balance), 0),
+    [wallets]
+  );
+
+  const recentLogs = useMemo(
+    () => [...lessonLogs].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10),
+    [lessonLogs]
+  );
+
+  const recentPayments = useMemo(() => [...payments].slice(0, 10), [payments]);
+
+  const formatRM = (amount: number) =>
+    `RM ${amount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   if (!coach) {
     return (
@@ -353,14 +472,178 @@ export default function PaymentsPage() {
 
       {/* ── Overview tab ── */}
       {activeTab === 'Overview' && (
-        <p className="text-gray-500 dark:text-zinc-400">
-          Overview coming soon — will replace current Income page.
-        </p>
+        <div className="space-y-6">
+          {/* Stat cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white dark:bg-[#1f1f1f] rounded-xl border border-gray-100 dark:border-[#333333] p-4">
+              <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Total Balance</p>
+              <p className="text-xl font-bold text-green-600 dark:text-green-400">{formatRM(totalBalance)}</p>
+              <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">across {wallets.filter((w) => w.balance > 0).length} wallets</p>
+            </div>
+            <div className="bg-white dark:bg-[#1f1f1f] rounded-xl border border-gray-100 dark:border-[#333333] p-4">
+              <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Total Unpaid</p>
+              <p className={`text-xl font-bold ${totalUnpaid > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-zinc-500'}`}>
+                {formatRM(totalUnpaid)}
+              </p>
+              <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{wallets.filter((w) => w.balance < 0).length} wallets owe you</p>
+            </div>
+            <div className="bg-white dark:bg-[#1f1f1f] rounded-xl border border-gray-100 dark:border-[#333333] p-4">
+              <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">This Month (Actual)</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-zinc-100">{formatRM(monthActual)}</p>
+              <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">vs {formatRM(monthlyTotal)} projected</p>
+            </div>
+            <div className="bg-white dark:bg-[#1f1f1f] rounded-xl border border-gray-100 dark:border-[#333333] p-4">
+              <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">This Week (Actual)</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-zinc-100">{formatRM(weekActual)}</p>
+              <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">vs {formatRM(weeklyTotal)} projected</p>
+            </div>
+          </div>
+
+          {/* Recent lessons */}
+          {recentLogs.length > 0 && (
+            <div className="bg-white dark:bg-[#1f1f1f] rounded-xl border border-gray-100 dark:border-[#333333]">
+              <div className="px-4 py-3 border-b border-gray-100 dark:border-[#333333]">
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-zinc-100">Recent Lessons</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 dark:border-[#333333]">
+                      <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-zinc-400">Date</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-zinc-400">Student</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-zinc-400 hidden sm:table-cell">Time</th>
+                      <th className="text-right px-4 py-3 font-medium text-gray-500 dark:text-zinc-400">Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentLogs.map((log) => (
+                      <tr key={log.id} className="border-b border-gray-50 dark:border-[#2a2a2a] last:border-0">
+                        <td className="px-4 py-3 text-gray-600 dark:text-zinc-400">{log.date}</td>
+                        <td className="px-4 py-3 text-gray-800 dark:text-zinc-200">{log.studentName}</td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-zinc-500 hidden sm:table-cell">
+                          {formatTimeDisplay(log.startTime)} &ndash; {formatTimeDisplay(log.endTime)}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {log.price > 0 ? (
+                            <span className="text-gray-900 dark:text-zinc-100 font-medium">RM {log.price}</span>
+                          ) : (
+                            <span className="text-gray-400 dark:text-zinc-500">&mdash;</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Recent payments / top-ups */}
+          {recentPayments.length > 0 && (
+            <div className="bg-white dark:bg-[#1f1f1f] rounded-xl border border-gray-100 dark:border-[#333333]">
+              <div className="px-4 py-3 border-b border-gray-100 dark:border-[#333333]">
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-zinc-100">Recent Payments</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 dark:border-[#333333]">
+                      <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-zinc-400">Date</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-zinc-400">Student</th>
+                      <th className="text-right px-4 py-3 font-medium text-gray-500 dark:text-zinc-400">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentPayments.map((payment) => (
+                      <tr key={payment.id} className="border-b border-gray-50 dark:border-[#2a2a2a] last:border-0">
+                        <td className="px-4 py-3 text-gray-600 dark:text-zinc-400">{formatDateMedium(payment.collectedAt)}</td>
+                        <td className="px-4 py-3 text-gray-800 dark:text-zinc-200">{payment.studentName}</td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="text-blue-600 dark:text-blue-400 font-medium">{formatRM(payment.amount)}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Projected income */}
+          {recurringBookings.length > 0 && (
+            <div className="bg-white dark:bg-[#1f1f1f] rounded-xl border border-gray-100 dark:border-[#333333]">
+              <div className="px-4 py-3 border-b border-gray-100 dark:border-[#333333]">
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-zinc-100">Projected from Recurring Bookings</h2>
+              </div>
+              <div className="grid grid-cols-3 divide-x divide-gray-100 dark:divide-[#333333]">
+                <div className="p-4 text-center">
+                  <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Weekly</p>
+                  <p className="text-lg font-bold text-gray-900 dark:text-zinc-100">{formatRM(weeklyTotal)}</p>
+                </div>
+                <div className="p-4 text-center">
+                  <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Monthly</p>
+                  <p className="text-lg font-bold text-gray-900 dark:text-zinc-100">{formatRM(monthlyTotal)}</p>
+                </div>
+                <div className="p-4 text-center">
+                  <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Annual</p>
+                  <p className="text-lg font-bold text-gray-900 dark:text-zinc-100">{formatRM(weeklyTotal * 52)}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Empty state */}
+          {lessonLogs.length === 0 && payments.length === 0 && wallets.length === 0 && (
+            <p className="text-gray-500 dark:text-zinc-400 text-center py-12">No data yet. Create wallets and record lessons to see your overview.</p>
+          )}
+        </div>
       )}
 
       {/* ── History tab ── */}
       {activeTab === 'History' && (
-        <p className="text-gray-500 dark:text-zinc-400">Transaction history — coming later.</p>
+        <div>
+          {allTransactions.length === 0 ? (
+            <p className="text-gray-500 dark:text-zinc-400 text-center py-12">No transactions yet.</p>
+          ) : (
+            <div className="bg-white dark:bg-[#1f1f1f] rounded-xl border border-gray-100 dark:border-[#333333] overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 dark:border-[#333333]">
+                    <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-zinc-400">Date</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-zinc-400 hidden sm:table-cell">Wallet</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-zinc-400">Description</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-zinc-400 hidden sm:table-cell">Type</th>
+                    <th className="text-right px-4 py-3 font-medium text-gray-500 dark:text-zinc-400">Amount</th>
+                    <th className="text-right px-4 py-3 font-medium text-gray-500 dark:text-zinc-400 hidden md:table-cell">Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allTransactions.map((txn) => (
+                    <tr key={txn.id} className="border-b border-gray-50 dark:border-[#2a2a2a] last:border-0">
+                      <td className="px-4 py-3 text-gray-600 dark:text-zinc-400">{txn.date}</td>
+                      <td className="px-4 py-3 text-gray-800 dark:text-zinc-200 hidden sm:table-cell">{txn.walletName}</td>
+                      <td className="px-4 py-3 text-gray-800 dark:text-zinc-200">{txn.description}</td>
+                      <td className="px-4 py-3 hidden sm:table-cell">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          txn.type === 'charge' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                          : txn.type === 'top-up' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                          : txn.type === 'refund' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                          : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                        }`}>
+                          {txn.type}
+                        </span>
+                      </td>
+                      <td className={`px-4 py-3 text-right font-medium ${txn.type === 'charge' ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                        {txn.type === 'charge' ? '-' : '+'}RM {txn.amount.toFixed(0)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-500 dark:text-zinc-400 hidden md:table-cell">RM {txn.balanceAfter.toFixed(0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── Wallets tab ── */}
