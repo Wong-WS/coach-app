@@ -952,60 +952,8 @@ export default function DashboardPage() {
                     </p>
                   </div>
 
-                  {/* Duplicate button for done bookings */}
-                  {isDone && (
-                    <button
-                      onClick={() => {
-                        resetLessonForm();
-                        setLessonType('one-time');
-                        setLessonDate(selectedDateStr);
-                        setLessonLocationId(booking.locationId || locations[0]?.id || '');
-                        setLessonStartTime(booking.startTime || '09:00');
-                        setLessonEndTime(booking.endTime || '10:00');
-                        setLessonNote(booking.notes || '');
-                        const dupRows: StudentRow[] = [];
-                        const primaryStudent = students.find(s => s.clientName === booking.clientName);
-                        if (primaryStudent) {
-                          dupRows.push({
-                            studentId: primaryStudent.id, displayName: primaryStudent.clientName,
-                            phone: primaryStudent.clientPhone || '', isNew: false,
-                            walletOption: 'none', existingWalletId: '', newWalletName: '',
-                            price: booking.studentPrices?.[primaryStudent.id] ?? booking.price ?? 0,
-                          });
-                        }
-                        if (booking.linkedStudentIds?.length) {
-                          for (const linkedId of booking.linkedStudentIds) {
-                            const ls = students.find(s => s.id === linkedId);
-                            if (ls) {
-                              dupRows.push({
-                                studentId: ls.id, displayName: ls.clientName,
-                                phone: ls.clientPhone || '', isNew: false,
-                                walletOption: 'none', existingWalletId: '', newWalletName: '',
-                                price: booking.studentPrices?.[ls.id] ?? 0,
-                              });
-                            }
-                          }
-                        }
-                        setStudentRows(dupRows.length ? dupRows : [{
-                          studentId: '', displayName: '', phone: '', isNew: true,
-                          walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
-                        }]);
-                        setLessonMode(dupRows.length > 1 ? 'group' : 'private');
-                        setStudentSearches(dupRows.length ? dupRows.map(() => '') : ['']);
-                        setShowAddLesson(true);
-                      }}
-                      className="p-1.5 text-gray-400 hover:text-blue-500 dark:text-zinc-500 dark:hover:text-blue-400 transition-colors flex-shrink-0"
-                      title="Duplicate as ad-hoc class"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                    </button>
-                  )}
-
                   {/* Actions menu */}
-                  {!isDone && (
-                    <div className="relative flex-shrink-0">
+                  <div className="relative flex-shrink-0">
                       <button
                         onClick={() => setMenuOpen(menuOpen === booking.id ? null : booking.id)}
                         className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:text-zinc-500 dark:hover:text-zinc-300 dark:hover:bg-[#2a2a2a]"
@@ -1021,6 +969,7 @@ export default function DashboardPage() {
                         <>
                           <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(null)} />
                           <div className="absolute right-0 top-full mt-1 z-20 w-40 bg-white dark:bg-[#2a2a2a] rounded-lg shadow-lg border border-gray-200 dark:border-[#444] py-1">
+                            {!isDone && (
                             <button
                               onClick={() => selectedDateStr <= todayStr && openMarkDone(booking)}
                               disabled={selectedDateStr > todayStr}
@@ -1035,6 +984,7 @@ export default function DashboardPage() {
                                 <span className="block text-xs text-gray-400 dark:text-zinc-600">(future date)</span>
                               )}
                             </button>
+                            )}
                             <button
                               onClick={() => openEditBooking(booking)}
                               className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#333]"
@@ -1086,6 +1036,7 @@ export default function DashboardPage() {
                             >
                               Duplicate
                             </button>
+                            {!isDone && (
                             <button
                               onClick={() => {
                                 setRescheduleBooking(booking);
@@ -1098,6 +1049,8 @@ export default function DashboardPage() {
                             >
                               Reschedule
                             </button>
+                            )}
+                            {!isDone && (
                             <button
                               onClick={() => handleCancel(booking)}
                               disabled={cancelling === booking.id}
@@ -1105,11 +1058,11 @@ export default function DashboardPage() {
                             >
                               {cancelling === booking.id ? 'Cancelling...' : 'Cancel This Date'}
                             </button>
+                            )}
                           </div>
                         </>
                       )}
                     </div>
-                  )}
                 </div>
               );
             })}
