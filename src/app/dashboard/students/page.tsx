@@ -15,8 +15,7 @@ import { formatDateMedium, parseDateString } from '@/lib/date-format';
 export default function StudentsPage() {
   const { coach } = useAuth();
   const { students, loading } = useStudents(coach?.id);
-  const [logMonths, setLogMonths] = useState(1);
-  const { lessonLogs: allLogs } = useLessonLogs(coach?.id, undefined, undefined, logMonths);
+  const [logLimit, setLogLimit] = useState(20);
   const { bookings } = useBookings(coach?.id, 'confirmed');
   const { wallets } = useWallets(coach?.id);
   const { showToast } = useToast();
@@ -54,13 +53,8 @@ export default function StudentsPage() {
   const [editLessonRate, setEditLessonRate] = useState(0);
   const [savingLessonRate, setSavingLessonRate] = useState(false);
 
-  // Student's lesson history
-  const studentLogs = useMemo(() => {
-    if (!selectedStudent) return [];
-    return allLogs
-      .filter((l) => l.studentId === selectedStudent.id)
-      .sort((a, b) => b.date.localeCompare(a.date));
-  }, [allLogs, selectedStudent]);
+  // Student's lesson history (per-student query with limit)
+  const { lessonLogs: studentLogs } = useLessonLogs(coach?.id, undefined, selectedStudent?.id, undefined, logLimit);
 
 
   // Linked students for the selected student
@@ -856,12 +850,14 @@ export default function StudentsPage() {
                       </div>
                     </div>
                   ))}
+                  {studentLogs.length >= logLimit && (
                   <button
-                    onClick={() => setLogMonths(logMonths + 1)}
+                    onClick={() => setLogLimit(logLimit + 20)}
                     className="w-full text-center py-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
                   >
                     Load more
                   </button>
+                  )}
                 </div>
               )}
             </div>

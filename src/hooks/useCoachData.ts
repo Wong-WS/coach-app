@@ -168,7 +168,7 @@ export function useStudents(coachId: string | undefined) {
   return { students, loading };
 }
 
-export function useLessonLogs(coachId: string | undefined, dateFilter?: string, studentIdFilter?: string, monthsBack?: number) {
+export function useLessonLogs(coachId: string | undefined, dateFilter?: string, studentIdFilter?: string, monthsBack?: number, limitCount?: number) {
   const [lessonLogs, setLessonLogs] = useState<LessonLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -185,7 +185,9 @@ export function useLessonLogs(coachId: string | undefined, dateFilter?: string, 
     if (dateFilter) {
       q = query(col, where('date', '==', dateFilter));
     } else if (studentIdFilter) {
-      q = query(col, where('studentId', '==', studentIdFilter), orderBy('date', 'desc'));
+      q = limitCount
+        ? query(col, where('studentId', '==', studentIdFilter), orderBy('date', 'desc'), limit(limitCount))
+        : query(col, where('studentId', '==', studentIdFilter), orderBy('date', 'desc'));
     } else if (monthsBack) {
       const cutoff = new Date();
       cutoff.setMonth(cutoff.getMonth() - monthsBack);
@@ -215,7 +217,7 @@ export function useLessonLogs(coachId: string | undefined, dateFilter?: string, 
     });
 
     return () => unsubscribe();
-  }, [coachId, dateFilter, studentIdFilter, monthsBack]);
+  }, [coachId, dateFilter, studentIdFilter, monthsBack, limitCount]);
 
   return { lessonLogs, loading };
 }
@@ -310,7 +312,7 @@ export function useWallets(coachId: string | undefined) {
   return { wallets, loading };
 }
 
-export function useWalletTransactions(coachId: string | undefined, walletId: string | undefined, monthsBack?: number) {
+export function useWalletTransactions(coachId: string | undefined, walletId: string | undefined, limitCount?: number) {
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -323,15 +325,9 @@ export function useWalletTransactions(coachId: string | undefined, walletId: str
 
     const firestore = db as Firestore;
     const col = collection(firestore, 'coaches', coachId, 'wallets', walletId, 'transactions');
-    let q;
-    if (monthsBack) {
-      const cutoff = new Date();
-      cutoff.setMonth(cutoff.getMonth() - monthsBack);
-      const cutoffStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-01`;
-      q = query(col, where('date', '>=', cutoffStr), orderBy('date', 'desc'));
-    } else {
-      q = query(col, orderBy('date', 'desc'));
-    }
+    const q = limitCount
+      ? query(col, orderBy('createdAt', 'desc'), limit(limitCount))
+      : query(col, orderBy('createdAt', 'desc'));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const items: WalletTransaction[] = snapshot.docs.map((d) => ({
@@ -350,7 +346,7 @@ export function useWalletTransactions(coachId: string | undefined, walletId: str
     });
 
     return () => unsubscribe();
-  }, [coachId, walletId, monthsBack]);
+  }, [coachId, walletId, limitCount]);
 
   return { transactions, loading };
 }

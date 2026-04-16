@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { collection, doc, addDoc, updateDoc, serverTimestamp, increment, Firestore, onSnapshot, query, orderBy, where } from 'firebase/firestore';
+import { collection, doc, addDoc, updateDoc, serverTimestamp, increment, Firestore, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useWallets, useWalletTransactions, useStudents, useBookings, useLessonLogs } from '@/hooks/useCoachData';
@@ -65,8 +65,8 @@ function WalletDetail({
   onAdjust: () => void;
   showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }) {
-  const [txnMonths, setTxnMonths] = useState(1);
-  const { transactions } = useWalletTransactions(coachId, wallet.id, txnMonths);
+  const [txnLimit, setTxnLimit] = useState(20);
+  const { transactions } = useWalletTransactions(coachId, wallet.id, txnLimit);
   const linkedStudents = students.filter((s) => wallet.studentIds.includes(s.id));
   const unlinkedStudents = students.filter(
     (s) => !wallets.some((w) => w.studentIds.includes(s.id))
@@ -202,12 +202,14 @@ function WalletDetail({
                 </p>
               </div>
             ))}
+            {transactions.length >= txnLimit && (
             <button
-              onClick={() => setTxnMonths(txnMonths + 1)}
+              onClick={() => setTxnLimit(txnLimit + 20)}
               className="w-full text-center py-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
             >
               Load more
             </button>
+            )}
           </div>
         )}
       </div>
@@ -231,7 +233,7 @@ export default function PaymentsPage() {
   const { lessonLogs } = useLessonLogs(coach?.id, undefined, undefined, 1);
 
   // All transactions across wallets (for History tab)
-  const [historyMonths, setHistoryMonths] = useState(1);
+  const [historyLimit, setHistoryLimit] = useState(20);
   const [allTransactions, setAllTransactions] = useState<(WalletTransaction & { walletName: string })[]>([]);
 
   useEffect(() => {
@@ -240,15 +242,11 @@ export default function PaymentsPage() {
     const unsubs: (() => void)[] = [];
     const txnsByWallet = new Map<string, (WalletTransaction & { walletName: string })[]>();
 
-    const cutoff = new Date();
-    cutoff.setMonth(cutoff.getMonth() - historyMonths);
-    const cutoffStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-01`;
-
     for (const wallet of wallets) {
       const q = query(
         collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'),
-        where('date', '>=', cutoffStr),
-        orderBy('date', 'desc')
+        orderBy('createdAt', 'desc'),
+        limit(historyLimit)
       );
       const unsub = onSnapshot(q, (snap) => {
         const items = snap.docs.map((d) => ({
@@ -272,7 +270,7 @@ export default function PaymentsPage() {
     }
 
     return () => unsubs.forEach((u) => u());
-  }, [coach?.id, wallets, historyMonths]);
+  }, [coach?.id, wallets, historyLimit]);
 
   // Wallet detail panel
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
@@ -627,12 +625,14 @@ export default function PaymentsPage() {
                   ))}
                 </tbody>
               </table>
+              {allTransactions.length >= historyLimit && (
               <button
-                onClick={() => setHistoryMonths(historyMonths + 1)}
+                onClick={() => setHistoryLimit(historyLimit + 20)}
                 className="w-full text-center py-3 text-sm text-blue-600 dark:text-blue-400 hover:underline border-t border-gray-100 dark:border-[#333333]"
               >
                 Load more
               </button>
+              )}
             </div>
           )}
         </div>
