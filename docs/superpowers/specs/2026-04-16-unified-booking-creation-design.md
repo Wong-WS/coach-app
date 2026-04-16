@@ -28,9 +28,22 @@ The "+ Add Class" button on the Overview page opens a single modal that handles 
 - **Lesson type**: Private (default) | Group
 - **Student**: search/autocomplete for existing students, or type a new name
 - **Phone**: auto-fills for existing students, required for new
-- **Wallet**: optional dropdown showing wallets the student is linked to
+- **Wallet**: dropdown with options:
+  - Existing wallets the student is linked to (auto-selected if one exists)
+  - Other existing wallets (for linking to a shared family wallet)
+  - "+ Create new wallet" — reveals an editable **Wallet name** text field, defaulting to the student's name
+  - "No wallet"
+- **Wallet name** (only when "+ Create new wallet" is selected): text input, auto-filled with student's name, editable (e.g. coach can change "Sarah Wong" to "Mrs. Wong")
 - **Price (RM)**: number input
 - **Notes**: optional textarea
+
+**Auto-create wallet for new students:**
+
+When a new student is entered (not found in existing records), the wallet dropdown defaults to "+ Create new wallet" with the wallet name pre-filled as the student's name. The coach can edit the name (e.g. to a parent's name) or pick an existing wallet instead.
+
+**Overlap warning:**
+
+When saving a recurring booking, the form checks for time conflicts with existing recurring bookings on the same day. If an overlap is found, a warning is shown (e.g. "This overlaps with Sarah Wong (Thu 9:00-10:00)") but the coach can still save.
 
 **Group lesson behavior:**
 
@@ -38,10 +51,12 @@ When "Group" is selected, an "+ Add Student" button appears below the first stud
 
 Example:
 ```
-Student 1: Sarah Wong  | Mrs. Wong wallet | RM 80
-Student 2: James Wong  | Mrs. Wong wallet | RM 60
+Student 1: Sarah Wong  | [+ Create new] "Mrs. Wong" | RM 80
+Student 2: James Wong  | Mrs. Wong (from above)     | RM 60
                                [+ Add Student]
 ```
+
+When adding a second student in a group, the dropdown includes any wallet created by a prior student row in the same form — so the coach can immediately share a wallet without leaving the form.
 
 On mark-done, each student's wallet gets charged individually (separate charge transactions per student).
 
