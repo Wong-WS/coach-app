@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, doc, onSnapshot, query, where, orderBy, limit, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Booking, Location, WorkingHours, DayOfWeek, Student, LessonLog, ClassException, Payment } from '@/types';
+import { Booking, Location, WorkingHours, DayOfWeek, Student, LessonLog, ClassException, Payment, Wallet, WalletTransaction } from '@/types';
 
 export function useWorkingHours(coachId: string | undefined) {
   const [workingHours, setWorkingHours] = useState<WorkingHours[]>([]);
@@ -309,6 +309,79 @@ export function usePayments(coachId: string | undefined, limitCount?: number) {
   }, [coachId, limitCount]);
 
   return { payments, loading };
+}
+
+export function useWallets(coachId: string | undefined) {
+  const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!coachId || !db) {
+      setLoading(false);
+      return;
+    }
+
+    const firestore = db as Firestore;
+    const q = query(
+      collection(firestore, 'coaches', coachId, 'wallets'),
+      orderBy('name', 'asc')
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items: Wallet[] = snapshot.docs.map((d) => ({
+        id: d.id,
+        name: d.data().name,
+        balance: d.data().balance ?? 0,
+        studentIds: d.data().studentIds ?? [],
+        createdAt: d.data().createdAt?.toDate() || new Date(),
+        updatedAt: d.data().updatedAt?.toDate() || new Date(),
+      }));
+      setWallets(items);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [coachId]);
+
+  return { wallets, loading };
+}
+
+export function useWalletTransactions(coachId: string | undefined, walletId: string | undefined, limitCount?: number) {
+  const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!coachId || !walletId || !db) {
+      setTransactions([]);
+      setLoading(false);
+      return;
+    }
+
+    const firestore = db as Firestore;
+    const col = collection(firestore, 'coaches', coachId, 'wallets', walletId, 'transactions');
+    const q = limitCount
+      ? query(col, orderBy('createdAt', 'desc'), limit(limitCount))
+      : query(col, orderBy('createdAt', 'desc'));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items: WalletTransaction[] = snapshot.docs.map((d) => ({
+        id: d.id,
+        type: d.data().type,
+        amount: d.data().amount ?? 0,
+        balanceAfter: d.data().balanceAfter ?? 0,
+        description: d.data().description ?? '',
+        studentId: d.data().studentId ?? undefined,
+        lessonLogId: d.data().lessonLogId ?? undefined,
+        date: d.data().date,
+        createdAt: d.data().createdAt?.toDate() || new Date(),
+      }));
+      setTransactions(items);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [coachId, walletId, limitCount]);
+
+  return { transactions, loading };
 }
 
 // Hook for public page - fetches coach by slug
