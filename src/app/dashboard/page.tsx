@@ -884,10 +884,10 @@ export default function DashboardPage() {
               return (
                 <div
                   key={booking.id}
-                  className={`flex items-center gap-3 p-4 sm:p-5 ${isDone ? 'opacity-50' : ''}`}
+                  className="flex items-center gap-3 p-4 sm:p-5"
                 >
                   {/* Status indicator */}
-                  <div className="flex-shrink-0">
+                  <div className={`flex-shrink-0 ${isDone ? 'opacity-50' : ''}`}>
                     {isDone ? (
                       <div className="w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
                         <svg className="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -902,7 +902,7 @@ export default function DashboardPage() {
                   </div>
 
                   {/* Info */}
-                  <div className="flex-1 min-w-0">
+                  <div className={`flex-1 min-w-0 ${isDone ? 'opacity-50' : ''}`}>
                     <div className="flex items-center gap-2 flex-wrap">
                       <div className="flex items-center gap-1.5">
                         {!(booking.startDate && booking.startDate === booking.endDate) && (
@@ -941,7 +941,7 @@ export default function DashboardPage() {
                   </div>
 
                   {/* Price + type */}
-                  <div className="text-right flex-shrink-0">
+                  <div className={`text-right flex-shrink-0 ${isDone ? 'opacity-50' : ''}`}>
                     {(booking.price ?? 0) > 0 && (
                       <p className="text-sm font-medium text-green-600 dark:text-green-400">
                         RM {booking.price}
