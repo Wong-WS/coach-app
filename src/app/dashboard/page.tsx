@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { collection, doc, writeBatch, serverTimestamp, increment, getDoc, updateDoc, deleteDoc, addDoc, Firestore } from 'firebase/firestore';
+import { collection, doc, writeBatch, serverTimestamp, increment, updateDoc, deleteDoc, addDoc, Firestore, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
-import { useLocations, useBookings, useLessonLogs, useClassExceptions, useStudents } from '@/hooks/useCoachData';
+import { useLocations, useBookings, useLessonLogs, useClassExceptions, useStudents, useWallets } from '@/hooks/useCoachData';
 import { Button, Input, Modal, Select } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
-import { Booking, Student } from '@/types';
+import { Booking } from '@/types';
 import { formatTimeDisplay } from '@/lib/availability-engine';
 import { findOrCreateStudent } from '@/lib/students';
 import { getClassesForDate, getDayOfWeekForDate, isRescheduledToDate, getCancelledClassesForDate } from '@/lib/class-schedule';
@@ -40,6 +40,7 @@ export default function DashboardPage() {
   const { locations } = useLocations(coach?.id);
   const { bookings } = useBookings(coach?.id, 'confirmed');
   const { students } = useStudents(coach?.id);
+  const { wallets } = useWallets(coach?.id);
   const { showToast } = useToast();
 
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -64,14 +65,6 @@ export default function DashboardPage() {
     isPrimary: boolean;
     paySeparately: boolean;
   }>>([]);
-  const [packageWarning, setPackageWarning] = useState<{
-    studentName: string;
-    remaining: number;
-    total: number;
-    lastPrice: number;
-    credit: number;
-  } | null>(null);
-
   const [deletingAdHocGroup, setDeletingAdHocGroup] = useState<number | null>(null);
 
   // Add Class modal state
@@ -260,165 +253,51 @@ export default function DashboardPage() {
         batch.set(logRef, logData);
 
         const studentRef = doc(firestore, 'coaches', coach.id, 'students', attendee.studentId);
-        const studentRecord = students.find((s) => s.id === attendee.studentId);
-        const updateData: Record<string, unknown> = {
-          updatedAt: serverTimestamp(),
-        };
 
-        const attendeePaySeparately = hasLinkedStudents ? attendee.paySeparately : paySeparately;
-        if (attendeePaySeparately) {
-          // Pay separately — log lesson, add to pendingPayment, skip package/credit
-          if (attendee.price > 0) {
-            updateData.pendingPayment = increment(attendee.price);
-          }
-          batch.update(studentRef, updateData);
-          continue;
-        }
+        // Find wallet for this attendee
+        const walletId = booking.studentWallets?.[attendee.studentId]
+          || booking.walletId
+          || wallets.find((w) => w.studentIds.includes(attendee.studentId))?.id;
 
-        if (studentRecord?.useMonetaryBalance) {
-          // Monetary balance mode: deduct price from balance
-          const newBalance = (studentRecord.monetaryBalance ?? 0) - attendee.price;
-          updateData.monetaryBalance = newBalance;
-          updateData.pendingPayment = newBalance < 0 ? Math.abs(newBalance) : 0;
-
-          // Check for auto-rollover when balance crosses zero
-          const oldBalance = studentRecord.monetaryBalance ?? 0;
-          if (oldBalance > 0 && newBalance <= 0 && studentRecord.nextPrepaidTotal && studentRecord.nextPrepaidTotal > 0) {
-            const renewalValue = (studentRecord.lessonRate ?? 0) * studentRecord.nextPrepaidTotal;
-            const postRenewalBalance = newBalance + renewalValue;
-            updateData.monetaryBalance = postRenewalBalance;
-            updateData.pendingPayment = postRenewalBalance < 0 ? Math.abs(postRenewalBalance) : 0;
-            updateData.packageSize = studentRecord.nextPrepaidTotal;
-            updateData.nextPrepaidTotal = null;
-            updateData.nextPrepaidPaidAt = null;
-          }
-
-          batch.update(studentRef, updateData);
-          continue;
-        }
-
-        if ((studentRecord?.prepaidTotal ?? 0) > 0) {
-          updateData.prepaidUsed = increment(1);
-        }
-
-        let studentBasePrice = 0;
-        if (studentRecord?.lessonRate != null && studentRecord.lessonRate > 0) {
-          studentBasePrice = studentRecord.lessonRate;
-        } else if (hasLinkedStudents && booking.studentPrices?.[attendee.studentId] != null) {
-          studentBasePrice = booking.studentPrices[attendee.studentId];
-        } else if (!hasLinkedStudents) {
-          studentBasePrice = booking.price ?? 0;
-        }
-        if (studentBasePrice > 0 && attendee.price < studentBasePrice) {
-          updateData.credit = increment(studentBasePrice - attendee.price);
-        }
-
-        let pendingPaymentIncrement = 0;
-
-        if (studentRecord?.payPerLesson && attendee.price > 0) {
-          pendingPaymentIncrement += attendee.price;
-        }
-
-        // Handle package exhaustion in the same batch
-        if (studentRecord && studentRecord.prepaidTotal > 0) {
-          const remainingAfter = studentRecord.prepaidTotal - (studentRecord.prepaidUsed + 1);
-          const wasAlreadyExhausted = studentRecord.prepaidUsed >= studentRecord.prepaidTotal;
-          if (wasAlreadyExhausted) {
-            // Package already used up — just increment prepaidUsed, no extra charge
-          } else if (remainingAfter <= 0) {
-            if (studentRecord.nextPrepaidTotal && studentRecord.nextPrepaidTotal > 0) {
-              // Auto-rollover into next package
-              const overflow = Math.max(0, (studentRecord.prepaidUsed + 1) - studentRecord.prepaidTotal);
-              updateData.prepaidTotal = studentRecord.nextPrepaidTotal;
-              updateData.prepaidUsed = overflow;
-              updateData.nextPrepaidTotal = null;
-              updateData.nextPrepaidPaidAt = null;
-            } else {
-              // Add package renewal price to pending payment
-              let perLessonPrice = 0;
-              if (studentRecord.lessonRate != null && studentRecord.lessonRate > 0) {
-                perLessonPrice = studentRecord.lessonRate;
-              } else if (hasLinkedStudents && booking.studentPrices?.[attendee.studentId] != null) {
-                perLessonPrice = booking.studentPrices[attendee.studentId];
-              } else if (!hasLinkedStudents) {
-                perLessonPrice = booking.price ?? 0;
-              }
-              const packagePrice = perLessonPrice * studentRecord.prepaidTotal;
-              if (packagePrice > 0) {
-                pendingPaymentIncrement += packagePrice;
-              }
-            }
+        if (walletId && attendee.price > 0) {
+          const wallet = wallets.find((w) => w.id === walletId);
+          if (wallet) {
+            const newBalance = wallet.balance - attendee.price;
+            const txnRef = doc(collection(firestore, 'coaches', coach.id, 'wallets', walletId, 'transactions'));
+            batch.set(txnRef, {
+              type: 'charge',
+              amount: attendee.price,
+              balanceAfter: newBalance,
+              description: `Lesson — ${attendee.studentName} (${booking.startTime})`,
+              studentId: attendee.studentId,
+              lessonLogId: logRef.id,
+              date: selectedDateStr,
+              createdAt: serverTimestamp(),
+            });
+            const walletRef = doc(firestore, 'coaches', coach.id, 'wallets', walletId);
+            batch.update(walletRef, {
+              balance: increment(-attendee.price),
+              updatedAt: serverTimestamp(),
+            });
           }
         }
 
-        if (pendingPaymentIncrement > 0) {
-          updateData.pendingPayment = increment(pendingPaymentIncrement);
-        }
-
-        batch.update(studentRef, updateData);
+        // Still update student updatedAt timestamp
+        batch.update(studentRef, { updatedAt: serverTimestamp() });
       }
 
       await batch.commit();
 
-      // Show post-commit UI notifications (package warnings, auto-renewals)
+      // Post-commit: show wallet balance notification
       for (const attendee of resolvedAttendees) {
-        const studentRecord = students.find((s) => s.id === attendee.studentId);
-        // Monetary balance notifications
-        if (studentRecord?.useMonetaryBalance) {
-          const oldBalance = studentRecord.monetaryBalance ?? 0;
-          const newBalance = oldBalance - attendee.price;
-          if (oldBalance > 0 && newBalance <= 0) {
-            if (studentRecord.nextPrepaidTotal && studentRecord.nextPrepaidTotal > 0) {
-              showToast(`${attendee.studentName}'s package auto-renewed (${studentRecord.nextPrepaidTotal} lessons)!`, 'success');
-            } else {
-              const rate = studentRecord.lessonRate ?? 0;
-              const pkgSize = studentRecord.packageSize ?? 0;
-              const packagePrice = rate * pkgSize;
-              if (packagePrice > 0) {
-                setPackageWarning({
-                  studentName: attendee.studentName,
-                  remaining: 0,
-                  total: pkgSize,
-                  lastPrice: packagePrice,
-                  credit: 0,
-                });
-              } else {
-                showToast(`${attendee.studentName}'s balance is now -RM ${Math.abs(newBalance)}`, 'info');
-              }
-              break;
-            }
-          } else if (newBalance < 0 && oldBalance <= 0) {
-            // Already negative — show a reminder
-            showToast(`${attendee.studentName}'s balance: -RM ${Math.abs(newBalance)}`, 'info');
-          }
-          continue;
-        }
-        if (studentRecord && studentRecord.prepaidTotal > 0) {
-          const remainingAfter = studentRecord.prepaidTotal - (studentRecord.prepaidUsed + 1);
-          if (remainingAfter <= 0) {
-            if (studentRecord.nextPrepaidTotal && studentRecord.nextPrepaidTotal > 0) {
-              showToast(`${attendee.studentName}'s package auto-renewed (${studentRecord.nextPrepaidTotal} lessons)!`, 'success');
-            } else {
-              let perLessonPrice = 0;
-              if (studentRecord.lessonRate != null && studentRecord.lessonRate > 0) {
-                perLessonPrice = studentRecord.lessonRate;
-              } else if (hasLinkedStudents && booking.studentPrices?.[attendee.studentId] != null) {
-                perLessonPrice = booking.studentPrices[attendee.studentId];
-              } else if (!hasLinkedStudents) {
-                perLessonPrice = booking.price ?? 0;
-              }
-              const packagePrice = perLessonPrice * studentRecord.prepaidTotal;
-              const currentCredit = (studentRecord.credit ?? 0) + (attendee.price < perLessonPrice ? perLessonPrice - attendee.price : 0);
-
-              setPackageWarning({
-                studentName: attendee.studentName,
-                remaining: remainingAfter,
-                total: studentRecord.prepaidTotal,
-                lastPrice: packagePrice,
-                credit: currentCredit,
-              });
-              break;
-            }
+        const walletId = booking.studentWallets?.[attendee.studentId]
+          || booking.walletId
+          || wallets.find((w) => w.studentIds.includes(attendee.studentId))?.id;
+        if (walletId) {
+          const wallet = wallets.find((w) => w.id === walletId);
+          if (wallet && wallet.balance - attendee.price < 0) {
+            showToast(`${wallet.name} balance is now negative`, 'info');
+            break;
           }
         }
       }
@@ -755,38 +634,38 @@ export default function DashboardPage() {
         // Delete the lesson log
         batch.delete(doc(firestore, 'coaches', coach.id, 'lessonLogs', log.id));
 
-        // Reverse student updates
-        const student = students.find((s) => s.id === log.studentId);
-        if (student) {
-          const updateData: Record<string, unknown> = {
-            updatedAt: serverTimestamp(),
-          };
-
-          if (log.paySeparately) {
-            // Pay-separately lessons only added to pendingPayment, never touched prepaidUsed
-            if (log.price > 0) {
-              updateData.pendingPayment = increment(-log.price);
-            }
-          } else if (student.useMonetaryBalance) {
-            // Monetary balance: add price back to balance
-            const newBalance = (student.monetaryBalance ?? 0) + log.price;
-            updateData.monetaryBalance = newBalance;
-            updateData.pendingPayment = newBalance < 0 ? Math.abs(newBalance) : 0;
-          } else {
-            // Normal path: reverse prepaidUsed, credit, and pay-per-lesson pendingPayment
-            if ((student.prepaidTotal ?? 0) > 0) {
-              updateData.prepaidUsed = increment(-1);
-            }
-            const basePrice = student.lessonRate ?? 0;
-            if (log.price < basePrice && basePrice > 0) {
-              updateData.credit = increment(-(basePrice - log.price));
-            }
-            if (student.payPerLesson && log.price > 0) {
-              updateData.pendingPayment = increment(-log.price);
-            }
+        // Find and reverse any wallet transaction for this lesson
+        for (const walletDoc of wallets) {
+          const txnQuery = query(
+            collection(firestore, 'coaches', coach.id, 'wallets', walletDoc.id, 'transactions'),
+            where('lessonLogId', '==', log.id)
+          );
+          const txnSnap = await getDocs(txnQuery);
+          if (!txnSnap.empty) {
+            const originalTxn = txnSnap.docs[0].data();
+            const newBalance = walletDoc.balance + originalTxn.amount;
+            await addDoc(collection(firestore, 'coaches', coach.id, 'wallets', walletDoc.id, 'transactions'), {
+              type: 'refund',
+              amount: originalTxn.amount,
+              balanceAfter: newBalance,
+              description: `Reversed: ${originalTxn.description}`,
+              studentId: originalTxn.studentId,
+              date: getDateString(new Date()),
+              createdAt: serverTimestamp(),
+            });
+            await updateDoc(doc(firestore, 'coaches', coach.id, 'wallets', walletDoc.id), {
+              balance: increment(originalTxn.amount),
+              updatedAt: serverTimestamp(),
+            });
+            break;
           }
+        }
 
-          batch.update(doc(firestore, 'coaches', coach.id, 'students', log.studentId), updateData);
+        // Update student timestamp only
+        if (students.find((s) => s.id === log.studentId)) {
+          batch.update(doc(firestore, 'coaches', coach.id, 'students', log.studentId), {
+            updatedAt: serverTimestamp(),
+          });
         }
       }
 
@@ -1580,48 +1459,20 @@ export default function DashboardPage() {
                 />
 
                 {(() => {
-                  if (markDonePaySeparately) return null;
-                  const student = students.find((s) =>
-                    s.clientName === markDoneBooking.clientName && s.clientPhone === (markDoneBooking.clientPhone || '')
-                  );
-                  if (student?.useMonetaryBalance) {
-                    const balanceAfter = (student.monetaryBalance ?? 0) - markDonePrice;
+                  const attendee = markDoneAttendees[0];
+                  if (!attendee) return null;
+                  const walletId = markDoneBooking?.studentWallets?.[attendee.studentId]
+                    || markDoneBooking?.walletId
+                    || wallets.find((w) => w.studentIds.includes(attendee.studentId))?.id;
+                  const wallet = walletId ? wallets.find((w) => w.id === walletId) : null;
+                  if (wallet) {
                     return (
-                      <p className={`text-xs ${balanceAfter >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                        Balance after: RM {balanceAfter.toFixed(0)}
-                        {(student.lessonRate ?? 0) > 0 && ` (~${Math.max(0, Math.floor(balanceAfter / student.lessonRate!))} lessons)`}
+                      <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">
+                        {wallet.name}: RM {wallet.balance} → RM {wallet.balance - markDonePrice}
                       </p>
                     );
                   }
-                  const basePrice = (student?.lessonRate != null && student.lessonRate > 0)
-                    ? student.lessonRate
-                    : (markDoneBooking.price ?? 0);
-                  if (basePrice > 0 && markDonePrice < basePrice) {
-                    return (
-                      <p className="text-xs text-blue-600 dark:text-blue-400">
-                        RM {(basePrice - markDonePrice).toFixed(0)} will be added as credit
-                      </p>
-                    );
-                  }
-                  return null;
-                })()}
-
-                {(() => {
-                  const student = students.find((s) =>
-                    s.clientName === markDoneBooking.clientName && s.clientPhone === (markDoneBooking.clientPhone || '')
-                  );
-                  if (!student || ((student.prepaidTotal ?? 0) === 0 && !student.useMonetaryBalance)) return null;
-                  return (
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={markDonePaySeparately}
-                        onChange={(e) => setMarkDonePaySeparately(e.target.checked)}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm text-gray-700 dark:text-zinc-300">Pay separately <span className="text-xs text-gray-400 dark:text-zinc-500">(won&apos;t use package slot · adds to pending payment)</span></span>
-                    </label>
-                  );
+                  return <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">No wallet (pay-per-lesson)</p>;
                 })()}
               </>
             )}
@@ -1901,55 +1752,6 @@ export default function DashboardPage() {
         </div>
       </Modal>
 
-      {/* Package warning modal */}
-      <Modal
-        isOpen={packageWarning !== null}
-        onClose={() => setPackageWarning(null)}
-        title="Package Finished"
-      >
-        {packageWarning && (
-          <div className="space-y-4">
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4">
-              <p className="text-sm text-amber-800 dark:text-amber-300">
-                <span className="font-medium">{packageWarning.studentName}</span>
-                {packageWarning.remaining === 0
-                  ? ' has used all lessons in their package.'
-                  : ` is ${Math.abs(packageWarning.remaining)} lesson${Math.abs(packageWarning.remaining) !== 1 ? 's' : ''} over their package.`}
-              </p>
-            </div>
-            {packageWarning.lastPrice > 0 && (
-              <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-4">
-                <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Next payment</p>
-                {packageWarning.credit > 0 ? (
-                  <>
-                    <p className="text-sm text-gray-500 dark:text-zinc-400 line-through">
-                      RM {packageWarning.lastPrice}
-                    </p>
-                    <p className="text-xl font-semibold text-gray-900 dark:text-zinc-100">
-                      RM {packageWarning.lastPrice - packageWarning.credit}
-                    </p>
-                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                      RM {packageWarning.credit} credit applied
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-xl font-semibold text-gray-900 dark:text-zinc-100">
-                    RM {packageWarning.lastPrice}
-                  </p>
-                )}
-                <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">
-                  Based on {packageWarning.total} lessons at RM {(packageWarning.lastPrice / packageWarning.total).toFixed(0)}/lesson
-                </p>
-              </div>
-            )}
-            <div className="flex justify-end">
-              <Button onClick={() => setPackageWarning(null)}>
-                Got it
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
     </div>
   );
 }
