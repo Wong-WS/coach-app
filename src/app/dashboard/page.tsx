@@ -92,7 +92,9 @@ export default function DashboardPage() {
     studentId: '', displayName: '', phone: '', isNew: true,
     walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
   }]);
-  const [studentSearch, setStudentSearch] = useState('');
+  const [studentSearches, setStudentSearches] = useState<string[]>(['']);
+  // Legacy alias for row 0 search (used in filteredStudentList)
+  const studentSearch = studentSearches[0] ?? '';
 
   // Overlap warning
   const [overlapWarning, setOverlapWarning] = useState('');
@@ -157,6 +159,13 @@ export default function DashboardPage() {
     return selectableStudentList.filter((s) => s.displayName.toLowerCase().includes(q));
   }, [selectableStudentList, studentSearch]);
 
+  const getFilteredStudentsForRow = (rowIndex: number) => {
+    const search = studentSearches[rowIndex] ?? '';
+    if (!search.trim()) return selectableStudentList;
+    const q = search.toLowerCase();
+    return selectableStudentList.filter((s) => s.displayName.toLowerCase().includes(q));
+  };
+
   const generateTimeOptions = () => {
     const options: string[] = [];
     for (let h = 6; h < 24; h++) {
@@ -184,7 +193,7 @@ export default function DashboardPage() {
       studentId: '', displayName: '', phone: '', isNew: true,
       walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
     }]);
-    setStudentSearch('');
+    setStudentSearches(['']);
     setOverlapWarning('');
   };
 
@@ -254,6 +263,76 @@ export default function DashboardPage() {
       // Attach wallet to booking if one was selected/created
       if (walletId) {
         bookingData.walletId = walletId;
+      }
+
+      // Handle group booking — resolve linked students
+      if (studentRows.length > 1) {
+        const linkedIds: string[] = [];
+        const studentPricesMap: Record<string, number> = {};
+        const studentWalletsMap: Record<string, string> = {};
+
+        // Primary student
+        studentPricesMap[primaryStudentId] = primaryRow.price;
+        if (walletId) studentWalletsMap[primaryStudentId] = walletId;
+
+        // Track wallets created per row index (for pending: references)
+        const createdWalletsByRow = new Map<number, string>();
+        if (walletId) createdWalletsByRow.set(0, walletId);
+
+        // Linked students (rows 1+)
+        for (let i = 1; i < studentRows.length; i++) {
+          const row = studentRows[i];
+          if (!row.displayName) continue;
+
+          const linkedStudentId = await findOrCreateStudent(
+            firestore, coach.id, row.displayName, row.phone
+          );
+          linkedIds.push(linkedStudentId);
+          studentPricesMap[linkedStudentId] = row.price;
+
+          // Handle wallet for this linked student
+          let linkedWalletId: string | undefined;
+          if (row.walletOption === 'create' && row.newWalletName) {
+            const wRef = await addDoc(collection(firestore, 'coaches', coach.id, 'wallets'), {
+              name: row.newWalletName,
+              balance: 0,
+              studentIds: [linkedStudentId],
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+            linkedWalletId = wRef.id;
+            createdWalletsByRow.set(i, linkedWalletId);
+          } else if (row.walletOption === 'existing') {
+            if (row.existingWalletId.startsWith('pending:')) {
+              // References a wallet being created by a prior row
+              const refIndex = parseInt(row.existingWalletId.split(':')[1]);
+              linkedWalletId = createdWalletsByRow.get(refIndex);
+            } else {
+              linkedWalletId = row.existingWalletId;
+            }
+
+            // Link student to that wallet
+            if (linkedWalletId) {
+              const wRef = doc(firestore, 'coaches', coach.id, 'wallets', linkedWalletId);
+              const wSnap = await getDoc(wRef);
+              const ids: string[] = wSnap.data()?.studentIds || [];
+              if (!ids.includes(linkedStudentId)) {
+                await updateDoc(wRef, {
+                  studentIds: [...ids, linkedStudentId],
+                  updatedAt: serverTimestamp(),
+                });
+              }
+            }
+          }
+
+          if (linkedWalletId) studentWalletsMap[linkedStudentId] = linkedWalletId;
+        }
+
+        bookingData.linkedStudentIds = linkedIds;
+        bookingData.studentPrices = studentPricesMap;
+        if (Object.keys(studentWalletsMap).length > 0) {
+          bookingData.studentWallets = studentWalletsMap;
+        }
       }
 
       await addDoc(collection(firestore, 'coaches', coach.id, 'bookings'), bookingData);
@@ -1565,115 +1644,178 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Student */}
+          {/* Student rows */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Student</label>
-            <div className="relative">
-              <input
-                type="text"
-                value={studentRows[0].displayName}
-                onChange={e => {
-                  const val = e.target.value;
-                  setStudentSearch(val);
-                  updateStudentRow(0, {
-                    displayName: val,
-                    isNew: true,
-                    studentId: '',
-                    // Auto-default to create wallet for new students
-                    walletOption: val.trim() ? 'create' : 'none',
-                    newWalletName: val.trim() ? val : '',
-                    existingWalletId: '',
-                  });
-                }}
-                placeholder="Search or type new student name"
-                className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
-              />
-              {studentSearch && (
-                <div className="absolute z-10 mt-1 w-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg max-h-40 overflow-y-auto shadow-lg">
-                  {filteredStudentList.map(s => (
-                    <button
-                      key={s.studentId}
-                      className="w-full text-left px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 hover:bg-gray-50 dark:hover:bg-zinc-700"
-                      onClick={() => {
-                        const studentRecord = students.find(st => st.id === s.studentId);
-                        const linkedWallet = wallets.find(w => w.studentIds.includes(s.studentId));
-                        updateStudentRow(0, {
-                          studentId: s.studentId,
-                          displayName: s.displayName,
-                          phone: studentRecord?.clientPhone || '',
-                          isNew: false,
-                          walletOption: linkedWallet ? 'existing' : 'none',
-                          existingWalletId: linkedWallet?.id || '',
-                        });
-                        setStudentSearch('');
-                      }}
-                    >
-                      {s.displayName}
-                    </button>
-                  ))}
-                  {filteredStudentList.length === 0 && (
-                    <p className="px-3 py-2 text-sm text-gray-400 dark:text-zinc-500">No students found — will create new</p>
+            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
+              {lessonMode === 'group' ? 'Students' : 'Student'}
+            </label>
+            {studentRows.map((row, i) => (
+              <div
+                key={i}
+                className={`${lessonMode === 'group' ? 'mb-3 p-3 rounded-lg bg-zinc-800/50 border border-zinc-700' : ''}`}
+              >
+                {lessonMode === 'group' && (
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-medium text-zinc-400">Student {i + 1}</span>
+                    {i > 0 && (
+                      <button
+                        onClick={() => {
+                          setStudentRows(rows => rows.filter((_, ri) => ri !== i));
+                          setStudentSearches(searches => searches.filter((_, ri) => ri !== i));
+                        }}
+                        className="text-xs text-red-500 hover:text-red-400"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Student name autocomplete */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={row.displayName}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setStudentSearches(searches => {
+                        const next = [...searches];
+                        next[i] = val;
+                        return next;
+                      });
+                      updateStudentRow(i, {
+                        displayName: val,
+                        isNew: true,
+                        studentId: '',
+                        walletOption: val.trim() ? 'create' : 'none',
+                        newWalletName: val.trim() ? val : '',
+                        existingWalletId: '',
+                      });
+                    }}
+                    placeholder="Search or type new student name"
+                    className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
+                  />
+                  {(studentSearches[i] ?? '') && (
+                    <div className="absolute z-10 mt-1 w-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg max-h-40 overflow-y-auto shadow-lg">
+                      {getFilteredStudentsForRow(i).map(s => (
+                        <button
+                          key={s.studentId}
+                          className="w-full text-left px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 hover:bg-gray-50 dark:hover:bg-zinc-700"
+                          onClick={() => {
+                            const studentRecord = students.find(st => st.id === s.studentId);
+                            const linkedWallet = wallets.find(w => w.studentIds.includes(s.studentId));
+                            updateStudentRow(i, {
+                              studentId: s.studentId,
+                              displayName: s.displayName,
+                              phone: studentRecord?.clientPhone || '',
+                              isNew: false,
+                              walletOption: linkedWallet ? 'existing' : 'none',
+                              existingWalletId: linkedWallet?.id || '',
+                              newWalletName: '',
+                            });
+                            setStudentSearches(searches => {
+                              const next = [...searches];
+                              next[i] = '';
+                              return next;
+                            });
+                          }}
+                        >
+                          {s.displayName}
+                        </button>
+                      ))}
+                      {getFilteredStudentsForRow(i).length === 0 && (
+                        <p className="px-3 py-2 text-sm text-gray-400 dark:text-zinc-500">No students found — will create new</p>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
-            <input
-              type="tel"
-              value={studentRows[0].phone}
-              onChange={e => updateStudentRow(0, { phone: e.target.value })}
-              placeholder="Phone number"
-              className="w-full mt-2 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
-            />
 
-            {/* Wallet selection for student row */}
-            <div className="mt-2">
-              <label className="block text-xs font-medium mb-1 text-zinc-400">Wallet</label>
-              <select
-                value={studentRows[0].walletOption === 'existing' ? studentRows[0].existingWalletId : studentRows[0].walletOption}
-                onChange={e => {
-                  const val = e.target.value;
-                  if (val === 'none') {
-                    updateStudentRow(0, { walletOption: 'none', existingWalletId: '', newWalletName: '' });
-                  } else if (val === 'create') {
-                    updateStudentRow(0, { walletOption: 'create', existingWalletId: '', newWalletName: studentRows[0].displayName });
-                  } else {
-                    updateStudentRow(0, { walletOption: 'existing', existingWalletId: val, newWalletName: '' });
-                  }
-                }}
-                className="w-full rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm"
-              >
-                <option value="none">No wallet</option>
-                {wallets.map(w => (
-                  <option key={w.id} value={w.id}>{w.name} (RM {w.balance})</option>
-                ))}
-                <option value="create">+ Create new wallet</option>
-              </select>
-            </div>
-
-            {/* Wallet name input — only when creating new */}
-            {studentRows[0].walletOption === 'create' && (
-              <div className="mt-2">
-                <label className="block text-xs font-medium mb-1 text-zinc-400">Wallet Name</label>
+                {/* Phone */}
                 <input
-                  type="text"
-                  value={studentRows[0].newWalletName}
-                  onChange={e => updateStudentRow(0, { newWalletName: e.target.value })}
-                  placeholder="e.g. Mrs. Wong"
-                  className="w-full rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm"
+                  type="tel"
+                  value={row.phone}
+                  onChange={e => updateStudentRow(i, { phone: e.target.value })}
+                  placeholder="Phone number"
+                  className="w-full mt-2 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
                 />
-              </div>
-            )}
 
-            <div className="mt-2">
-              <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1">Price (RM)</label>
-              <input
-                type="number"
-                value={studentRows[0].price || ''}
-                onChange={e => updateStudentRow(0, { price: Number(e.target.value) })}
-                placeholder="0"
-                className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
-              />
-            </div>
+                {/* Wallet selection */}
+                <div className="mt-2">
+                  <label className="block text-xs font-medium mb-1 text-zinc-400">Wallet</label>
+                  <select
+                    value={row.walletOption === 'existing' ? row.existingWalletId : row.walletOption}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (val === 'none') {
+                        updateStudentRow(i, { walletOption: 'none', existingWalletId: '', newWalletName: '' });
+                      } else if (val === 'create') {
+                        updateStudentRow(i, { walletOption: 'create', existingWalletId: '', newWalletName: row.displayName });
+                      } else {
+                        updateStudentRow(i, { walletOption: 'existing', existingWalletId: val, newWalletName: '' });
+                      }
+                    }}
+                    className="w-full rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm"
+                  >
+                    <option value="none">No wallet</option>
+                    {wallets.map(w => (
+                      <option key={w.id} value={w.id}>{w.name} (RM {w.balance})</option>
+                    ))}
+                    {/* Pending wallets being created by prior rows */}
+                    {studentRows
+                      .filter((r, ri) => ri < i && r.walletOption === 'create' && r.newWalletName)
+                      .map((r, ri) => (
+                        <option key={`pending-${ri}`} value={`pending:${ri}`}>
+                          {r.newWalletName} (new)
+                        </option>
+                      ))
+                    }
+                    <option value="create">+ Create new wallet</option>
+                  </select>
+                </div>
+
+                {/* Wallet name input — only when creating new */}
+                {row.walletOption === 'create' && (
+                  <div className="mt-2">
+                    <label className="block text-xs font-medium mb-1 text-zinc-400">Wallet Name</label>
+                    <input
+                      type="text"
+                      value={row.newWalletName}
+                      onChange={e => updateStudentRow(i, { newWalletName: e.target.value })}
+                      placeholder="e.g. Mrs. Wong"
+                      className="w-full rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm"
+                    />
+                  </div>
+                )}
+
+                {/* Price */}
+                <div className="mt-2">
+                  <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1">Price (RM)</label>
+                  <input
+                    type="number"
+                    value={row.price || ''}
+                    onChange={e => updateStudentRow(i, { price: Number(e.target.value) })}
+                    placeholder="0"
+                    className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
+                  />
+                </div>
+              </div>
+            ))}
+
+            {/* Add Student button — only in group mode */}
+            {lessonMode === 'group' && (
+              <button
+                onClick={() => {
+                  setStudentRows(rows => [...rows, {
+                    studentId: '', displayName: '', phone: '', isNew: true,
+                    walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
+                  }]);
+                  setStudentSearches(searches => [...searches, '']);
+                }}
+                className="text-sm text-blue-500 hover:text-blue-400 mt-2"
+              >
+                + Add Student
+              </button>
+            )}
           </div>
 
           {/* Notes */}
