@@ -15,7 +15,8 @@ import { formatDateMedium, parseDateString } from '@/lib/date-format';
 export default function StudentsPage() {
   const { coach } = useAuth();
   const { students, loading } = useStudents(coach?.id);
-  const { lessonLogs: allLogs } = useLessonLogs(coach?.id, undefined, undefined, 6);
+  const [logMonths, setLogMonths] = useState(1);
+  const { lessonLogs: allLogs } = useLessonLogs(coach?.id, undefined, undefined, logMonths);
   const { bookings } = useBookings(coach?.id, 'confirmed');
   const { wallets } = useWallets(coach?.id);
   const { showToast } = useToast();
@@ -34,6 +35,7 @@ export default function StudentsPage() {
   const [copied, setCopied] = useState(false);
 
   const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
+  const [confirmDeleteLogId, setConfirmDeleteLogId] = useState<string | null>(null);
 
   // Wallet top-up state
   const [showTopUp, setShowTopUp] = useState(false);
@@ -838,7 +840,7 @@ export default function StudentsPage() {
                           </span>
                         )}
                         <button
-                          onClick={() => handleDeleteLog(log.id)}
+                          onClick={() => setConfirmDeleteLogId(log.id)}
                           disabled={deletingLogId === log.id}
                           className="text-red-400 hover:text-red-600 dark:text-red-500 dark:hover:text-red-300 disabled:opacity-50 p-0.5"
                           title="Delete lesson"
@@ -854,9 +856,41 @@ export default function StudentsPage() {
                       </div>
                     </div>
                   ))}
+                  <button
+                    onClick={() => setLogMonths(logMonths + 1)}
+                    className="w-full text-center py-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    Load more
+                  </button>
                 </div>
               )}
             </div>
+
+            {/* Delete lesson confirmation modal */}
+            <Modal
+              isOpen={!!confirmDeleteLogId}
+              onClose={() => setConfirmDeleteLogId(null)}
+              title="Delete Lesson"
+            >
+              <p className="text-sm text-gray-600 dark:text-zinc-400 mb-4">
+                Are you sure? This will delete the lesson log and refund the wallet charge if applicable.
+              </p>
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" onClick={() => setConfirmDeleteLogId(null)}>Cancel</Button>
+                <Button
+                  variant="danger"
+                  loading={!!deletingLogId}
+                  onClick={async () => {
+                    if (confirmDeleteLogId) {
+                      await handleDeleteLog(confirmDeleteLogId);
+                      setConfirmDeleteLogId(null);
+                    }
+                  }}
+                >
+                  Delete
+                </Button>
+              </div>
+            </Modal>
 
             {/* Delete student */}
             <div className="border-t border-gray-100 dark:border-[#333333] pt-4">

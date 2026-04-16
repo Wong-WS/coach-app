@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { collection, doc, addDoc, updateDoc, serverTimestamp, increment, Firestore, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { collection, doc, addDoc, updateDoc, serverTimestamp, increment, Firestore, onSnapshot, query, orderBy, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
-import { useWallets, useWalletTransactions, useStudents, useBookings, useLessonLogs, usePayments } from '@/hooks/useCoachData';
+import { useWallets, useWalletTransactions, useStudents, useBookings, useLessonLogs } from '@/hooks/useCoachData';
 import { Button, Input, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { formatTimeDisplay } from '@/lib/availability-engine';
@@ -65,7 +65,8 @@ function WalletDetail({
   onAdjust: () => void;
   showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }) {
-  const { transactions } = useWalletTransactions(coachId, wallet.id, 50);
+  const [txnMonths, setTxnMonths] = useState(1);
+  const { transactions } = useWalletTransactions(coachId, wallet.id, txnMonths);
   const linkedStudents = students.filter((s) => wallet.studentIds.includes(s.id));
   const unlinkedStudents = students.filter(
     (s) => !wallets.some((w) => w.studentIds.includes(s.id))
@@ -176,7 +177,7 @@ function WalletDetail({
 
       {/* Recent transactions */}
       <div>
-        <p className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">Recent Transactions</p>
+        <p className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">Transactions</p>
         {transactions.length === 0 ? (
           <p className="text-sm text-gray-400 dark:text-zinc-500">No transactions yet.</p>
         ) : (
@@ -201,6 +202,12 @@ function WalletDetail({
                 </p>
               </div>
             ))}
+            <button
+              onClick={() => setTxnMonths(txnMonths + 1)}
+              className="w-full text-center py-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Load more
+            </button>
           </div>
         )}
       </div>
@@ -221,10 +228,10 @@ export default function PaymentsPage() {
 
   // Overview data
   const { bookings } = useBookings(coach?.id, 'confirmed');
-  const { lessonLogs } = useLessonLogs(coach?.id, undefined, undefined, 6);
-  const { payments } = usePayments(coach?.id, 100);
+  const { lessonLogs } = useLessonLogs(coach?.id, undefined, undefined, 1);
 
   // All transactions across wallets (for History tab)
+  const [historyMonths, setHistoryMonths] = useState(1);
   const [allTransactions, setAllTransactions] = useState<(WalletTransaction & { walletName: string })[]>([]);
 
   useEffect(() => {
@@ -233,11 +240,15 @@ export default function PaymentsPage() {
     const unsubs: (() => void)[] = [];
     const txnsByWallet = new Map<string, (WalletTransaction & { walletName: string })[]>();
 
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - historyMonths);
+    const cutoffStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-01`;
+
     for (const wallet of wallets) {
       const q = query(
         collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'),
-        orderBy('createdAt', 'desc'),
-        limit(100)
+        where('date', '>=', cutoffStr),
+        orderBy('date', 'desc')
       );
       const unsub = onSnapshot(q, (snap) => {
         const items = snap.docs.map((d) => ({
@@ -261,7 +272,7 @@ export default function PaymentsPage() {
     }
 
     return () => unsubs.forEach((u) => u());
-  }, [coach?.id, wallets]);
+  }, [coach?.id, wallets, historyMonths]);
 
   // Wallet detail panel
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
@@ -338,8 +349,6 @@ export default function PaymentsPage() {
     () => [...lessonLogs].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10),
     [lessonLogs]
   );
-
-  const recentPayments = useMemo(() => [...payments].slice(0, 10), [payments]);
 
   const formatRM = (amount: number) =>
     `RM ${amount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -546,37 +555,6 @@ export default function PaymentsPage() {
             </div>
           )}
 
-          {/* Recent payments / top-ups */}
-          {recentPayments.length > 0 && (
-            <div className="bg-white dark:bg-[#1f1f1f] rounded-xl border border-gray-100 dark:border-[#333333]">
-              <div className="px-4 py-3 border-b border-gray-100 dark:border-[#333333]">
-                <h2 className="text-sm font-semibold text-gray-900 dark:text-zinc-100">Recent Payments</h2>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 dark:border-[#333333]">
-                      <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-zinc-400">Date</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-zinc-400">Student</th>
-                      <th className="text-right px-4 py-3 font-medium text-gray-500 dark:text-zinc-400">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentPayments.map((payment) => (
-                      <tr key={payment.id} className="border-b border-gray-50 dark:border-[#2a2a2a] last:border-0">
-                        <td className="px-4 py-3 text-gray-600 dark:text-zinc-400">{formatDateMedium(payment.collectedAt)}</td>
-                        <td className="px-4 py-3 text-gray-800 dark:text-zinc-200">{payment.studentName}</td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="text-blue-600 dark:text-blue-400 font-medium">{formatRM(payment.amount)}</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
           {/* Projected income */}
           {recurringBookings.length > 0 && (
             <div className="bg-white dark:bg-[#1f1f1f] rounded-xl border border-gray-100 dark:border-[#333333]">
@@ -601,7 +579,7 @@ export default function PaymentsPage() {
           )}
 
           {/* Empty state */}
-          {lessonLogs.length === 0 && payments.length === 0 && wallets.length === 0 && (
+          {lessonLogs.length === 0 && wallets.length === 0 && (
             <p className="text-gray-500 dark:text-zinc-400 text-center py-12">No data yet. Create wallets and record lessons to see your overview.</p>
           )}
         </div>
@@ -649,6 +627,12 @@ export default function PaymentsPage() {
                   ))}
                 </tbody>
               </table>
+              <button
+                onClick={() => setHistoryMonths(historyMonths + 1)}
+                className="w-full text-center py-3 text-sm text-blue-600 dark:text-blue-400 hover:underline border-t border-gray-100 dark:border-[#333333]"
+              >
+                Load more
+              </button>
             </div>
           )}
         </div>

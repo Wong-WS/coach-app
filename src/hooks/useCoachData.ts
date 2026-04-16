@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, doc, onSnapshot, query, where, orderBy, limit, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Booking, Location, WorkingHours, DayOfWeek, Student, LessonLog, ClassException, Payment, Wallet, WalletTransaction } from '@/types';
+import { Booking, Location, WorkingHours, DayOfWeek, Student, LessonLog, ClassException, Wallet, WalletTransaction } from '@/types';
 
 export function useWorkingHours(coachId: string | undefined) {
   const [workingHours, setWorkingHours] = useState<WorkingHours[]>([]);
@@ -275,41 +275,6 @@ export function useClassExceptions(coachId: string | undefined, referenceDate?: 
   return { classExceptions, loading };
 }
 
-export function usePayments(coachId: string | undefined, limitCount?: number) {
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!coachId || !db) {
-      setLoading(false);
-      return;
-    }
-
-    const firestore = db as Firestore;
-    const col = collection(firestore, 'coaches', coachId, 'payments');
-    const q = limitCount
-      ? query(col, orderBy('collectedAt', 'desc'), limit(limitCount))
-      : query(col, orderBy('collectedAt', 'desc'));
-    const unsubscribe = onSnapshot(q,
-      (snapshot) => {
-        const items: Payment[] = snapshot.docs.map((d) => ({
-          id: d.id,
-          studentId: d.data().studentId,
-          studentName: d.data().studentName,
-          amount: d.data().amount ?? 0,
-          collectedAt: d.data().collectedAt?.toDate() || new Date(),
-          createdAt: d.data().createdAt?.toDate() || new Date(),
-        }));
-        setPayments(items);
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [coachId, limitCount]);
-
-  return { payments, loading };
-}
 
 export function useWallets(coachId: string | undefined) {
   const [wallets, setWallets] = useState<Wallet[]>([]);
@@ -345,7 +310,7 @@ export function useWallets(coachId: string | undefined) {
   return { wallets, loading };
 }
 
-export function useWalletTransactions(coachId: string | undefined, walletId: string | undefined, limitCount?: number) {
+export function useWalletTransactions(coachId: string | undefined, walletId: string | undefined, monthsBack?: number) {
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -358,9 +323,15 @@ export function useWalletTransactions(coachId: string | undefined, walletId: str
 
     const firestore = db as Firestore;
     const col = collection(firestore, 'coaches', coachId, 'wallets', walletId, 'transactions');
-    const q = limitCount
-      ? query(col, orderBy('createdAt', 'desc'), limit(limitCount))
-      : query(col, orderBy('createdAt', 'desc'));
+    let q;
+    if (monthsBack) {
+      const cutoff = new Date();
+      cutoff.setMonth(cutoff.getMonth() - monthsBack);
+      const cutoffStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-01`;
+      q = query(col, where('date', '>=', cutoffStr), orderBy('date', 'desc'));
+    } else {
+      q = query(col, orderBy('date', 'desc'));
+    }
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const items: WalletTransaction[] = snapshot.docs.map((d) => ({
@@ -379,7 +350,7 @@ export function useWalletTransactions(coachId: string | undefined, walletId: str
     });
 
     return () => unsubscribe();
-  }, [coachId, walletId, limitCount]);
+  }, [coachId, walletId, monthsBack]);
 
   return { transactions, loading };
 }
