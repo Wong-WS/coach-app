@@ -44,5 +44,5 @@
 - (2026-03-31) **Cancellation reasons/data** — track who cancelled (coach, student, weather, etc.) on class exceptions. Add a `reason` or `cancelledBy` field to `classExceptions` so coaches can see patterns.
 - ✅ (2026-03-31) **Early package renewal** — "Renew Early" feature: queue next package + record payment before current package finishes. Auto-rollover on exhaustion.
 - (2026-03-31) **Pagination for lesson logs & payments** — currently limited to 6 months / 100 records. Add "Load more" or date range picker so older data is still accessible. Low priority until data volume grows.
-- (2026-04-02) **Refund tracking for mid-package cancellations** — when a student discontinues with remaining prepaid lessons (e.g. 3/5 used), show the refund amount (remaining × lessonRate) on the cancel dialog and optionally record it. Currently the system has no refund concept.
+- ✅ (2026-04-16) **Refund tracking for mid-package cancellations** — handled by wallet adjustment (deduct + "Refund" description). No special UI needed.
 - ✅ (2026-04-16) **Linked student package exhaustion — payment due behavior** — resolved by wallet system. Each linked student has their own wallet charged independently on mark-done. Negative balances surface per-student via wallet balance badge.
