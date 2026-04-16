@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useWallets, useWalletTransactions, useStudents, useBookings, useLessonLogs, usePayments } from '@/hooks/useCoachData';
 import { Button, Input, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
-import { getDayDisplayName, formatTimeDisplay } from '@/lib/availability-engine';
+import { formatTimeDisplay } from '@/lib/availability-engine';
 import { formatDateMedium } from '@/lib/date-format';
 import type { Wallet, WalletTransaction } from '@/types';
 
@@ -55,7 +55,6 @@ function WalletDetail({
   wallets,
   onTopUp,
   onAdjust,
-  onClose,
   showToast,
 }: {
   coachId: string;
@@ -64,7 +63,6 @@ function WalletDetail({
   wallets: Wallet[];
   onTopUp: () => void;
   onAdjust: () => void;
-  onClose: () => void;
   showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }) {
   const { transactions } = useWalletTransactions(coachId, wallet.id, 50);
@@ -762,7 +760,6 @@ export default function PaymentsPage() {
             wallets={wallets}
             onTopUp={() => setShowTopUpModal(true)}
             onAdjust={() => setShowAdjustModal(true)}
-            onClose={() => setSelectedWallet(null)}
             showToast={showToast}
           />
         )}

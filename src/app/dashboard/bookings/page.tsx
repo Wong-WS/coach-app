@@ -117,7 +117,7 @@ export default function BookingsPage() {
     setFormData((prev) => ({ ...prev, startTime: start, endTime: calcEndTime(start, duration) }));
   };
 
-  const buildPaymentGroups = (price: number): PaymentGroup[] => {
+  const buildPaymentGroups = (_price: number): PaymentGroup[] => {
     return [
       { names: '', phone: '', price: 0 },
       { names: '', phone: '', price: 0 },
