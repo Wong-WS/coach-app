@@ -242,6 +242,7 @@ export default function StudentsPage() {
     setEditPhone(student.clientPhone);
     setEditNotes(student.notes);
     setShowTopUp(false);
+    setLogLimit(20);
 
     // If lessonRate not set on student, derive it from recurring booking for display only (no Firestore write)
     if (!student.lessonRate) {

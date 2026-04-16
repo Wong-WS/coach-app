@@ -235,12 +235,17 @@ export default function PaymentsPage() {
   // All transactions across wallets (for History tab)
   const [historyLimit, setHistoryLimit] = useState(20);
   const [allTransactions, setAllTransactions] = useState<(WalletTransaction & { walletName: string })[]>([]);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+
+  // Stable wallet identity — only re-run listeners when wallet IDs change
+  const walletIds = wallets.map(w => w.id).join(',');
 
   useEffect(() => {
-    if (!coach?.id || !db || wallets.length === 0) return;
+    if (!coach?.id || !db || !walletIds) return;
     const firestore = db as Firestore;
     const unsubs: (() => void)[] = [];
     const txnsByWallet = new Map<string, (WalletTransaction & { walletName: string })[]>();
+    const atLimitByWallet = new Map<string, boolean>();
 
     for (const wallet of wallets) {
       const q = query(
@@ -262,15 +267,18 @@ export default function PaymentsPage() {
           walletName: wallet.name,
         }));
         txnsByWallet.set(wallet.id, items);
+        atLimitByWallet.set(wallet.id, snap.docs.length >= historyLimit);
         const merged = Array.from(txnsByWallet.values()).flat();
         merged.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
         setAllTransactions(merged);
+        setHasMoreHistory(Array.from(atLimitByWallet.values()).some(v => v));
       });
       unsubs.push(unsub);
     }
 
     return () => unsubs.forEach((u) => u());
-  }, [coach?.id, wallets, historyLimit]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coach?.id, walletIds, historyLimit]);
 
   // Wallet detail panel
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
@@ -625,7 +633,7 @@ export default function PaymentsPage() {
                   ))}
                 </tbody>
               </table>
-              {allTransactions.length >= historyLimit && (
+              {hasMoreHistory && (
               <button
                 onClick={() => setHistoryLimit(historyLimit + 20)}
                 className="w-full text-center py-3 text-sm text-blue-600 dark:text-blue-400 hover:underline border-t border-gray-100 dark:border-[#333333]"
