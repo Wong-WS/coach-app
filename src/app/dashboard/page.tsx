@@ -2043,7 +2043,7 @@ export default function DashboardPage() {
                 const isExpanded = expandedStudentRows.has(i);
                 const summary = getStudentRowSummary(row);
                 return (
-                  <div key={i} className="rounded-lg border border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#1a1a1a] overflow-hidden">
+                  <div key={i} className="rounded-lg border border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#1a1a1a]">
                     {/* Collapsed header — always visible */}
                     <div className="p-3">
                       <div className="flex items-center gap-2">
@@ -2149,7 +2149,7 @@ export default function DashboardPage() {
 
                     {/* Expanded panel */}
                     {isExpanded && (
-                      <div className="border-t border-gray-200 dark:border-[#333] bg-white/60 dark:bg-[#141414] p-3 space-y-3">
+                      <div className="border-t border-gray-200 dark:border-[#333] bg-white/60 dark:bg-[#141414] p-3 space-y-3 rounded-b-lg">
                         <div>
                           <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1">Phone (optional)</label>
                           <input
