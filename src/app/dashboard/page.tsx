@@ -1626,11 +1626,6 @@ export default function DashboardPage() {
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-900 dark:text-zinc-100 truncate">
                           {student?.clientName ?? '(unknown)'}
-                          {isPrimary && (
-                            <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                              Primary
-                            </span>
-                          )}
                         </p>
                         {student?.clientPhone && (
                           <p className="text-xs text-gray-500 dark:text-zinc-400 truncate">{student.clientPhone}</p>
