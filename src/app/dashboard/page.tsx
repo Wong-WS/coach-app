@@ -809,7 +809,7 @@ export default function DashboardPage() {
       hasEditRosterChange();
   };
 
-  const handleEditSave = async (mode: 'this' | 'all' | 'future') => {
+  const handleEditSave = async (mode: 'this' | 'future') => {
     if (!coach || !db || !editBooking) return;
     if (!hasEditChanges()) {
       showToast('No changes to save', 'error');
@@ -829,7 +829,7 @@ export default function DashboardPage() {
       const newLocation = locations.find((l) => l.id === editLocationId);
       const newLocationName = newLocation?.name || editBooking.locationName;
 
-      // Build booking-level fields shared by 'all' and 'future'
+      // Build booking-level fields shared by the future mode
       const primaryStudent = students.find((s) => s.id === editPrimaryStudentId);
       const primaryWalletId = editStudentWallets[editPrimaryStudentId] || '';
       const studentWalletsOut: Record<string, string> = {};
@@ -858,29 +858,6 @@ export default function DashboardPage() {
           createdAt: serverTimestamp(),
         });
         showToast('Updated for this date', 'success');
-      } else if (mode === 'all') {
-        const updates: Record<string, unknown> = {
-          locationId: editLocationId,
-          locationName: newLocationName,
-          startTime: editStartTime,
-          endTime: editEndTime,
-          price: editTotalPrice,
-          notes: editNote,
-          className: editClassName.trim(),
-          lessonType,
-          groupSize,
-          linkedStudentIds: editLinkedStudentIds.length > 0 ? editLinkedStudentIds : null,
-          studentPrices: groupSize > 1 ? studentPricesOut : null,
-          studentWallets: Object.keys(studentWalletsOut).length > 0 ? studentWalletsOut : null,
-          walletId: primaryWalletId || null,
-          updatedAt: serverTimestamp(),
-        };
-        if (primaryStudent) {
-          updates.clientName = primaryStudent.clientName;
-          updates.clientPhone = primaryStudent.clientPhone;
-        }
-        await updateDoc(doc(firestore, 'coaches', coach.id, 'bookings', editBooking.id), updates);
-        showToast('All events updated', 'success');
       } else if (mode === 'future') {
         const batch = writeBatch(firestore);
         const oldBookingRef = doc(firestore, 'coaches', coach.id, 'bookings', editBooking.id);
@@ -1792,14 +1769,6 @@ export default function DashboardPage() {
             >
               <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This and future events</p>
               <p className="text-xs text-gray-500 dark:text-zinc-400">Apply from {formatDateShort(selectedDate)} onwards</p>
-            </button>
-            <button
-              onClick={() => handleEditSave('all')}
-              disabled={editSaving}
-              className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-[#444] hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
-            >
-              <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">All events</p>
-              <p className="text-xs text-gray-500 dark:text-zinc-400">Change all past and future occurrences</p>
             </button>
             <div className="flex justify-end pt-1">
               <Button variant="secondary" size="sm" onClick={() => setShowEditSaveOptions(false)}>
