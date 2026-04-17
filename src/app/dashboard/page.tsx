@@ -2024,37 +2024,57 @@ export default function DashboardPage() {
                     placeholder="Search or type new student name"
                     className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
                   />
-                  {focusedStudentRow === i && (studentSearches[i] ?? '') && getFilteredStudentsForRow(i).length > 0 && (
-                    <div className="absolute z-10 mt-1 w-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg max-h-40 overflow-y-auto shadow-lg">
-                      {getFilteredStudentsForRow(i).map(s => (
-                        <button
-                          key={s.studentId}
-                          className="w-full text-left px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 hover:bg-gray-50 dark:hover:bg-zinc-700"
-                          onClick={() => {
-                            const studentRecord = students.find(st => st.id === s.studentId);
-                            const linkedWallet = wallets.find(w => w.studentIds.includes(s.studentId));
-                            updateStudentRow(i, {
-                              studentId: s.studentId,
-                              displayName: s.displayName,
-                              phone: studentRecord?.clientPhone || '',
-                              isNew: false,
-                              walletOption: linkedWallet ? 'existing' : 'none',
-                              existingWalletId: linkedWallet?.id || '',
-                              newWalletName: '',
-                            });
-                            setStudentSearches(searches => {
-                              const next = [...searches];
-                              next[i] = '';
-                              return next;
-                            });
-                            setFocusedStudentRow(null);
-                          }}
-                        >
-                          {s.displayName}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  {focusedStudentRow === i && (studentSearches[i]?.trim() ?? '') && (() => {
+                    const matches = getFilteredStudentsForRow(i);
+                    const search = (studentSearches[i] ?? '').trim();
+                    const hasExactMatch = matches.some(m => m.displayName.toLowerCase() === search.toLowerCase());
+                    return (
+                      <div className="absolute z-10 mt-1 w-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg max-h-40 overflow-y-auto shadow-lg">
+                        {matches.map(s => (
+                          <button
+                            key={s.studentId}
+                            className="w-full text-left px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 hover:bg-gray-50 dark:hover:bg-zinc-700"
+                            onClick={() => {
+                              const studentRecord = students.find(st => st.id === s.studentId);
+                              const linkedWallet = wallets.find(w => w.studentIds.includes(s.studentId));
+                              updateStudentRow(i, {
+                                studentId: s.studentId,
+                                displayName: s.displayName,
+                                phone: studentRecord?.clientPhone || '',
+                                isNew: false,
+                                walletOption: linkedWallet ? 'existing' : 'none',
+                                existingWalletId: linkedWallet?.id || '',
+                                newWalletName: '',
+                              });
+                              setStudentSearches(searches => {
+                                const next = [...searches];
+                                next[i] = '';
+                                return next;
+                              });
+                              setFocusedStudentRow(null);
+                            }}
+                          >
+                            {s.displayName}
+                          </button>
+                        ))}
+                        {!hasExactMatch && (
+                          <button
+                            className="w-full text-left px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-zinc-700 border-t border-gray-200 dark:border-zinc-700"
+                            onClick={() => {
+                              setStudentSearches(searches => {
+                                const next = [...searches];
+                                next[i] = '';
+                                return next;
+                              });
+                              setFocusedStudentRow(null);
+                            }}
+                          >
+                            + Create new student: &ldquo;{search}&rdquo;
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Phone */}
