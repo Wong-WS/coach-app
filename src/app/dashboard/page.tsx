@@ -1361,24 +1361,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Stats cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-        <div className="bg-white dark:bg-[#1f1f1f] rounded-xl p-6 shadow-sm border border-gray-100 dark:border-[#333333]">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 dark:text-zinc-400">Active Bookings</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-zinc-100">{bookings.length}</p>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
       {/* Reschedule modal */}
       <Modal
         isOpen={rescheduleBooking !== null}
