@@ -1,0 +1,28 @@
+<h2>Pick the layout for the Edit/view sheet</h2>
+<p class="subtitle">Cancel behavior is settled. Now: which surface does "Edit" open into? (Both mobile and desktop — the choice should work on both.)</p>
+
+<div class="options">
+  <div class="option" data-choice="A" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Right-side drawer (desktop) / bottom sheet (mobile)</h3>
+      <p>Keeps calendar visible while editing. Familiar from Fresha / Google Calendar web. Mobile version slides up from bottom.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="B" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Centered modal with tabs</h3>
+      <p>More room. Details / Students / Danger zone as tabs. Feels heavier on mobile (modal fills most of screen).</p>
+    </div>
+  </div>
+  <div class="option" data-choice="C" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Full-page takeover</h3>
+      <p>Most space, best for mobile (feels like a native screen). Everything stacked — you scroll. Desktop feels big though.</p>
+    </div>
+  </div>
+</div>
+
+<p style="margin-top:20px; font-size:13px; color:#6b7280;">My default recommendation is <strong>A</strong> — drawer on desktop, bottom sheet on mobile. It's the pattern Fresha / Google Calendar / Notion use, and it lets coaches keep the calendar visible while they tweak a lesson. But your screenshot looks like a mobile/dark interface, so <strong>C</strong> could feel more native if you primarily use this on your phone.</p>

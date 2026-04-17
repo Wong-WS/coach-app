@@ -1,0 +1,213 @@
+<h2>Three Layout Alternatives — with explicit series actions</h2>
+<p class="subtitle">All three include <strong>Cancel this lesson</strong>, <strong>End series</strong>, and <strong>Delete permanently</strong> as distinct, labeled actions. The difference is <em>how the sheet lays out</em>.</p>
+
+<!-- ========== Layout A — Right drawer (revised) ========== -->
+<div style="margin-top:24px;">
+  <div style="display:flex; align-items:baseline; gap:10px; margin-bottom:10px;">
+    <div style="background:#3b82f6; color:white; width:28px; height:28px; border-radius:14px; display:inline-flex; align-items:center; justify-content:center; font-weight:700; font-size:13px;">A</div>
+    <h3 style="margin:0;">Right-side drawer (revised)</h3>
+    <span style="font-size:12px; color:#6b7280;">Fresha / Setmore pattern — destructive actions grouped at bottom</span>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-body" style="padding:0; background:#f3f4f6;">
+      <div style="display:grid; grid-template-columns: 1fr 400px;">
+        <div style="padding:16px; opacity:0.4; border-right:1px solid #e5e7eb; min-height:440px;">
+          <div style="font-size:11px; text-transform:uppercase; color:#6b7280; margin-bottom:10px;">Today</div>
+          <div style="background:white; border-radius:6px; padding:10px; margin-bottom:6px; border:2px solid #3b82f6;">4:00 PM · Piano — Jay, Sian</div>
+          <div style="background:white; border-radius:6px; padding:10px; margin-bottom:6px; border:1px solid #e5e7eb;">5:30 PM · Guitar — Alex</div>
+          <div style="background:white; border-radius:6px; padding:10px; border:1px solid #e5e7eb;">7:00 PM · Drum — Marcus</div>
+        </div>
+
+        <div style="background:white; display:flex; flex-direction:column;">
+          <div style="padding:14px 18px; border-bottom:1px solid #e5e7eb;">
+            <div style="font-weight:600;">Piano Lesson</div>
+            <div style="font-size:11px; color:#6b7280;">Recurring · every Monday</div>
+          </div>
+          <div style="padding:16px 18px; flex:1; font-size:12px; color:#6b7280;">
+            <div style="margin-bottom:10px;"><strong style="color:#111;">Mon 20 Apr · 4:00–5:00 PM</strong> · John's Studio</div>
+            <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:10px; margin-bottom:10px;">
+              <div>👤 Jay · RM 50 · Jay's wallet</div>
+              <div style="margin-top:4px;">👤 Sian · RM 50 · Sian's wallet</div>
+              <div style="color:#3b82f6; margin-top:6px;">+ Add student</div>
+            </div>
+          </div>
+
+          <!-- Primary actions -->
+          <div style="padding:10px 14px; border-top:1px solid #e5e7eb; display:flex; gap:6px;">
+            <button style="flex:1; background:#16a34a; color:white; border:none; padding:8px; border-radius:5px; font-size:12px;">✓ Mark done</button>
+            <button style="background:#f3f4f6; border:1px solid #e5e7eb; padding:8px 12px; border-radius:5px; font-size:12px;">Save</button>
+          </div>
+
+          <!-- This occurrence -->
+          <div style="padding:8px 14px; background:#fafafa; border-top:1px solid #e5e7eb; font-size:11px;">
+            <div style="color:#9ca3af; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">This lesson</div>
+            <div style="display:flex; gap:10px;">
+              <span style="color:#374151;">Cancel this lesson</span>
+              <span style="color:#e5e7eb;">·</span>
+              <span style="color:#374151;">Reschedule</span>
+            </div>
+          </div>
+
+          <!-- Series -->
+          <div style="padding:8px 14px; background:#fef2f2; border-top:1px solid #fecaca; font-size:11px;">
+            <div style="color:#b91c1c; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">Entire series</div>
+            <div style="display:flex; gap:10px;">
+              <span style="color:#991b1b;">End series</span>
+              <span style="color:#fecaca;">·</span>
+              <span style="color:#991b1b;">Delete permanently</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== Layout B — Centered modal with tabs ========== -->
+<div style="margin-top:32px;">
+  <div style="display:flex; align-items:baseline; gap:10px; margin-bottom:10px;">
+    <div style="background:#3b82f6; color:white; width:28px; height:28px; border-radius:14px; display:inline-flex; align-items:center; justify-content:center; font-weight:700; font-size:13px;">B</div>
+    <h3 style="margin:0;">Centered modal with tabs</h3>
+    <span style="font-size:12px; color:#6b7280;">Like Notion / Linear — tabs separate concerns, danger zone has its own tab</span>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-body" style="padding:40px 20px; background:#111827;">
+      <div style="max-width:640px; margin:0 auto; background:white; border-radius:10px; overflow:hidden; box-shadow:0 20px 40px rgba(0,0,0,0.3);">
+        <div style="padding:16px 20px; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-weight:600;">Piano Lesson</div>
+            <div style="font-size:11px; color:#6b7280;">Recurring · every Monday</div>
+          </div>
+          <span style="color:#9ca3af; font-size:16px;">✕</span>
+        </div>
+
+        <!-- Tabs -->
+        <div style="display:flex; border-bottom:1px solid #e5e7eb; padding:0 20px;">
+          <div style="padding:10px 14px; border-bottom:2px solid #3b82f6; font-weight:500; font-size:13px;">Details</div>
+          <div style="padding:10px 14px; color:#6b7280; font-size:13px;">Students (2)</div>
+          <div style="padding:10px 14px; color:#b91c1c; font-size:13px;">⚠ Danger zone</div>
+        </div>
+
+        <!-- Details tab content -->
+        <div style="padding:20px; min-height:160px;">
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+            <div>
+              <div style="font-size:11px; text-transform:uppercase; color:#9ca3af; margin-bottom:4px;">When</div>
+              <div style="font-size:13px;">Mon 20 Apr · 4:00–5:00 PM</div>
+            </div>
+            <div>
+              <div style="font-size:11px; text-transform:uppercase; color:#9ca3af; margin-bottom:4px;">Where</div>
+              <div style="font-size:13px;">📍 John's Music Studio</div>
+            </div>
+          </div>
+          <div style="margin-top:16px;">
+            <div style="font-size:11px; text-transform:uppercase; color:#9ca3af; margin-bottom:4px;">Notes</div>
+            <div style="font-size:13px; color:#6b7280; padding:8px 10px; background:#f9fafb; border-radius:6px;">Chopin prelude · bring sheet music</div>
+          </div>
+        </div>
+
+        <div style="padding:14px 20px; border-top:1px solid #e5e7eb; background:#f9fafb; display:flex; gap:8px; justify-content:flex-end;">
+          <button style="background:white; border:1px solid #e5e7eb; padding:8px 16px; border-radius:5px; font-size:13px;">Cancel</button>
+          <button style="background:#16a34a; color:white; border:none; padding:8px 16px; border-radius:5px; font-size:13px;">✓ Mark done</button>
+          <button style="background:#3b82f6; color:white; border:none; padding:8px 16px; border-radius:5px; font-size:13px;">Save</button>
+        </div>
+      </div>
+
+      <!-- Hint about Danger zone tab content -->
+      <div style="max-width:640px; margin:12px auto 0; color:#9ca3af; font-size:11px; text-align:center;">
+        The ⚠ Danger zone tab shows: <span style="color:#fca5a5;">Cancel this lesson</span> · <span style="color:#fca5a5;">Reschedule</span> · <span style="color:#fca5a5;">End series</span> · <span style="color:#fca5a5;">Delete permanently</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== Layout C — Full-page takeover ========== -->
+<div style="margin-top:32px;">
+  <div style="display:flex; align-items:baseline; gap:10px; margin-bottom:10px;">
+    <div style="background:#3b82f6; color:white; width:28px; height:28px; border-radius:14px; display:inline-flex; align-items:center; justify-content:center; font-weight:700; font-size:13px;">C</div>
+    <h3 style="margin:0;">Full-page takeover</h3>
+    <span style="font-size:12px; color:#6b7280;">Google Calendar mobile / Fantastical inspector — whole page scrolls, sections stacked, danger zone card at the bottom</span>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-body" style="padding:0; background:white;">
+      <div style="padding:14px 20px; border-bottom:1px solid #e5e7eb; display:flex; align-items:center; gap:12px;">
+        <span style="color:#6b7280;">←</span>
+        <div style="flex:1;">
+          <div style="font-weight:600;">Piano Lesson</div>
+          <div style="font-size:11px; color:#6b7280;">Recurring · every Monday</div>
+        </div>
+        <button style="background:#16a34a; color:white; border:none; padding:6px 12px; border-radius:5px; font-size:12px;">Mark done</button>
+        <button style="background:#3b82f6; color:white; border:none; padding:6px 12px; border-radius:5px; font-size:12px;">Save</button>
+      </div>
+
+      <div style="padding:20px; max-width:720px;">
+        <!-- Section cards -->
+        <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:14px 16px; margin-bottom:10px;">
+          <div style="font-size:11px; text-transform:uppercase; color:#9ca3af; margin-bottom:6px;">🗓 When & where</div>
+          <div style="font-size:13px;">Mon 20 Apr · 4:00–5:00 PM · 📍 John's Studio</div>
+        </div>
+
+        <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:14px 16px; margin-bottom:10px;">
+          <div style="font-size:11px; text-transform:uppercase; color:#9ca3af; margin-bottom:6px;">👥 Students (2)</div>
+          <div style="font-size:13px;">Jay · RM 50 · Jay's wallet</div>
+          <div style="font-size:13px;">Sian · RM 50 · Sian's wallet</div>
+          <div style="font-size:12px; color:#3b82f6; margin-top:4px;">+ Add student</div>
+        </div>
+
+        <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:14px 16px; margin-bottom:10px;">
+          <div style="font-size:11px; text-transform:uppercase; color:#9ca3af; margin-bottom:6px;">📝 Notes</div>
+          <div style="font-size:13px; color:#6b7280;">Chopin prelude · bring sheet music</div>
+        </div>
+
+        <!-- This occurrence card -->
+        <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:14px 16px; margin-bottom:10px;">
+          <div style="font-size:11px; text-transform:uppercase; color:#92400e; margin-bottom:8px;">This lesson only</div>
+          <div style="display:flex; gap:8px;">
+            <button style="background:white; border:1px solid #fde68a; padding:6px 12px; border-radius:5px; font-size:12px; color:#92400e;">Cancel this lesson</button>
+            <button style="background:white; border:1px solid #fde68a; padding:6px 12px; border-radius:5px; font-size:12px; color:#92400e;">Reschedule</button>
+          </div>
+        </div>
+
+        <!-- Danger zone card -->
+        <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:14px 16px;">
+          <div style="font-size:11px; text-transform:uppercase; color:#991b1b; margin-bottom:4px;">⚠ Entire series</div>
+          <div style="font-size:11px; color:#991b1b; margin-bottom:8px;">Affects all past and future lessons in this recurring series.</div>
+          <div style="display:flex; gap:8px;">
+            <button style="background:white; border:1px solid #fecaca; padding:6px 12px; border-radius:5px; font-size:12px; color:#991b1b;">End series</button>
+            <button style="background:#dc2626; color:white; border:none; padding:6px 12px; border-radius:5px; font-size:12px;">Delete permanently</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:28px;">
+  <p style="font-size:13px; color:#6b7280;">Which layout feels right? Click below or reply in the terminal.</p>
+  <div class="options">
+    <div class="option" data-choice="A" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content">
+        <h3>Right drawer (revised)</h3>
+        <p>Compact, keeps calendar context visible. Danger actions in a dedicated red footer band.</p>
+      </div>
+    </div>
+    <div class="option" data-choice="B" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content">
+        <h3>Centered modal with tabs</h3>
+        <p>More breathing room. "Danger zone" gets its own tab so it's out of the way but still obvious.</p>
+      </div>
+    </div>
+    <div class="option" data-choice="C" onclick="toggleSelect(this)">
+      <div class="letter">C</div>
+      <div class="content">
+        <h3>Full-page takeover</h3>
+        <p>Most space, clearest separation. Danger zone is its own card at the bottom of the scroll.</p>
+      </div>
+    </div>
+  </div>
+</div>

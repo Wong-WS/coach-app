@@ -1,0 +1,10 @@
+{"type":"server-started","port":50720,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:50720","screen_dir":"/Users/wongweisiang/Projects/coach-app/.superpowers/brainstorm/344-1776390274/content","state_dir":"/Users/wongweisiang/Projects/coach-app/.superpowers/brainstorm/344-1776390274/state"}
+{"type":"screen-added","file":"/Users/wongweisiang/Projects/coach-app/.superpowers/brainstorm/344-1776390274/content/unified-lesson-sheet.html"}
+{"source":"user-event","type":"click","text":"✓\n      \n        This direction works\n        Proceed with Option A — I'll write the spec.","choice":"approve","id":null,"timestamp":1776390429414}
+{"source":"user-event","type":"click","text":"~\n      \n        Direction is right, but tweak it\n        Tell me in the terminal what to change.","choice":"tweak","id":null,"timestamp":1776390430831}
+{"source":"user-event","type":"click","text":"✗\n      \n        Not this — try something different\n        Let's look at a different layout.","choice":"reject","id":null,"timestamp":1776390432018}
+{"type":"screen-added","file":"/Users/wongweisiang/Projects/coach-app/.superpowers/brainstorm/344-1776390274/content/layout-alternatives.html"}
+{"type":"screen-added","file":"/Users/wongweisiang/Projects/coach-app/.superpowers/brainstorm/344-1776390274/content/cancel-scope.html"}
+{"type":"screen-added","file":"/Users/wongweisiang/Projects/coach-app/.superpowers/brainstorm/344-1776390274/content/layout-choice.html"}
+{"type":"screen-added","file":"/Users/wongweisiang/Projects/coach-app/.superpowers/brainstorm/344-1776390274/content/waiting.html"}
+{"type":"server-stopped","reason":"idle timeout"}

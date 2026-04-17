@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useBookings } from '@/hooks/useCoachData';
 import { DayOfWeek, Booking } from '@/types';
 import { getDayDisplayName, formatTimeDisplay } from '@/lib/time-format';
+import { getBookingTotal, isGroupBooking } from '@/lib/class-schedule';
 
 const DAYS: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -56,8 +57,8 @@ export default function BookingsPage() {
                 ) : (
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {bookingsByDay[day].map((booking) => {
-                      const rosterSize = booking.studentIds.length;
-                      const total = Object.values(booking.studentPrices).reduce((s, p) => s + (p ?? 0), 0);
+                      const isGroup = isGroupBooking(booking);
+                      const total = getBookingTotal(booking);
                       return (
                       <div
                         key={booking.id}
@@ -68,11 +69,11 @@ export default function BookingsPage() {
                             {formatTimeDisplay(booking.startTime)} - {formatTimeDisplay(booking.endTime)}
                           </span>
                           <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            rosterSize > 1
+                            isGroup
                               ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
                               : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
                           }`}>
-                            {rosterSize > 1 ? `Group (${rosterSize})` : 'Private'}
+                            {isGroup ? `Group (${booking.studentIds.length})` : 'Private'}
                           </span>
                         </div>
                         <p className="text-sm text-gray-600 dark:text-zinc-400 mt-1">{booking.className}</p>

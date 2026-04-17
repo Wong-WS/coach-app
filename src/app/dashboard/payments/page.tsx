@@ -9,6 +9,7 @@ import { Button, Input, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { formatTimeDisplay } from '@/lib/time-format';
 import { formatDateMedium } from '@/lib/date-format';
+import { getBookingTotal } from '@/lib/class-schedule';
 import type { Wallet, WalletTransaction } from '@/types';
 
 const TABS = ['Overview', 'Wallets', 'History'] as const;
@@ -342,11 +343,7 @@ export default function PaymentsPage() {
 
   const recurringBookings = useMemo(() => bookings.filter((b) => !b.endDate), [bookings]);
   const weeklyTotal = useMemo(
-    () =>
-      recurringBookings.reduce(
-        (sum, b) => sum + Object.values(b.studentPrices).reduce((s, p) => s + (p ?? 0), 0),
-        0,
-      ),
+    () => recurringBookings.reduce((sum, b) => sum + getBookingTotal(b), 0),
     [recurringBookings],
   );
   const monthlyTotal = useMemo(() => weeklyTotal * (52 / 12), [weeklyTotal]);

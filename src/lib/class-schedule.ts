@@ -8,6 +8,18 @@ export function getDayOfWeekForDate(dateStr: string): DayOfWeek {
   return DAY_NAMES[date.getDay()];
 }
 
+export function getBookingTotal(
+  booking: Pick<Booking, 'studentPrices'>,
+): number {
+  return Object.values(booking.studentPrices).reduce((sum, p) => sum + (p ?? 0), 0);
+}
+
+export function isGroupBooking(
+  booking: Pick<Booking, 'studentIds'>,
+): boolean {
+  return booking.studentIds.length > 1;
+}
+
 export function getClassesForDate(
   date: string,
   bookings: Booking[],

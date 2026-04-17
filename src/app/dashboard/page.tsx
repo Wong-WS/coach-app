@@ -12,7 +12,7 @@ import { formatTimeDisplay } from '@/lib/time-format';
 import { findOrCreateStudent } from '@/lib/students';
 import { resolveWallet } from '@/lib/wallets';
 import { computeCancelFuture } from '@/lib/cancel-scope';
-import { getClassesForDate, isRescheduledToDate, getCancelledClassesForDate } from '@/lib/class-schedule';
+import { getClassesForDate, isRescheduledToDate, getCancelledClassesForDate, getDayOfWeekForDate, getBookingTotal, isGroupBooking } from '@/lib/class-schedule';
 import { formatDateFull, formatDateShort, parseDateString } from '@/lib/date-format';
 
 function getDateString(date: Date): string {
@@ -124,11 +124,9 @@ export default function DashboardPage() {
     return '';
   }, [bookings]);
 
-  // Derive day-of-week from the picked lesson date (local time)
   const lessonDayOfWeek: DayOfWeek | '' = useMemo(() => {
     if (!lessonDate) return '';
-    const d = new Date(lessonDate + 'T00:00:00');
-    return (['sunday','monday','tuesday','wednesday','thursday','friday','saturday'] as const)[d.getDay()];
+    return getDayOfWeekForDate(lessonDate);
   }, [lessonDate]);
 
   const lessonDayName = useMemo(() => {
@@ -339,7 +337,6 @@ export default function DashboardPage() {
         resolvedLocationName = trimmed;
       }
 
-      // Resolve every student row + wallet in order — all students are equal.
       const studentIds: string[] = [];
       const studentPrices: Record<string, number> = {};
       const studentWallets: Record<string, string> = {};
@@ -390,8 +387,7 @@ export default function DashboardPage() {
         if (walletId) studentWallets[studentId] = walletId;
       }
 
-      // Day of week is always derived from the picked date
-      const dayOfWeek = (['sunday','monday','tuesday','wednesday','thursday','friday','saturday'] as const)[new Date(lessonDate + 'T00:00:00').getDay()];
+      const dayOfWeek = getDayOfWeekForDate(lessonDate);
 
       const bookingData: Record<string, unknown> = {
         locationId: resolvedLocationId,
@@ -436,8 +432,7 @@ export default function DashboardPage() {
 
   const openMarkDone = (booking: Booking) => {
     setMarkDoneBooking(booking);
-    const total = Object.values(booking.studentPrices).reduce((s, p) => s + (p ?? 0), 0);
-    setMarkDonePrice(total);
+    setMarkDonePrice(getBookingTotal(booking));
     setMarkDoneNote(booking.notes || '');
     setMenuOpen(null);
 
@@ -963,6 +958,7 @@ export default function DashboardPage() {
             {dayClasses.map((booking) => {
               const isDone = doneBookingIds.has(booking.id);
               const isRescheduled = isRescheduledToDate(booking.id, selectedDateStr, classExceptions);
+              const total = getBookingTotal(booking);
 
               return (
                 <div
@@ -1016,18 +1012,14 @@ export default function DashboardPage() {
                     </p>
                   </div>
 
-                  {/* Price + type */}
                   <div className={`text-right flex-shrink-0 ${isDone ? 'opacity-50' : ''}`}>
-                    {(() => {
-                      const total = Object.values(booking.studentPrices).reduce((s, p) => s + (p ?? 0), 0);
-                      return total > 0 ? (
-                        <p className="text-sm font-medium text-green-600 dark:text-green-400">
-                          RM {total}
-                        </p>
-                      ) : null;
-                    })()}
+                    {total > 0 && (
+                      <p className="text-sm font-medium text-green-600 dark:text-green-400">
+                        RM {total}
+                      </p>
+                    )}
                     <p className="text-xs text-gray-400 dark:text-zinc-500">
-                      {booking.studentIds.length > 1 ? `Group (${booking.studentIds.length})` : 'Private'}
+                      {isGroupBooking(booking) ? `Group (${booking.studentIds.length})` : 'Private'}
                     </p>
                   </div>
 
