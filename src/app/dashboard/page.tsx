@@ -7,12 +7,13 @@ import { useAuth } from '@/lib/auth-context';
 import { useLocations, useBookings, useLessonLogs, useClassExceptions, useStudents, useWallets } from '@/hooks/useCoachData';
 import { Button, Input, Modal, Select } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
-import { Booking, DayOfWeek } from '@/types';
+import { Booking, ClassException, DayOfWeek } from '@/types';
 import { formatTimeDisplay } from '@/lib/availability-engine';
 import { findOrCreateStudent } from '@/lib/students';
 import { resolveWallet } from '@/lib/wallets';
+import { computeCancelFuture } from '@/lib/cancel-scope';
 import { getClassesForDate, isRescheduledToDate, getCancelledClassesForDate } from '@/lib/class-schedule';
-import { formatDateFull, formatDateShort } from '@/lib/date-format';
+import { formatDateFull, formatDateShort, parseDateString } from '@/lib/date-format';
 
 function getDateString(date: Date): string {
   const yyyy = date.getFullYear();
@@ -542,27 +543,62 @@ export default function DashboardPage() {
     }
   };
 
-  const handleCancel = async (booking: Booking) => {
+  const handleCancelScoped = async (
+    booking: Booking,
+    scope: 'this' | 'future',
+  ) => {
     if (!coach || !db) return;
     setCancelling(booking.id);
     try {
       const firestore = db as Firestore;
-      const exRef = doc(collection(firestore, 'coaches', coach.id, 'classExceptions'));
       const batch = writeBatch(firestore);
-      batch.set(exRef, {
-        bookingId: booking.id,
-        originalDate: selectedDateStr,
-        type: 'cancelled',
-        createdAt: serverTimestamp(),
-      });
+
+      if (scope === 'this') {
+        const exRef = doc(collection(firestore, 'coaches', coach.id, 'classExceptions'));
+        batch.set(exRef, {
+          bookingId: booking.id,
+          originalDate: selectedDateStr,
+          type: 'cancelled',
+          createdAt: serverTimestamp(),
+        });
+      } else {
+        // Fetch ALL exceptions for this booking — the in-scope `classExceptions`
+        // is only a ±2 month window, which may miss orphans we need to clean up.
+        const exQuery = query(
+          collection(firestore, 'coaches', coach.id, 'classExceptions'),
+          where('bookingId', '==', booking.id),
+        );
+        const exSnapshot = await getDocs(exQuery);
+        const allExceptions: ClassException[] = exSnapshot.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<ClassException, 'id'>),
+        }));
+
+        const result = computeCancelFuture(booking, allExceptions, selectedDateStr);
+        if (result.action === 'delete') {
+          batch.delete(doc(firestore, 'coaches', coach.id, 'bookings', booking.id));
+        } else {
+          batch.update(doc(firestore, 'coaches', coach.id, 'bookings', booking.id), {
+            endDate: result.newEndDate,
+          });
+        }
+        for (const exId of result.exceptionIdsToDelete) {
+          batch.delete(doc(firestore, 'coaches', coach.id, 'classExceptions', exId));
+        }
+      }
+
       await batch.commit();
-      showToast('Class cancelled for this date', 'success');
+      showToast(
+        scope === 'this' ? 'Class cancelled for this date' : 'Recurring series ended',
+        'success',
+      );
+      setCancelScopeBooking(null);
+      setOneTimeCancelBooking(null);
     } catch (error) {
       console.error('Error cancelling class:', error);
       showToast('Failed to cancel class', 'error');
     } finally {
       setCancelling(null);
-      setMenuOpen(null);
     }
   };
 
@@ -1425,6 +1461,98 @@ export default function DashboardPage() {
                 disabled={!rescheduleDate}
               >
                 Reschedule
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Cancel scope modal (recurring) */}
+      <Modal
+        isOpen={!!cancelScopeBooking}
+        onClose={() => setCancelScopeBooking(null)}
+        title="Cancel recurring lesson?"
+      >
+        {cancelScopeBooking && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600 dark:text-zinc-400">
+              {cancelScopeBooking.clientName} — {formatDateShort(parseDateString(selectedDateStr))}
+            </p>
+
+            <label className={`flex gap-3 p-3 rounded-lg cursor-pointer border-2 ${cancelScope === 'this' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-[#333]'}`}>
+              <input
+                type="radio"
+                name="cancel-scope"
+                value="this"
+                checked={cancelScope === 'this'}
+                onChange={() => setCancelScope('this')}
+                className="mt-1"
+              />
+              <div>
+                <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This lesson</p>
+                <p className="text-xs text-gray-600 dark:text-zinc-400">
+                  Only {formatDateShort(parseDateString(selectedDateStr))} — other dates unaffected.
+                </p>
+              </div>
+            </label>
+
+            <label className={`flex gap-3 p-3 rounded-lg cursor-pointer border-2 ${cancelScope === 'future' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-[#333]'}`}>
+              <input
+                type="radio"
+                name="cancel-scope"
+                value="future"
+                checked={cancelScope === 'future'}
+                onChange={() => setCancelScope('future')}
+                className="mt-1"
+              />
+              <div>
+                <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This and future lessons</p>
+                <p className="text-xs text-gray-600 dark:text-zinc-400">
+                  Ends the recurring series from {formatDateShort(parseDateString(selectedDateStr))} onwards. Past lessons kept.
+                </p>
+              </div>
+            </label>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="secondary" onClick={() => setCancelScopeBooking(null)}>
+                Back
+              </Button>
+              <Button
+                variant="danger"
+                disabled={cancelling === cancelScopeBooking.id}
+                onClick={() => handleCancelScoped(cancelScopeBooking, cancelScope)}
+              >
+                {cancelling === cancelScopeBooking.id ? 'Cancelling...' : 'Cancel lesson'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* One-time cancel confirm modal */}
+      <Modal
+        isOpen={!!oneTimeCancelBooking}
+        onClose={() => setOneTimeCancelBooking(null)}
+        title="Cancel this lesson?"
+      >
+        {oneTimeCancelBooking && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600 dark:text-zinc-400">
+              {oneTimeCancelBooking.clientName} — {formatDateShort(parseDateString(selectedDateStr))}
+            </p>
+            <p className="text-sm text-gray-600 dark:text-zinc-400">
+              The lesson will be cancelled for this date.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="secondary" onClick={() => setOneTimeCancelBooking(null)}>
+                Back
+              </Button>
+              <Button
+                variant="danger"
+                disabled={cancelling === oneTimeCancelBooking.id}
+                onClick={() => handleCancelScoped(oneTimeCancelBooking, 'this')}
+              >
+                {cancelling === oneTimeCancelBooking.id ? 'Cancelling...' : 'Cancel lesson'}
               </Button>
             </div>
           </div>
