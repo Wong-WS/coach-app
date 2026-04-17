@@ -1,8 +1,10 @@
 import Link from 'next/link';
+import { RedirectIfSignedIn } from '@/lib/auth-redirect';
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <RedirectIfSignedIn />
       <nav className="flex items-center justify-between px-6 py-4 max-w-6xl mx-auto">
         <div className="text-2xl font-bold text-blue-600">CoachApp</div>
         <div className="flex gap-4">

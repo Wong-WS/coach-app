@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { Button, Input, PhoneInput } from '@/components/ui';
+import { GoogleButton } from '@/components/ui/GoogleButton';
 import { useToast } from '@/components/ui/Toast';
 
 function SignupForm() {
@@ -18,9 +19,30 @@ function SignupForm() {
     whatsappNumber: '',
   });
   const [loading, setLoading] = useState(false);
-  const { signUp } = useAuth();
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const { signUp, signInWithGoogle, user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { showToast } = useToast();
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace('/dashboard');
+    }
+  }, [authLoading, user, router]);
+
+  const handleGoogle = async () => {
+    setGoogleLoading(true);
+    try {
+      await signInWithGoogle();
+      showToast('Welcome!', 'success');
+      router.push('/dashboard');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to sign up with Google';
+      showToast(errorMessage, 'error');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -84,6 +106,14 @@ function SignupForm() {
           </Link>
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-zinc-100 mt-4">Create your account</h1>
           <p className="text-gray-600 dark:text-zinc-400 mt-2">Start managing your schedule today</p>
+        </div>
+
+        <GoogleButton onClick={handleGoogle} loading={googleLoading} label="Sign up with Google" />
+
+        <div className="flex items-center gap-3 my-6">
+          <div className="flex-1 h-px bg-gray-200 dark:bg-zinc-700" />
+          <span className="text-xs uppercase tracking-wider text-gray-400 dark:text-zinc-500">or</span>
+          <div className="flex-1 h-px bg-gray-200 dark:bg-zinc-700" />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

@@ -7,6 +7,8 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup,
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
@@ -18,6 +20,7 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (data: SignupFormData) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   refreshCoach: () => Promise<void>;
 }
@@ -125,6 +128,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const signInWithGoogle = async () => {
+    if (!auth || !db) throw new Error('Firebase not initialized');
+
+    const provider = new GoogleAuthProvider();
+    const result = await signInWithPopup(auth, provider);
+    const { uid, displayName, email } = result.user;
+
+    const coachRef = doc(db, 'coaches', uid);
+    const existing = await getDoc(coachRef);
+    if (existing.exists()) return;
+
+    const baseSlug = (displayName || email || 'coach')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '')
+      .slice(0, 40) || 'coach';
+
+    let slug = baseSlug;
+    for (let i = 1; (await getDoc(doc(db, 'coachSlugs', slug))).exists(); i++) {
+      slug = `${baseSlug}-${i}`;
+    }
+
+    await setDoc(doc(db, 'coachSlugs', slug), { coachId: uid });
+    await setDoc(coachRef, {
+      displayName: displayName || email?.split('@')[0] || 'Coach',
+      slug,
+      email: email || '',
+      serviceType: 'Swimming Coach',
+      lessonDurationMinutes: 60,
+      travelBufferMinutes: 30,
+      whatsappNumber: '',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    for (const day of DAYS) {
+      const isWeekday = !['saturday', 'sunday'].includes(day);
+      await setDoc(doc(db, 'coaches', uid, 'workingHours', day), {
+        enabled: isWeekday,
+        timeRanges: [{ startTime: '09:00', endTime: '17:00' }],
+      });
+    }
+
+    // onAuthStateChanged may have already run a coach fetch before the doc existed —
+    // hydrate the context now so the dashboard sees a real coach on first render.
+    const created = await fetchCoach(uid);
+    setCoach(created);
+  };
+
   const signOut = async () => {
     if (!auth) throw new Error('Firebase not initialized');
     await firebaseSignOut(auth);
@@ -132,7 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, coach, loading, signIn, signUp, signOut, refreshCoach }}>
+    <AuthContext.Provider value={{ user, coach, loading, signIn, signUp, signInWithGoogle, signOut, refreshCoach }}>
       {children}
     </AuthContext.Provider>
   );
