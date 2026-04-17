@@ -6,63 +6,36 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == coachId;
     }
 
-    function isValidDay(day) {
-      return day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-    }
-
-
-    // Coach slugs - authenticated create (own uid only), no public read (served via API)
-    match /coachSlugs/{slug} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null
-        && request.resource.data.coachId == request.auth.uid;
-      allow update, delete: if false;
-    }
-
-    // Coach profiles - owner only (public page served via API route using admin SDK)
     match /coaches/{coachId} {
       allow read, write: if isOwner(coachId);
 
-      // Working hours - owner only (served via API route)
-      match /workingHours/{day} {
-        allow read, write: if isOwner(coachId);
-      }
-
-      // Locations - owner only (served via API route)
       match /locations/{locationId} {
         allow read, write: if isOwner(coachId);
       }
 
-      // Bookings - owner only (availability served via API route using admin SDK)
       match /bookings/{bookingId} {
         allow read, write: if isOwner(coachId);
       }
 
-      // Students - owner only
       match /students/{studentId} {
         allow read, write: if isOwner(coachId);
       }
 
-      // Lesson logs - owner only
       match /lessonLogs/{logId} {
         allow read, write: if isOwner(coachId);
       }
 
-      // Class exceptions (cancel/reschedule) - owner only
       match /classExceptions/{exceptionId} {
         allow read, write: if isOwner(coachId);
       }
 
-      // Wallets - owner only
       match /wallets/{walletId} {
         allow read, write: if isOwner(coachId);
 
-        // Wallet transactions - owner only
         match /transactions/{txnId} {
           allow read, write: if isOwner(coachId);
         }
       }
-
     }
   }
 }

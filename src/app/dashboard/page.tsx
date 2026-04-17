@@ -1393,19 +1393,6 @@ export default function DashboardPage() {
 
       </div>
 
-      {/* Quick actions */}
-      {locations.length === 0 && (
-        <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-xl p-6">
-          <h3 className="font-medium text-yellow-800 dark:text-yellow-300 mb-2">Get Started</h3>
-          <p className="text-sm text-yellow-700 dark:text-yellow-400 mb-4">
-            Add your first location to start accepting bookings.
-          </p>
-          <Button onClick={() => (window.location.href = '/dashboard/locations')}>
-            Add Location
-          </Button>
-        </div>
-      )}
-
       {/* Reschedule modal */}
       <Modal
         isOpen={rescheduleBooking !== null}

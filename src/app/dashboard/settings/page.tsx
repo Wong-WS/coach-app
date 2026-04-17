@@ -21,7 +21,7 @@ export default function SettingsPage() {
       <div className="border-t border-gray-200 dark:border-[#333333] pt-8">
         <h2 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-2">Danger Zone</h2>
         <p className="text-sm text-gray-500 dark:text-zinc-400 mb-4">
-          Reset your account to start fresh. This deletes all students, bookings, lessons, wallets, locations, and payments. Your profile is kept.
+          Reset your account to start fresh. This deletes all students, bookings, lessons, wallets, and locations. Your profile is kept.
         </p>
         <Button
           variant="ghost"
@@ -44,7 +44,6 @@ export default function SettingsPage() {
             <li>All lesson logs</li>
             <li>All wallets and transactions</li>
             <li>All locations</li>
-            <li>All payments</li>
           </ul>
           <p className="text-sm font-medium text-red-600 dark:text-red-400">
             This cannot be undone.

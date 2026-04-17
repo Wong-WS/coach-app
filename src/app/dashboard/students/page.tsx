@@ -636,7 +636,7 @@ export default function StudentsPage() {
               {confirmDeleteStudent ? (
                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-3 space-y-2">
                   <p className="text-sm text-red-700 dark:text-red-300">
-                    Delete <strong>{selectedStudent.clientName}</strong>? This removes the student record and portal link. Lesson history will be lost.
+                    Delete <strong>{selectedStudent.clientName}</strong>? This removes the student record. Lesson history will be lost.
                     {getStudentBookings(selectedStudent).length > 0 && (
                       <> Their {getStudentBookings(selectedStudent).length} active booking{getStudentBookings(selectedStudent).length > 1 ? 's' : ''} will also be cancelled.</>
                     )}

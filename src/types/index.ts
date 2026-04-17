@@ -1,33 +1,8 @@
-// Core types for the coach-app
-
 export type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 
 export interface Coach {
   id: string;
   displayName: string;
-  slug: string;
-  email: string;
-  serviceType: string;
-  lessonDurationMinutes: number;
-  travelBufferMinutes: number;
-  whatsappNumber: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface CoachSlug {
-  coachId: string;
-}
-
-export interface TimeRange {
-  startTime: string; // "09:00" (24h format)
-  endTime: string;   // "17:00"
-}
-
-export interface WorkingHours {
-  day: DayOfWeek;
-  enabled: boolean;
-  timeRanges: TimeRange[];
 }
 
 export interface Location {
@@ -46,8 +21,8 @@ export interface Booking {
   locationId: string;
   locationName: string;
   dayOfWeek: DayOfWeek;
-  startTime: string; // "14:00"
-  endTime: string;   // "15:00"
+  startTime: string;
+  endTime: string;
   status: BookingStatus;
   clientName: string;
   clientPhone: string;
@@ -55,35 +30,21 @@ export interface Booking {
   groupSize: number;
   notes: string;
   price?: number;
-  linkedStudentIds?: string[]; // secondary students sharing this group lesson
-  studentPrices?: Record<string, number>; // per-student prices for split payment groups
-  walletId?: string; // which wallet pays for this booking
-  studentWallets?: Record<string, string>; // per-student wallet override for group lessons
-  startDate?: string; // YYYY-MM-DD — booking only appears from this date onwards
-  endDate?: string;   // YYYY-MM-DD — booking only appears up to and including this date
+  linkedStudentIds?: string[];
+  studentPrices?: Record<string, number>;
+  walletId?: string;
+  studentWallets?: Record<string, string>;
+  startDate?: string;
+  endDate?: string;
   createdAt: Date;
   cancelledAt?: Date;
 }
 
-export interface TimeSlot {
-  startTime: string;
-  endTime: string;
-}
-
-export interface AvailableSlot extends TimeSlot {
-  dayOfWeek: DayOfWeek;
-}
-
-// Form types
 export interface SignupFormData {
   email: string;
   password: string;
   displayName: string;
-  slug: string;
-  serviceType: string;
-  whatsappNumber: string;
 }
-
 
 export interface Student {
   id: string;
@@ -96,7 +57,7 @@ export interface Student {
 
 export interface LessonLog {
   id: string;
-  date: string;             // "YYYY-MM-DD"
+  date: string;
   bookingId?: string;
   studentId: string;
   studentName: string;
@@ -105,19 +66,18 @@ export interface LessonLog {
   endTime: string;
   price: number;
   note?: string;
-  paySeparately?: boolean;
   createdAt: Date;
 }
 
 export interface ClassException {
   id: string;
   bookingId: string;
-  originalDate: string;       // "YYYY-MM-DD"
+  originalDate: string;
   type: 'cancelled' | 'rescheduled';
-  newDate?: string;           // only for rescheduled
-  newStartTime?: string;      // optional time override for rescheduled
+  newDate?: string;
+  newStartTime?: string;
   newEndTime?: string;
-  newLocationId?: string;     // optional location override for rescheduled
+  newLocationId?: string;
   newLocationName?: string;
   newPrice?: number;
   newNote?: string;
@@ -143,17 +103,6 @@ export interface WalletTransaction {
   description: string;
   studentId?: string;
   lessonLogId?: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   createdAt: Date;
-}
-
-export interface BookingFormData {
-  locationId: string;
-  dayOfWeek: DayOfWeek;
-  startTime: string;
-  clientName: string;
-  clientPhone: string;
-  lessonType: LessonType;
-  groupSize: number;
-  notes: string;
 }
