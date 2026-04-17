@@ -98,6 +98,7 @@ export default function DashboardPage() {
     walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
   }]);
   const [studentSearches, setStudentSearches] = useState<string[]>(['']);
+  const [focusedStudentRow, setFocusedStudentRow] = useState<number | null>(null);
 
   // Overlap warning
   const [overlapWarning, setOverlapWarning] = useState('');
@@ -1978,18 +1979,18 @@ export default function DashboardPage() {
             {studentRows.map((row, i) => (
               <div
                 key={i}
-                className={`${studentRows.length > 1 ? 'mb-3 p-3 rounded-lg bg-zinc-800/50 border border-zinc-700' : ''}`}
+                className={`${studentRows.length > 1 ? 'mb-3 p-3 rounded-lg bg-gray-50 dark:bg-[#1a1a1a] border border-gray-200 dark:border-[#333]' : ''}`}
               >
                 {studentRows.length > 1 && (
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-zinc-400">Student {i + 1}</span>
+                    <span className="text-xs font-medium text-gray-500 dark:text-zinc-400">Student {i + 1}</span>
                     {i > 0 && (
                       <button
                         onClick={() => {
                           setStudentRows(rows => rows.filter((_, ri) => ri !== i));
                           setStudentSearches(searches => searches.filter((_, ri) => ri !== i));
                         }}
-                        className="text-xs text-red-500 hover:text-red-400"
+                        className="text-xs text-red-500 dark:text-red-400 hover:underline"
                       >
                         Remove
                       </button>
@@ -2002,6 +2003,8 @@ export default function DashboardPage() {
                   <input
                     type="text"
                     value={row.displayName}
+                    onFocus={() => setFocusedStudentRow(i)}
+                    onBlur={() => setTimeout(() => setFocusedStudentRow(prev => (prev === i ? null : prev)), 150)}
                     onChange={e => {
                       const val = e.target.value;
                       setStudentSearches(searches => {
@@ -2021,7 +2024,7 @@ export default function DashboardPage() {
                     placeholder="Search or type new student name"
                     className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
                   />
-                  {(studentSearches[i] ?? '') && (
+                  {focusedStudentRow === i && (studentSearches[i] ?? '') && getFilteredStudentsForRow(i).length > 0 && (
                     <div className="absolute z-10 mt-1 w-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg max-h-40 overflow-y-auto shadow-lg">
                       {getFilteredStudentsForRow(i).map(s => (
                         <button
@@ -2044,14 +2047,12 @@ export default function DashboardPage() {
                               next[i] = '';
                               return next;
                             });
+                            setFocusedStudentRow(null);
                           }}
                         >
                           {s.displayName}
                         </button>
                       ))}
-                      {getFilteredStudentsForRow(i).length === 0 && (
-                        <p className="px-3 py-2 text-sm text-gray-400 dark:text-zinc-500">No students found — will create new</p>
-                      )}
                     </div>
                   )}
                 </div>
@@ -2067,7 +2068,7 @@ export default function DashboardPage() {
 
                 {/* Wallet selection */}
                 <div className="mt-2">
-                  <label className="block text-xs font-medium mb-1 text-zinc-400">Wallet</label>
+                  <label className="block text-xs font-medium mb-1 text-gray-500 dark:text-zinc-400">Wallet</label>
                   <select
                     value={row.walletOption === 'existing' ? row.existingWalletId : row.walletOption}
                     onChange={e => {
@@ -2080,7 +2081,7 @@ export default function DashboardPage() {
                         updateStudentRow(i, { walletOption: 'existing', existingWalletId: val, newWalletName: '' });
                       }
                     }}
-                    className="w-full rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
                   >
                     <option value="none">No wallet</option>
                     {wallets.map(w => (
@@ -2099,13 +2100,13 @@ export default function DashboardPage() {
                 {/* Wallet name input — only when creating new */}
                 {row.walletOption === 'create' && (
                   <div className="mt-2">
-                    <label className="block text-xs font-medium mb-1 text-zinc-400">Wallet Name</label>
+                    <label className="block text-xs font-medium mb-1 text-gray-500 dark:text-zinc-400">Wallet Name</label>
                     <input
                       type="text"
                       value={row.newWalletName}
                       onChange={e => updateStudentRow(i, { newWalletName: e.target.value })}
                       placeholder="e.g. Mrs. Wong"
-                      className="w-full rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm"
+                      className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
                     />
                   </div>
                 )}
