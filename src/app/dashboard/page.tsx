@@ -2075,8 +2075,7 @@ export default function DashboardPage() {
                           />
                           {focusedStudentRow === i && (studentSearches[i]?.trim() ?? '') && (() => {
                             const matches = getFilteredStudentsForRow(i);
-                            const search = (studentSearches[i] ?? '').trim();
-                            const hasExactMatch = matches.some(m => m.displayName.toLowerCase() === search.toLowerCase());
+                            if (matches.length === 0) return null;
                             return (
                               <div className="absolute z-10 mt-1 w-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg max-h-40 overflow-y-auto shadow-lg">
                                 {matches.map(s => (
@@ -2106,21 +2105,6 @@ export default function DashboardPage() {
                                     {s.displayName}
                                   </button>
                                 ))}
-                                {!hasExactMatch && (
-                                  <button
-                                    className="w-full text-left px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-zinc-700 border-t border-gray-200 dark:border-zinc-700"
-                                    onClick={() => {
-                                      setStudentSearches(searches => {
-                                        const next = [...searches];
-                                        next[i] = '';
-                                        return next;
-                                      });
-                                      setFocusedStudentRow(null);
-                                    }}
-                                  >
-                                    + Create new student: &ldquo;{search}&rdquo;
-                                  </button>
-                                )}
                               </div>
                             );
                           })()}
@@ -2130,10 +2114,13 @@ export default function DashboardPage() {
                         <div className="relative shrink-0">
                           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 dark:text-zinc-500 pointer-events-none">RM</span>
                           <input
-                            type="number"
+                            type="text"
                             inputMode="decimal"
                             value={row.price || ''}
-                            onChange={e => updateStudentRow(i, { price: Number(e.target.value) })}
+                            onChange={e => {
+                              const raw = e.target.value.replace(/[^0-9.]/g, '');
+                              updateStudentRow(i, { price: raw === '' ? 0 : Number(raw) });
+                            }}
                             placeholder="0"
                             aria-label="Price"
                             className="w-24 pl-9 pr-2 py-2 rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm text-gray-900 dark:text-zinc-100 text-right"
