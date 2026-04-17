@@ -99,6 +99,16 @@ export default function DashboardPage() {
   }]);
   const [studentSearches, setStudentSearches] = useState<string[]>(['']);
   const [focusedStudentRow, setFocusedStudentRow] = useState<number | null>(null);
+  const [expandedStudentRows, setExpandedStudentRows] = useState<Set<number>>(new Set());
+
+  const toggleStudentRowExpanded = (index: number) => {
+    setExpandedStudentRows(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
 
   // Overlap warning
   const [overlapWarning, setOverlapWarning] = useState('');
@@ -217,6 +227,21 @@ export default function DashboardPage() {
     setStudentRows(rows => rows.map((r, i) => i === index ? { ...r, ...updates } : r));
   };
 
+  const getStudentRowSummary = (row: StudentRow): string => {
+    if (!row.displayName.trim()) return '';
+    const parts: string[] = [];
+    if (row.isNew) parts.push('New student');
+    if (row.walletOption === 'create' && row.newWalletName) {
+      parts.push(`New wallet "${row.newWalletName}"`);
+    } else if (row.walletOption === 'existing') {
+      const w = wallets.find(w => w.id === row.existingWalletId);
+      if (w) parts.push(`Wallet "${w.name}" · RM ${w.balance}`);
+    } else {
+      parts.push('No wallet');
+    }
+    return parts.join(' · ');
+  };
+
   const resetLessonForm = () => {
     setLessonType('one-time');
     setLessonClassName('');
@@ -231,6 +256,7 @@ export default function DashboardPage() {
       walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
     }]);
     setStudentSearches(['']);
+    setExpandedStudentRows(new Set());
     setOverlapWarning('');
   };
 
@@ -1897,53 +1923,64 @@ export default function DashboardPage() {
         onClose={() => setShowAddLesson(false)}
         title="Add Lesson"
       >
-        <div className="space-y-3">
-          {/* Type toggle */}
-          <div className="flex gap-2">
-            <button
-              className={`flex-1 py-2 rounded-lg text-sm font-medium ${lessonType === 'one-time' ? 'bg-blue-600 text-white' : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300'}`}
-              onClick={() => setLessonType('one-time')}
-            >One-time</button>
-            <button
-              className={`flex-1 py-2 rounded-lg text-sm font-medium ${lessonType === 'recurring' ? 'bg-blue-600 text-white' : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300'}`}
-              onClick={() => setLessonType('recurring')}
-            >Recurring</button>
-          </div>
-
-          {/* Class name */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Class Name</label>
-            <input
-              type="text"
-              value={lessonClassName}
-              onChange={e => setLessonClassName(e.target.value)}
-              placeholder="e.g. Tuesday swim squad"
-              className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
-            />
-          </div>
-
-          {/* Date or Day of Week */}
-          {lessonType === 'one-time' ? (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Date</label>
-              <input type="date" value={lessonDate} onChange={e => setLessonDate(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100" />
+        <div className="space-y-5">
+          {/* CLASS */}
+          <section>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-500 mb-2">Class</div>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <button
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${lessonType === 'one-time' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-zinc-700'}`}
+                  onClick={() => setLessonType('one-time')}
+                >One-time</button>
+                <button
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${lessonType === 'recurring' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-zinc-700'}`}
+                  onClick={() => setLessonType('recurring')}
+                >Recurring</button>
+              </div>
+              <input
+                type="text"
+                value={lessonClassName}
+                onChange={e => setLessonClassName(e.target.value)}
+                placeholder="Class name (e.g. Tuesday swim squad)"
+                className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500"
+              />
             </div>
-          ) : (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Day</label>
-              <select value={lessonDayOfWeek} onChange={e => setLessonDayOfWeek(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100">
-                {['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map(d => (
-                  <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
-                ))}
-              </select>
-            </div>
-          )}
+          </section>
 
-          {/* Location */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Location</label>
+          {/* WHEN */}
+          <section>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-500 mb-2">When</div>
+            <div className="space-y-2">
+              {lessonType === 'one-time' ? (
+                <input type="date" value={lessonDate} onChange={e => setLessonDate(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100" />
+              ) : (
+                <select value={lessonDayOfWeek} onChange={e => setLessonDayOfWeek(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100">
+                  {['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map(d => (
+                    <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
+                  ))}
+                </select>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <select value={lessonStartTime} onChange={e => setLessonStartTime(e.target.value)}
+                  aria-label="Start time"
+                  className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100">
+                  {generateTimeOptions().map(t => <option key={t} value={t}>{formatTimeDisplay(t)}</option>)}
+                </select>
+                <select value={lessonEndTime} onChange={e => setLessonEndTime(e.target.value)}
+                  aria-label="End time"
+                  className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100">
+                  {generateTimeOptions().map(t => <option key={t} value={t}>{formatTimeDisplay(t)}</option>)}
+                </select>
+              </div>
+            </div>
+          </section>
+
+          {/* WHERE */}
+          <section>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-500 mb-2">Where</div>
             <select value={lessonLocationId} onChange={e => setLessonLocationId(e.target.value)}
               className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100">
               <option value="">Select location</option>
@@ -1951,239 +1988,253 @@ export default function DashboardPage() {
                 <option key={loc.id} value={loc.id}>{loc.name}</option>
               ))}
             </select>
-          </div>
+          </section>
 
-          {/* Start / End Time — 5-min increments */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Start Time</label>
-              <select value={lessonStartTime} onChange={e => setLessonStartTime(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100">
-                {generateTimeOptions().map(t => <option key={t} value={t}>{formatTimeDisplay(t)}</option>)}
-              </select>
+          {/* STUDENTS */}
+          <section>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-500 mb-2">
+              Students {studentRows.length > 1 && <span className="text-gray-400 dark:text-zinc-500 font-normal normal-case">· {studentRows.length} in group</span>}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">End Time</label>
-              <select value={lessonEndTime} onChange={e => setLessonEndTime(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100">
-                {generateTimeOptions().map(t => <option key={t} value={t}>{formatTimeDisplay(t)}</option>)}
-              </select>
-            </div>
-          </div>
-
-          {/* Student rows */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
-              {studentRows.length > 1 ? 'Students' : 'Student'}
-            </label>
-            {studentRows.map((row, i) => (
-              <div
-                key={i}
-                className={`${studentRows.length > 1 ? 'mb-3 p-3 rounded-lg bg-gray-50 dark:bg-[#1a1a1a] border border-gray-200 dark:border-[#333]' : ''}`}
-              >
-                {studentRows.length > 1 && (
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-gray-500 dark:text-zinc-400">Student {i + 1}</span>
-                    {i > 0 && (
-                      <button
-                        onClick={() => {
-                          setStudentRows(rows => rows.filter((_, ri) => ri !== i));
-                          setStudentSearches(searches => searches.filter((_, ri) => ri !== i));
-                        }}
-                        className="text-xs text-red-500 dark:text-red-400 hover:underline"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Student name autocomplete */}
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={row.displayName}
-                    onFocus={() => setFocusedStudentRow(i)}
-                    onBlur={() => setTimeout(() => setFocusedStudentRow(prev => (prev === i ? null : prev)), 150)}
-                    onChange={e => {
-                      const val = e.target.value;
-                      setStudentSearches(searches => {
-                        const next = [...searches];
-                        next[i] = val;
-                        return next;
-                      });
-                      updateStudentRow(i, {
-                        displayName: val,
-                        isNew: true,
-                        studentId: '',
-                        walletOption: val.trim() ? 'create' : 'none',
-                        newWalletName: val.trim() ? val : '',
-                        existingWalletId: '',
-                      });
-                    }}
-                    placeholder="Search or type new student name"
-                    className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
-                  />
-                  {focusedStudentRow === i && (studentSearches[i]?.trim() ?? '') && (() => {
-                    const matches = getFilteredStudentsForRow(i);
-                    const search = (studentSearches[i] ?? '').trim();
-                    const hasExactMatch = matches.some(m => m.displayName.toLowerCase() === search.toLowerCase());
-                    return (
-                      <div className="absolute z-10 mt-1 w-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg max-h-40 overflow-y-auto shadow-lg">
-                        {matches.map(s => (
-                          <button
-                            key={s.studentId}
-                            className="w-full text-left px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 hover:bg-gray-50 dark:hover:bg-zinc-700"
-                            onClick={() => {
-                              const studentRecord = students.find(st => st.id === s.studentId);
-                              const linkedWallet = wallets.find(w => w.studentIds.includes(s.studentId));
+            <div className="space-y-2">
+              {studentRows.map((row, i) => {
+                const isExpanded = expandedStudentRows.has(i);
+                const summary = getStudentRowSummary(row);
+                return (
+                  <div key={i} className="rounded-lg border border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#1a1a1a] overflow-hidden">
+                    {/* Collapsed header — always visible */}
+                    <div className="p-3">
+                      <div className="flex items-center gap-2">
+                        {/* Name input + autocomplete */}
+                        <div className="flex-1 relative">
+                          <input
+                            type="text"
+                            value={row.displayName}
+                            onFocus={() => setFocusedStudentRow(i)}
+                            onBlur={() => setTimeout(() => setFocusedStudentRow(prev => (prev === i ? null : prev)), 150)}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setStudentSearches(searches => {
+                                const next = [...searches];
+                                next[i] = val;
+                                return next;
+                              });
                               updateStudentRow(i, {
-                                studentId: s.studentId,
-                                displayName: s.displayName,
-                                phone: studentRecord?.clientPhone || '',
-                                isNew: false,
-                                walletOption: linkedWallet ? 'existing' : 'none',
-                                existingWalletId: linkedWallet?.id || '',
-                                newWalletName: '',
+                                displayName: val,
+                                isNew: true,
+                                studentId: '',
+                                walletOption: val.trim() ? 'create' : 'none',
+                                newWalletName: val.trim() ? val : '',
+                                existingWalletId: '',
                               });
-                              setStudentSearches(searches => {
-                                const next = [...searches];
-                                next[i] = '';
-                                return next;
-                              });
-                              setFocusedStudentRow(null);
                             }}
-                          >
-                            {s.displayName}
-                          </button>
-                        ))}
-                        {!hasExactMatch && (
-                          <button
-                            className="w-full text-left px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-zinc-700 border-t border-gray-200 dark:border-zinc-700"
-                            onClick={() => {
-                              setStudentSearches(searches => {
-                                const next = [...searches];
-                                next[i] = '';
-                                return next;
-                              });
-                              setFocusedStudentRow(null);
+                            placeholder="Student name"
+                            className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500"
+                          />
+                          {focusedStudentRow === i && (studentSearches[i]?.trim() ?? '') && (() => {
+                            const matches = getFilteredStudentsForRow(i);
+                            const search = (studentSearches[i] ?? '').trim();
+                            const hasExactMatch = matches.some(m => m.displayName.toLowerCase() === search.toLowerCase());
+                            return (
+                              <div className="absolute z-10 mt-1 w-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg max-h-40 overflow-y-auto shadow-lg">
+                                {matches.map(s => (
+                                  <button
+                                    key={s.studentId}
+                                    className="w-full text-left px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 hover:bg-gray-50 dark:hover:bg-zinc-700"
+                                    onClick={() => {
+                                      const studentRecord = students.find(st => st.id === s.studentId);
+                                      const linkedWallet = wallets.find(w => w.studentIds.includes(s.studentId));
+                                      updateStudentRow(i, {
+                                        studentId: s.studentId,
+                                        displayName: s.displayName,
+                                        phone: studentRecord?.clientPhone || '',
+                                        isNew: false,
+                                        walletOption: linkedWallet ? 'existing' : 'none',
+                                        existingWalletId: linkedWallet?.id || '',
+                                        newWalletName: '',
+                                      });
+                                      setStudentSearches(searches => {
+                                        const next = [...searches];
+                                        next[i] = '';
+                                        return next;
+                                      });
+                                      setFocusedStudentRow(null);
+                                    }}
+                                  >
+                                    {s.displayName}
+                                  </button>
+                                ))}
+                                {!hasExactMatch && (
+                                  <button
+                                    className="w-full text-left px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-zinc-700 border-t border-gray-200 dark:border-zinc-700"
+                                    onClick={() => {
+                                      setStudentSearches(searches => {
+                                        const next = [...searches];
+                                        next[i] = '';
+                                        return next;
+                                      });
+                                      setFocusedStudentRow(null);
+                                    }}
+                                  >
+                                    + Create new student: &ldquo;{search}&rdquo;
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+
+                        {/* Price with RM prefix */}
+                        <div className="relative shrink-0">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 dark:text-zinc-500 pointer-events-none">RM</span>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            value={row.price || ''}
+                            onChange={e => updateStudentRow(i, { price: Number(e.target.value) })}
+                            placeholder="0"
+                            aria-label="Price"
+                            className="w-24 pl-9 pr-2 py-2 rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm text-gray-900 dark:text-zinc-100 text-right"
+                          />
+                        </div>
+
+                        {/* Expand chevron */}
+                        <button
+                          type="button"
+                          onClick={() => toggleStudentRowExpanded(i)}
+                          aria-label={isExpanded ? 'Collapse student details' : 'Expand student details'}
+                          aria-expanded={isExpanded}
+                          className="shrink-0 p-2 rounded-md text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-700"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+                            <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      </div>
+                      {summary && (
+                        <div className="mt-1.5 text-xs text-gray-500 dark:text-zinc-400">
+                          {summary}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Expanded panel */}
+                    {isExpanded && (
+                      <div className="border-t border-gray-200 dark:border-[#333] bg-white/60 dark:bg-[#141414] p-3 space-y-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1">Phone (optional)</label>
+                          <input
+                            type="tel"
+                            value={row.phone}
+                            onChange={e => updateStudentRow(i, { phone: e.target.value })}
+                            placeholder="+60 12 345 6789"
+                            className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1">Wallet</label>
+                          <select
+                            value={row.walletOption === 'existing' ? row.existingWalletId : row.walletOption}
+                            onChange={e => {
+                              const val = e.target.value;
+                              if (val === 'none') {
+                                updateStudentRow(i, { walletOption: 'none', existingWalletId: '', newWalletName: '' });
+                              } else if (val === 'create') {
+                                updateStudentRow(i, { walletOption: 'create', existingWalletId: '', newWalletName: row.displayName });
+                              } else {
+                                updateStudentRow(i, { walletOption: 'existing', existingWalletId: val, newWalletName: '' });
+                              }
                             }}
+                            className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
                           >
-                            + Create new student: &ldquo;{search}&rdquo;
-                          </button>
+                            <option value="none">No wallet</option>
+                            {wallets.map(w => (
+                              <option key={w.id} value={w.id}>{w.name} (RM {w.balance})</option>
+                            ))}
+                            <option value="create">+ Create new wallet</option>
+                          </select>
+                        </div>
+                        {row.walletOption === 'create' && (
+                          <div>
+                            <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1">Wallet name</label>
+                            <input
+                              type="text"
+                              value={row.newWalletName}
+                              onChange={e => updateStudentRow(i, { newWalletName: e.target.value })}
+                              placeholder="e.g. Mrs. Wong"
+                              className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500"
+                            />
+                          </div>
+                        )}
+                        {i > 0 && (
+                          <div className="pt-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStudentRows(rows => rows.filter((_, ri) => ri !== i));
+                                setStudentSearches(searches => searches.filter((_, ri) => ri !== i));
+                                setExpandedStudentRows(prev => {
+                                  const next = new Set<number>();
+                                  prev.forEach(idx => {
+                                    if (idx < i) next.add(idx);
+                                    else if (idx > i) next.add(idx - 1);
+                                  });
+                                  return next;
+                                });
+                              }}
+                              className="text-xs text-red-500 dark:text-red-400 hover:underline"
+                            >
+                              Remove student
+                            </button>
+                          </div>
                         )}
                       </div>
-                    );
-                  })()}
-                </div>
-
-                {/* Phone */}
-                <input
-                  type="tel"
-                  value={row.phone}
-                  onChange={e => updateStudentRow(i, { phone: e.target.value })}
-                  placeholder="Phone number"
-                  className="w-full mt-2 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
-                />
-
-                {/* Wallet selection */}
-                <div className="mt-2">
-                  <label className="block text-xs font-medium mb-1 text-gray-500 dark:text-zinc-400">Wallet</label>
-                  <select
-                    value={row.walletOption === 'existing' ? row.existingWalletId : row.walletOption}
-                    onChange={e => {
-                      const val = e.target.value;
-                      if (val === 'none') {
-                        updateStudentRow(i, { walletOption: 'none', existingWalletId: '', newWalletName: '' });
-                      } else if (val === 'create') {
-                        updateStudentRow(i, { walletOption: 'create', existingWalletId: '', newWalletName: row.displayName });
-                      } else {
-                        updateStudentRow(i, { walletOption: 'existing', existingWalletId: val, newWalletName: '' });
-                      }
-                    }}
-                    className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
-                  >
-                    <option value="none">No wallet</option>
-                    {wallets.map(w => (
-                      <option key={w.id} value={w.id}>{w.name} (RM {w.balance})</option>
-                    ))}
-                    {/* Pending wallets being created by prior rows — use original row index as reference */}
-                    {studentRows.flatMap((r, ri) =>
-                      ri < i && r.walletOption === 'create' && r.newWalletName
-                        ? [<option key={`pending-${ri}`} value={`pending:${ri}`}>{r.newWalletName} (new)</option>]
-                        : []
                     )}
-                    <option value="create">+ Create new wallet</option>
-                  </select>
-                </div>
-
-                {/* Wallet name input — only when creating new */}
-                {row.walletOption === 'create' && (
-                  <div className="mt-2">
-                    <label className="block text-xs font-medium mb-1 text-gray-500 dark:text-zinc-400">Wallet Name</label>
-                    <input
-                      type="text"
-                      value={row.newWalletName}
-                      onChange={e => updateStudentRow(i, { newWalletName: e.target.value })}
-                      placeholder="e.g. Mrs. Wong"
-                      className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
-                    />
                   </div>
-                )}
+                );
+              })}
 
-                {/* Price */}
-                <div className="mt-2">
-                  <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1">Price (RM)</label>
-                  <input
-                    type="number"
-                    value={row.price || ''}
-                    onChange={e => updateStudentRow(i, { price: Number(e.target.value) })}
-                    placeholder="0"
-                    className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
-                  />
-                </div>
-              </div>
-            ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setStudentRows(rows => [...rows, {
+                    studentId: '', displayName: '', phone: '', isNew: true,
+                    walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
+                  }]);
+                  setStudentSearches(searches => [...searches, '']);
+                }}
+                className="w-full py-2 rounded-lg border border-dashed border-gray-300 dark:border-zinc-600 text-sm text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-zinc-800/50"
+              >
+                + Add Student
+              </button>
+            </div>
+          </section>
 
-            {/* Add Student button */}
-            <button
-              onClick={() => {
-                setStudentRows(rows => [...rows, {
-                  studentId: '', displayName: '', phone: '', isNew: true,
-                  walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
-                }]);
-                setStudentSearches(searches => [...searches, '']);
-              }}
-              className="text-sm text-blue-500 hover:text-blue-400 mt-2"
-            >
-              + Add Student
-            </button>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Notes (optional)</label>
+          {/* NOTES */}
+          <section>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-500 mb-2">
+              Notes <span className="normal-case text-gray-400 dark:text-zinc-600 font-normal">· optional</span>
+            </div>
             <textarea
               value={lessonNote}
               onChange={e => setLessonNote(e.target.value)}
-              placeholder="Additional notes..."
-              className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
+              placeholder="Anything worth remembering about this class..."
+              className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500"
               rows={2}
             />
-          </div>
+          </section>
 
           {/* Overlap warning */}
           {overlapWarning && (
-            <div className="mb-3 p-3 rounded-lg bg-yellow-900/30 border border-yellow-700 text-yellow-400 text-sm">
+            <div className="p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 text-yellow-800 dark:text-yellow-400 text-sm">
               ⚠ {overlapWarning}
             </div>
           )}
 
           {/* Submit */}
-          <div className="flex justify-end gap-3 pt-1">
+          <div className="flex justify-end gap-3 pt-3 border-t border-gray-200 dark:border-[#333]">
             <button onClick={() => setShowAddLesson(false)} className="px-4 py-2 text-sm text-gray-600 dark:text-zinc-400 hover:underline">Cancel</button>
             <Button onClick={handleCreateLesson} disabled={addingLesson}>
-              {addingLesson ? 'Creating...' : lessonType === 'recurring' ? 'Create Booking' : 'Create Lesson'}
+              {addingLesson ? 'Creating...' : 'Create'}
             </Button>
           </div>
         </div>
