@@ -53,8 +53,10 @@ export default function StudentsPage() {
   const [editLessonRate, setEditLessonRate] = useState(0);
   const [savingLessonRate, setSavingLessonRate] = useState(false);
 
-  // Student's lesson history (per-student query with limit)
-  const { lessonLogs: studentLogs, loading: logsLoading } = useLessonLogs(coach?.id, undefined, selectedStudent?.id, undefined, logLimit);
+  // Student's lesson history (per-student query with limit) — only subscribe when a student is selected
+  const { lessonLogs: studentLogs, loading: logsLoading } = useLessonLogs(
+    selectedStudent ? coach?.id : undefined, undefined, selectedStudent?.id, undefined, logLimit
+  );
 
 
   // Linked students for the selected student
