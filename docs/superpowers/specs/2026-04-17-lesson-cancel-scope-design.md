@@ -40,10 +40,9 @@ New modal opened from the overflow menu. Uses the existing `<Modal>` component (
 **Content:**
 - Title: `Cancel recurring lesson?`
 - Subtitle: `<Lesson name> — <Mon DD MMM>`
-- Three radio options, stacked:
+- Two radio options, stacked:
   - **This lesson** — "Only <date> — other dates unaffected." (default-selected)
   - **This and future lessons** — "Ends the recurring series from <date> onwards. Past lessons kept."
-  - **All lessons** — styled red. "Permanently deletes every lesson in this series, past and future."
 - Footer: `Back` (outlined) + `Cancel lesson` (red primary).
 
 **Behavior per scope:**
@@ -52,11 +51,8 @@ New modal opened from the overflow menu. Uses the existing `<Modal>` component (
 |---|---|---|
 | `this` | Existing: create `classException` with `type: 'cancelled'` and `originalDate = selected date` | Everything else untouched |
 | `future` | Update booking: set `endDate = day before selected date` (YYYY-MM-DD). If `selectedDate ≤ booking.startDate`, delete the booking entirely (no occurrences would remain). | Past `lessonLogs`, past `classExceptions`, wallet history |
-| `all` | Delete booking doc. Delete all `classExceptions` where `bookingId === booking.id` (batch). Show a second confirm step before executing. | `lessonLogs` and wallet transactions (historical income record) |
 
-**Why preserve `lessonLogs` on "All"?** Past completed lessons affected wallet balances and income totals. Wiping them would silently reverse finances. The booking + future scheduling disappears, but the financial history stays auditable. The confirm copy makes this explicit: *"Past completed lessons stay in your income history."*
-
-**Double-confirm for "All":** After the user picks "All lessons" and clicks "Cancel lesson," swap the modal body to a confirmation view: *"This deletes the entire series. Past completed lessons stay in your income history, but future dates will be gone. Continue?"* with `Back` + `Yes, delete all` buttons.
+**Why no "All lessons" option?** Past completed lessons affected wallet balances and income totals. A full-series wipe would either silently reverse finances or leave orphaned `lessonLogs`. "This and future" from the first occurrence already removes the booking entirely while preserving income history — which is the right default. If the user somehow needs to truly purge a booking (e.g., accidental duplicate), that's a rare edge case handled by direct DB cleanup, not a user-facing action.
 
 ### 3. Remove "Primary" badge
 
@@ -107,12 +103,6 @@ if (booking.startDate && dayBefore < booking.startDate) {
     batch.delete(doc(...'classExceptions', ex.id))
   }
 }
-
-// 'all'
-batch.delete(doc(...'bookings', booking.id))
-for (const ex of classExceptions.filter(e => e.bookingId === booking.id)) {
-  batch.delete(doc(...'classExceptions', ex.id))
-}
 ```
 
 ## UX details
@@ -121,7 +111,6 @@ for (const ex of classExceptions.filter(e => e.bookingId === booking.id)) {
 - **Toast copy:**
   - `this` → "Class cancelled for this date" (unchanged)
   - `future` → "Recurring series ended"
-  - `all` → "Lesson deleted"
 - **Error handling:** Existing try/catch + toast pattern. No new error states.
 - **Busy state:** `setCancelling(booking.id)` already exists; reuse while the batch commits.
 
@@ -129,11 +118,10 @@ for (const ex of classExceptions.filter(e => e.bookingId === booking.id)) {
 
 1. **Recurring lesson → Cancel → This lesson.** Single occurrence marked cancelled; other dates unaffected. Matches current behavior.
 2. **Recurring lesson → Cancel → This and future.** Today + future dates no longer appear on calendar. Past dates + past `lessonLogs` remain. Wallet balances unchanged.
-3. **Recurring lesson with no past occurrences → Cancel → This and future.** `selectedDate ≤ startDate`, booking deleted entirely.
-4. **Recurring lesson → Cancel → All lessons.** Second confirm appears. On confirm: booking + all its classExceptions deleted. `lessonLogs` preserved on `/dashboard/income` page.
-5. **One-time lesson → Cancel.** No scope picker; simple confirm; occurrence cancelled.
-6. **Edit modal roster.** No "Primary" pill visible on the first student. First student still can't be removed (intentional).
-7. **Undo cancel (single occurrence).** The existing "Undo" affordance still works after the rename.
+3. **Recurring lesson with no past occurrences → Cancel → This and future.** `selectedDate ≤ startDate`, booking deleted entirely along with its classExceptions. Any past `lessonLogs` still visible on `/dashboard/income`.
+4. **One-time lesson → Cancel.** No scope picker; simple confirm; occurrence cancelled.
+5. **Edit modal roster.** No "Primary" pill visible on the first student. First student still can't be removed (intentional).
+6. **Undo cancel (single occurrence).** The existing "Undo" affordance still works after the rename.
 
 ## Out of scope (noted for future)
 
