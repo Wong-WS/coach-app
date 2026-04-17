@@ -334,7 +334,6 @@ export default function PaymentsPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingWallet, setDeletingWallet] = useState(false);
 
-  // Wallet list filters
   const [walletSearch, setWalletSearch] = useState('');
   const [walletDayFilter, setWalletDayFilter] = useState<DayOfWeek | 'all' | 'inactive'>('all');
 
@@ -368,6 +367,12 @@ export default function PaymentsPage() {
     return { walletDayMap: dayMap, activeDays: allDays.filter((d) => dayMap.has(d)), activeWalletIds: active };
   }, [recurringBookings]);
 
+  const studentNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of students) map.set(s.id, s.clientName.toLowerCase());
+    return map;
+  }, [students]);
+
   const filteredWallets = useMemo(() => {
     let result = wallets;
 
@@ -378,17 +383,22 @@ export default function PaymentsPage() {
       result = dayWallets ? result.filter((w) => dayWallets.has(w.id)) : [];
     }
 
-    if (walletSearch.trim()) {
-      const q = walletSearch.toLowerCase();
+    const q = walletSearch.trim().toLowerCase();
+    if (q) {
       result = result.filter((w) => {
         if (w.name.toLowerCase().includes(q)) return true;
-        const linked = students.filter((s) => w.studentIds.includes(s.id));
-        return linked.some((s) => s.clientName.toLowerCase().includes(q));
+        return w.studentIds.some((id) => studentNameById.get(id)?.includes(q));
       });
     }
 
     return result;
-  }, [wallets, walletDayFilter, walletDayMap, activeWalletIds, walletSearch, students]);
+  }, [wallets, walletDayFilter, walletDayMap, activeWalletIds, walletSearch, studentNameById]);
+
+  useEffect(() => {
+    if (walletDayFilter !== 'all' && walletDayFilter !== 'inactive' && !activeDays.includes(walletDayFilter)) {
+      setWalletDayFilter('all');
+    }
+  }, [activeDays, walletDayFilter]);
   const monthlyTotal = useMemo(() => weeklyTotal * (52 / 12), [weeklyTotal]);
 
   const weekRange = useMemo(() => getWeekRange(), []);
@@ -753,7 +763,7 @@ export default function PaymentsPage() {
           <div className="flex items-center justify-between">
             <p className="text-sm text-gray-500 dark:text-zinc-400">
               {filteredWallets.length} {filteredWallets.length === 1 ? 'wallet' : 'wallets'}
-              {(walletDayFilter !== 'all' || walletSearch) && wallets.length !== filteredWallets.length
+              {(walletDayFilter !== 'all' || walletSearch.trim()) && wallets.length !== filteredWallets.length
                 ? ` (of ${wallets.length})`
                 : ''}
             </p>
