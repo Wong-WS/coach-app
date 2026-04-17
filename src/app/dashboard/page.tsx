@@ -47,6 +47,9 @@ export default function DashboardPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [marking, setMarking] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [cancelScopeBooking, setCancelScopeBooking] = useState<Booking | null>(null);
+  const [cancelScope, setCancelScope] = useState<'this' | 'future'>('this');
+  const [oneTimeCancelBooking, setOneTimeCancelBooking] = useState<Booking | null>(null);
   const [rescheduleBooking, setRescheduleBooking] = useState<Booking | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState('');
   const [rescheduleStartTime, setRescheduleStartTime] = useState('');
@@ -1141,11 +1144,20 @@ export default function DashboardPage() {
                             )}
                             {!isDone && (
                             <button
-                              onClick={() => handleCancel(booking)}
+                              onClick={() => {
+                                const isOneTime = !!(booking.startDate && booking.endDate && booking.startDate === booking.endDate);
+                                if (isOneTime) {
+                                  setOneTimeCancelBooking(booking);
+                                } else {
+                                  setCancelScopeBooking(booking);
+                                  setCancelScope('this');
+                                }
+                                setMenuOpen(null);
+                              }}
                               disabled={cancelling === booking.id}
                               className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-[#333] disabled:opacity-50"
                             >
-                              {cancelling === booking.id ? 'Cancelling...' : 'Cancel This Date'}
+                              {cancelling === booking.id ? 'Cancelling...' : 'Cancel'}
                             </button>
                             )}
                           </div>
