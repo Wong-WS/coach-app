@@ -1,45 +1,9 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { collection, doc, onSnapshot, query, where, orderBy, limit, Firestore } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, orderBy, limit, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Booking, Location, WorkingHours, DayOfWeek, Student, LessonLog, ClassException, Wallet, WalletTransaction } from '@/types';
-
-export function useWorkingHours(coachId: string | undefined) {
-  const [workingHours, setWorkingHours] = useState<WorkingHours[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!coachId || !db) {
-      setLoading(false);
-      return;
-    }
-
-    const firestore = db as Firestore;
-    const unsubscribe = onSnapshot(
-      collection(firestore, 'coaches', coachId, 'workingHours'),
-      (snapshot) => {
-        const hours: WorkingHours[] = snapshot.docs.map((d) => {
-          const data = d.data();
-          // Backward compat: migrate old { startTime, endTime } format
-          const timeRanges = data.timeRanges
-            ?? (data.startTime ? [{ startTime: data.startTime, endTime: data.endTime }] : [{ startTime: '09:00', endTime: '17:00' }]);
-          return {
-            day: d.id as DayOfWeek,
-            enabled: data.enabled,
-            timeRanges,
-          };
-        });
-        setWorkingHours(hours);
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [coachId]);
-
-  return { workingHours, loading };
-}
+import { Booking, Location, Student, LessonLog, ClassException, Wallet, WalletTransaction } from '@/types';
 
 export function useLocations(coachId: string | undefined) {
   const [locations, setLocations] = useState<Location[]>([]);
@@ -350,76 +314,4 @@ export function useWalletTransactions(coachId: string | undefined, walletId: str
   }, [coachId, walletId, limitCount]);
 
   return { transactions, loading };
-}
-
-// Hook for public page - fetches coach by slug
-export function useCoachBySlug(slug: string) {
-  const [coach, setCoach] = useState<{
-    id: string;
-    displayName: string;
-    serviceType: string;
-    whatsappNumber: string;
-    lessonDurationMinutes: number;
-    travelBufferMinutes: number;
-  } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!db) {
-      setError('Firebase not initialized');
-      setLoading(false);
-      return;
-    }
-
-    const firestore = db as Firestore;
-    const slugDocRef = doc(firestore, 'coachSlugs', slug);
-
-    let unsubscribeCoach: (() => void) | null = null;
-
-    const unsubscribeSlug = onSnapshot(slugDocRef, (slugDoc) => {
-      // Clean up previous inner listener before creating a new one
-      if (unsubscribeCoach) {
-        unsubscribeCoach();
-        unsubscribeCoach = null;
-      }
-
-      if (!slugDoc.exists()) {
-        setError('Coach not found');
-        setLoading(false);
-        return;
-      }
-
-      const coachId = slugDoc.data().coachId;
-      const coachDocRef = doc(firestore, 'coaches', coachId);
-
-      unsubscribeCoach = onSnapshot(coachDocRef, (coachDoc) => {
-        if (!coachDoc.exists()) {
-          setError('Coach profile not found');
-          setLoading(false);
-          return;
-        }
-
-        const data = coachDoc.data();
-        setCoach({
-          id: coachDoc.id,
-          displayName: data.displayName,
-          serviceType: data.serviceType,
-          whatsappNumber: data.whatsappNumber,
-          lessonDurationMinutes: data.lessonDurationMinutes,
-          travelBufferMinutes: data.travelBufferMinutes,
-        });
-        setLoading(false);
-      });
-    });
-
-    return () => {
-      unsubscribeSlug();
-      if (unsubscribeCoach) {
-        unsubscribeCoach();
-      }
-    };
-  }, [slug]);
-
-  return { coach, loading, error };
 }

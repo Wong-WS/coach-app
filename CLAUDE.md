@@ -29,7 +29,7 @@
 ```
 coach-app/src/
 ├── app/
-│   ├── layout.tsx                    # Root layout + AuthProvider + ToastProvider
+│   ├── layout.tsx                    # Root layout + ToastProvider + ThemeProvider
 │   ├── page.tsx                      # Landing page
 │   ├── globals.css                   # Global styles
 │   ├── login/page.tsx                # Login page
@@ -37,30 +37,33 @@ coach-app/src/
 │   ├── dashboard/
 │   │   ├── layout.tsx                # Auth guard + sidebar + mobile bottom nav
 │   │   ├── page.tsx                  # Today's Classes — mark-as-done, class exceptions
-│   │   ├── settings/page.tsx         # Working hours (multiple time ranges), duration, buffer, WhatsApp
-│   │   ├── locations/page.tsx        # Manage locations
-│   │   ├── bookings/page.tsx         # Create/view/cancel bookings (5-min time increments)
-│   │   ├── students/page.tsx         # Student management — prepaid, credits, payments, portal links
-│   │   ├── income/page.tsx           # Income tracking and projections
-│   │   └── waitlist/page.tsx         # View and manage waitlist entries
-│   ├── [slug]/page.tsx               # Public coach page with availability + waitlist join
+│   │   ├── settings/page.tsx         # Danger Zone (reset account)
+│   │   ├── bookings/page.tsx         # Read-only recurring schedule
+│   │   ├── students/page.tsx         # Student list + wallet top-up + lesson history
+│   │   └── payments/page.tsx         # Wallet management + transaction history
+│   ├── [slug]/page.tsx               # Public coach page with availability
 │   ├── student/[token]/page.tsx      # Student portal (read-only lesson history)
 │   └── api/
-│       ├── coach/[slug]/route.ts     # Public coach profile API (GET)
 │       ├── availability/[coachId]/route.ts  # Available slots API (GET)
-│       └── student/[token]/route.ts  # Student portal API (Admin SDK, GET)
+│       ├── student/[token]/route.ts         # Student portal API (Admin SDK, GET)
+│       ├── migrate-wallets/route.ts         # One-off migration: legacy prepaid → wallets
+│       └── reset-account/route.ts           # Dev/testing nuke
 ├── lib/
 │   ├── firebase.ts                   # Firebase client init
 │   ├── firebase-admin.ts             # Firebase Admin SDK (server-side)
-│   ├── auth-context.tsx              # Auth React context + signup/signin/signout
-│   ├── availability-engine.ts        # Core slot calculation algorithm (multi-range aware)
-│   ├── class-schedule.ts             # Schedule helpers (getClassesForDate, rescheduling)
-│   └── students.ts                   # findOrCreateStudent utility (name+phone match)
+│   ├── auth-context.tsx              # Auth React context
+│   ├── theme-context.tsx             # Dark-mode toggle
+│   ├── availability-engine.ts        # Core slot calculation algorithm
+│   ├── class-schedule.ts             # getClassesForDate, rescheduling helpers
+│   ├── cancel-scope.ts               # computeCancelFuture (cancel-this vs cancel-future)
+│   ├── wallets.ts                    # resolveWallet helper
+│   ├── students.ts                   # findOrCreateStudent utility
+│   └── date-format.ts                # en-MY date formatters
 ├── components/
-│   └── ui/                           # Button, Input, Select, Modal, PhoneInput, Toast
+│   └── ui/                           # Button, Input, Select, Modal, PhoneInput, Toast, GoogleButton
 ├── hooks/
-│   └── useCoachData.ts               # Firestore hooks: useWorkingHours, useLocations, useBookings, useWaitlist, useStudents, useLessonLogs, useClassExceptions, usePayments, useCoachBySlug
-└── types/index.ts                    # TypeScript types (Coach, Booking, Student, LessonLog, ClassException, Payment, etc.)
+│   └── useCoachData.ts               # Firestore hooks: useLocations, useBookings, useStudents, useLessonLogs, useClassExceptions, useWallets, useWalletTransactions
+└── types/index.ts                    # TypeScript types
 ```
 
 ### Technology Stack
@@ -100,21 +103,15 @@ coaches/{coachId}/bookings/{bookingId}   # Recurring weekly bookings
   startTime, endTime, status             # status: 'confirmed' | 'cancelled'
   clientName, clientPhone, lessonType, groupSize, notes
   price, linkedStudentIds[], studentPrices{}
+  walletId, studentWallets{}             # Wallet attachment for mark-as-done charges
   startDate, endDate                     # Optional date range filtering
   createdAt, cancelledAt
 
-coaches/{coachId}/waitlist/{entryId}     # Waitlist entries from public page
-  locationId, locationName, dayOfWeek
-  preferredTime                          # 'morning' | 'afternoon' | 'evening' | 'any'
-  clientName, clientPhone, notes
-  status                                 # 'waiting' | 'contacted' | 'booked'
-  createdAt, contactedAt, bookedAt
-
-coaches/{coachId}/students/{studentId}   # Student records with prepaid tracking
+coaches/{coachId}/students/{studentId}   # Student records
   clientName, clientPhone, linkToken
-  prepaidTotal, prepaidUsed, credit, pendingPayment
-  lessonRate, payPerLesson, linkedToStudentId
-  notes, createdAt, updatedAt
+  lessonRate, notes, createdAt, updatedAt
+  # Legacy fields (pre-wallet): prepaidTotal, prepaidUsed, credit, pendingPayment,
+  # useMonetaryBalance, monetaryBalance — still read by /student/[token] portal
 
 coaches/{coachId}/lessonLogs/{logId}     # Completed lesson records
   date, bookingId, studentId, studentName
@@ -127,9 +124,13 @@ coaches/{coachId}/classExceptions/{exceptionId}  # Per-date overrides
   newDate, newStartTime, newEndTime, newLocationId, newLocationName, newPrice
   createdAt
 
-coaches/{coachId}/payments/{paymentId}   # Payment collection records
-  studentId, studentName, amount
-  collectedAt, createdAt
+coaches/{coachId}/wallets/{walletId}     # Shared balance for one or more students
+  name, balance, studentIds[], createdAt, updatedAt
+
+coaches/{coachId}/wallets/{walletId}/transactions/{txnId}  # Wallet history
+  type                                   # 'top-up' | 'charge' | 'refund' | 'adjustment'
+  amount, balanceAfter, description
+  studentId, lessonLogId, date, createdAt
 ```
 
 ### Key Features
@@ -147,20 +148,12 @@ coaches/{coachId}/payments/{paymentId}   # Payment collection records
 10. Availability engine with smart travel buffer calculation
 
 #### Phase 2 (Implemented)
-11. Waitlist system — clients can join from public page; coach manages via dashboard
-    - Public page: modal form (location, day, preferred time, name, phone, notes)
-    - Dashboard: tab filtering (Waiting/Contacted/Booked), status transitions, WhatsApp prefill, delete
-
-#### Phase 3 (Implemented)
-12. Student tracking — auto-created on booking creation and mark-as-done
-13. Prepaid packages — prepaidTotal/prepaidUsed per student, credit balance
-14. Lesson logging — mark-as-done creates lessonLog, increments prepaidUsed
-15. Student portal — public read-only page at /student/[token] (via Admin SDK API)
-16. Linked students — for group lessons with separate-paying parents (linkedToStudentId, linkedStudentIds[], studentPrices{})
-17. Class exceptions — cancel or reschedule individual occurrences of recurring bookings
-18. Income dashboard — projected vs. actual income, payment tracking
-19. Payment collection — record payments per student, pending payment tracking
-20. Per-student pricing — lessonRate, payPerLesson flag on Student
+11. Student tracking — auto-created on booking creation and mark-as-done
+12. Student portal — public read-only page at /student/[token] (via Admin SDK API)
+13. Linked students — for group lessons with separate-paying parents (linkedStudentIds[], studentPrices{})
+14. Class exceptions — cancel or reschedule individual occurrences of recurring bookings
+15. Lesson logging — mark-as-done creates lessonLog + wallet charge transaction
+16. Wallet system — shared balance per student group, top-up/charge/refund/adjustment transactions
 
 ### Availability Engine Logic
 
@@ -173,12 +166,9 @@ coaches/{coachId}/payments/{paymentId}   # Payment collection records
 
 ### Security Rules
 
-- coachSlugs: public read, authenticated create (own uid only)
-- coaches: public read, owner write
-- workingHours/locations: public read, owner write
-- bookings: public read (for availability engine), owner write
-- waitlist: public create, owner read/write/delete
-- students/lessonLogs/classExceptions/payments: owner read/write
+- coachSlugs: authenticated read, create own uid only
+- studentTokens: no public read (Admin SDK only); owner create/delete
+- coaches + all subcollections: owner read/write (public data served via API routes using Admin SDK)
 
 ### Test Account
 
