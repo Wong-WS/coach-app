@@ -72,10 +72,9 @@ export default function DashboardPage() {
 
   // Unified Add Lesson form state
   const [showAddLesson, setShowAddLesson] = useState(false);
-  const [lessonType, setLessonType] = useState<'one-time' | 'recurring'>('one-time');
   const [lessonClassName, setLessonClassName] = useState('');
   const [lessonDate, setLessonDate] = useState('');
-  const [lessonDayOfWeek, setLessonDayOfWeek] = useState<string>('monday');
+  const [lessonRepeatWeekly, setLessonRepeatWeekly] = useState(false);
   const [lessonLocationId, setLessonLocationId] = useState('');
   const [lessonNewLocationName, setLessonNewLocationName] = useState('');
   const [lessonStartTime, setLessonStartTime] = useState('09:00');
@@ -126,14 +125,26 @@ export default function DashboardPage() {
     return '';
   }, [bookings]);
 
-  // Check for overlaps when lesson type or time fields change
+  // Derive day-of-week from the picked lesson date (local time)
+  const lessonDayOfWeek: DayOfWeek | '' = useMemo(() => {
+    if (!lessonDate) return '';
+    const d = new Date(lessonDate + 'T00:00:00');
+    return (['sunday','monday','tuesday','wednesday','thursday','friday','saturday'] as const)[d.getDay()];
+  }, [lessonDate]);
+
+  const lessonDayName = useMemo(() => {
+    if (!lessonDate) return '';
+    return new Date(lessonDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' });
+  }, [lessonDate]);
+
+  // Check for overlaps when repeat-weekly toggle or time fields change
   useEffect(() => {
-    if (lessonType === 'recurring') {
+    if (lessonRepeatWeekly && lessonDayOfWeek) {
       setOverlapWarning(checkOverlap(lessonDayOfWeek, lessonStartTime, lessonEndTime));
     } else {
       setOverlapWarning('');
     }
-  }, [lessonType, lessonDayOfWeek, lessonStartTime, lessonEndTime, checkOverlap]);
+  }, [lessonRepeatWeekly, lessonDayOfWeek, lessonStartTime, lessonEndTime, checkOverlap]);
 
   // Edit booking modal state
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
@@ -250,10 +261,9 @@ export default function DashboardPage() {
   };
 
   const resetLessonForm = () => {
-    setLessonType('one-time');
     setLessonClassName('');
     setLessonDate(getDateString(selectedDate));
-    setLessonDayOfWeek('monday');
+    setLessonRepeatWeekly(false);
     setLessonLocationId(locations[0]?.id || '');
     setLessonNewLocationName('');
     setLessonStartTime('09:00');
@@ -274,7 +284,7 @@ export default function DashboardPage() {
       showToast('Please enter a class name', 'error');
       return;
     }
-    if (lessonType === 'one-time' && !lessonDate) {
+    if (!lessonDate) {
       showToast('Please select a date', 'error');
       return;
     }
@@ -335,10 +345,8 @@ export default function DashboardPage() {
         }
       }
 
-      // Build booking data
-      const dayOfWeek = lessonType === 'recurring'
-        ? lessonDayOfWeek
-        : ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][new Date(lessonDate).getDay()];
+      // Build booking data — day of week is always derived from the picked date
+      const dayOfWeek = (['sunday','monday','tuesday','wednesday','thursday','friday','saturday'] as const)[new Date(lessonDate + 'T00:00:00').getDay()];
 
       const groupSize = studentRows.length;
       const bookingData: Record<string, unknown> = {
@@ -358,20 +366,10 @@ export default function DashboardPage() {
         createdAt: serverTimestamp(),
       };
 
-      // One-time: set startDate === endDate
-      if (lessonType === 'one-time') {
-        bookingData.startDate = lessonDate;
+      // One-time: startDate === endDate. Recurring: only startDate, no endDate.
+      bookingData.startDate = lessonDate;
+      if (!lessonRepeatWeekly) {
         bookingData.endDate = lessonDate;
-      } else {
-        // Recurring: startDate = first occurrence of dayOfWeek on or after today
-        const days: DayOfWeek[] = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
-        const targetIdx = days.indexOf(lessonDayOfWeek as DayOfWeek);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const daysAhead = (targetIdx - today.getDay() + 7) % 7;
-        const first = new Date(today);
-        first.setDate(today.getDate() + daysAhead);
-        bookingData.startDate = getDateString(first);
       }
 
       // Attach wallet to booking if one was selected/created
@@ -1189,7 +1187,7 @@ export default function DashboardPage() {
                             <button
                               onClick={() => {
                                 resetLessonForm();
-                                setLessonType('one-time');
+                                setLessonRepeatWeekly(false);
                                 setLessonClassName(booking.className || '');
                                 setLessonDate(selectedDateStr);
                                 setLessonLocationId(booking.locationId || locations[0]?.id || '');
@@ -1380,7 +1378,7 @@ export default function DashboardPage() {
                         const loc = locations.find((l) => l.name === group[0].locationName);
                         const firstLog = group[0];
                         resetLessonForm();
-                        setLessonType('one-time');
+                        setLessonRepeatWeekly(false);
                         setLessonDate(selectedDateStr);
                         setLessonLocationId(loc?.id || locations[0]?.id || '');
                         setLessonStartTime(firstLog.startTime || '09:00');
@@ -1954,42 +1952,30 @@ export default function DashboardPage() {
           {/* CLASS */}
           <section>
             <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-500 mb-2">Class</div>
-            <div className="space-y-2">
-              <div className="flex gap-2">
-                <button
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${lessonType === 'one-time' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-zinc-700'}`}
-                  onClick={() => setLessonType('one-time')}
-                >One-time</button>
-                <button
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${lessonType === 'recurring' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-zinc-700'}`}
-                  onClick={() => setLessonType('recurring')}
-                >Recurring</button>
-              </div>
-              <input
-                type="text"
-                value={lessonClassName}
-                onChange={e => setLessonClassName(e.target.value)}
-                placeholder="Class name (e.g. Tuesday swim squad)"
-                className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500"
-              />
-            </div>
+            <input
+              type="text"
+              value={lessonClassName}
+              onChange={e => setLessonClassName(e.target.value)}
+              placeholder="Class name (e.g. Tuesday swim squad)"
+              className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500"
+            />
           </section>
 
           {/* WHEN */}
           <section>
             <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-500 mb-2">When</div>
             <div className="space-y-2">
-              {lessonType === 'one-time' ? (
-                <input type="date" value={lessonDate} onChange={e => setLessonDate(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100" />
-              ) : (
-                <select value={lessonDayOfWeek} onChange={e => setLessonDayOfWeek(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100">
-                  {['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map(d => (
-                    <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
-                  ))}
-                </select>
-              )}
+              <input type="date" value={lessonDate} onChange={e => setLessonDate(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100" />
+              <label className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-700/50 text-sm text-gray-700 dark:text-zinc-300">
+                <input
+                  type="checkbox"
+                  checked={lessonRepeatWeekly}
+                  onChange={e => setLessonRepeatWeekly(e.target.checked)}
+                  className="w-4 h-4 rounded accent-blue-600"
+                />
+                <span>Repeat every {lessonDayName || 'week'}</span>
+              </label>
               <div className="grid grid-cols-2 gap-2">
                 <select value={lessonStartTime} onChange={e => setLessonStartTime(e.target.value)}
                   aria-label="Start time"
