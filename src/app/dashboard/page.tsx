@@ -77,6 +77,7 @@ export default function DashboardPage() {
   const [lessonDate, setLessonDate] = useState('');
   const [lessonDayOfWeek, setLessonDayOfWeek] = useState<string>('monday');
   const [lessonLocationId, setLessonLocationId] = useState('');
+  const [lessonNewLocationName, setLessonNewLocationName] = useState('');
   const [lessonStartTime, setLessonStartTime] = useState('09:00');
   const [lessonEndTime, setLessonEndTime] = useState('10:00');
   const [lessonNote, setLessonNote] = useState('');
@@ -234,8 +235,14 @@ export default function DashboardPage() {
     if (row.walletOption === 'create' && row.newWalletName) {
       parts.push(`New wallet "${row.newWalletName}"`);
     } else if (row.walletOption === 'existing') {
-      const w = wallets.find(w => w.id === row.existingWalletId);
-      if (w) parts.push(`Wallet "${w.name}" · RM ${w.balance}`);
+      if (row.existingWalletId.startsWith('pending:')) {
+        const refIdx = parseInt(row.existingWalletId.split(':')[1]);
+        const refRow = studentRows[refIdx];
+        if (refRow?.newWalletName) parts.push(`Shared wallet "${refRow.newWalletName}"`);
+      } else {
+        const w = wallets.find(w => w.id === row.existingWalletId);
+        if (w) parts.push(`Wallet "${w.name}" · RM ${w.balance}`);
+      }
     } else {
       parts.push('No wallet');
     }
@@ -248,6 +255,7 @@ export default function DashboardPage() {
     setLessonDate(getDateString(selectedDate));
     setLessonDayOfWeek('monday');
     setLessonLocationId(locations[0]?.id || '');
+    setLessonNewLocationName('');
     setLessonStartTime('09:00');
     setLessonEndTime('10:00');
     setLessonNote('');
@@ -274,10 +282,29 @@ export default function DashboardPage() {
       showToast('Please select a location', 'error');
       return;
     }
+    if (lessonLocationId === 'create' && !lessonNewLocationName.trim()) {
+      showToast('Please enter a location name', 'error');
+      return;
+    }
     setAddingLesson(true);
     try {
       const firestore = db as Firestore;
       const primaryRow = studentRows[0];
+
+      // If creating a new location, save it first and use its ID going forward
+      let resolvedLocationId = lessonLocationId;
+      let resolvedLocationName = locations.find(l => l.id === lessonLocationId)?.name || '';
+      if (lessonLocationId === 'create') {
+        const trimmed = lessonNewLocationName.trim();
+        const locRef = await addDoc(collection(firestore, 'coaches', coach.id, 'locations'), {
+          name: trimmed,
+          address: '',
+          notes: '',
+          createdAt: serverTimestamp(),
+        });
+        resolvedLocationId = locRef.id;
+        resolvedLocationName = trimmed;
+      }
 
       // Resolve primary student
       const primaryStudentId = await findOrCreateStudent(
@@ -315,8 +342,8 @@ export default function DashboardPage() {
 
       const groupSize = studentRows.length;
       const bookingData: Record<string, unknown> = {
-        locationId: lessonLocationId,
-        locationName: locations.find(l => l.id === lessonLocationId)?.name || '',
+        locationId: resolvedLocationId,
+        locationName: resolvedLocationName,
         dayOfWeek,
         startTime: lessonStartTime,
         endTime: lessonEndTime,
@@ -1981,13 +2008,29 @@ export default function DashboardPage() {
           {/* WHERE */}
           <section>
             <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-500 mb-2">Where</div>
-            <select value={lessonLocationId} onChange={e => setLessonLocationId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100">
-              <option value="">Select location</option>
-              {locations.map(loc => (
-                <option key={loc.id} value={loc.id}>{loc.name}</option>
-              ))}
-            </select>
+            <div className="space-y-2">
+              <select value={lessonLocationId} onChange={e => {
+                  const val = e.target.value;
+                  setLessonLocationId(val);
+                  if (val !== 'create') setLessonNewLocationName('');
+                }}
+                className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100">
+                <option value="">Select location</option>
+                {locations.map(loc => (
+                  <option key={loc.id} value={loc.id}>{loc.name}</option>
+                ))}
+                <option value="create">+ Create new location</option>
+              </select>
+              {lessonLocationId === 'create' && (
+                <input
+                  type="text"
+                  value={lessonNewLocationName}
+                  onChange={e => setLessonNewLocationName(e.target.value)}
+                  placeholder="New location name (e.g. Club A pool)"
+                  className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500"
+                />
+              )}
+            </div>
           </section>
 
           {/* STUDENTS */}
@@ -2150,6 +2193,11 @@ export default function DashboardPage() {
                             {wallets.map(w => (
                               <option key={w.id} value={w.id}>{w.name} (RM {w.balance})</option>
                             ))}
+                            {studentRows.flatMap((r, ri) =>
+                              ri < i && r.walletOption === 'create' && r.newWalletName.trim()
+                                ? [<option key={`pending-${ri}`} value={`pending:${ri}`}>{r.newWalletName} (new, shared)</option>]
+                                : []
+                            )}
                             <option value="create">+ Create new wallet</option>
                           </select>
                         </div>
