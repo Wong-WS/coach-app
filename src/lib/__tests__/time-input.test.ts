@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseTimeInput } from '@/lib/time-input';
+import { parseTimeInput, nearbySteppedTimes, snapToStep } from '@/lib/time-input';
 
 describe('parseTimeInput — suffix forms', () => {
   it('parses "9a" as 09:00', () => {
@@ -97,5 +97,47 @@ describe('parseTimeInput — invalid input', () => {
   });
   it('returns null for "13pm" (13 with pm is contradictory)', () => {
     expect(parseTimeInput('13pm')).toBeNull();
+  });
+});
+
+describe('snapToStep', () => {
+  it('leaves an on-step value unchanged', () => {
+    expect(snapToStep('09:05', 5)).toBe('09:05');
+  });
+  it('snaps 09:07 down to 09:05 with step 5', () => {
+    expect(snapToStep('09:07', 5)).toBe('09:05');
+  });
+  it('snaps 09:08 up to 09:10 with step 5', () => {
+    expect(snapToStep('09:08', 5)).toBe('09:10');
+  });
+  it('snaps across hour boundary: 09:58 → 10:00 with step 5', () => {
+    expect(snapToStep('09:58', 5)).toBe('10:00');
+  });
+  it('snaps with step 30: 09:15 → 09:30', () => {
+    expect(snapToStep('09:15', 30)).toBe('09:30');
+  });
+});
+
+describe('nearbySteppedTimes', () => {
+  it('returns 7 slots centered on the current value by default', () => {
+    const slots = nearbySteppedTimes('09:00', 5);
+    expect(slots).toHaveLength(7);
+    expect(slots).toContain('09:00');
+  });
+  it('respects the count option', () => {
+    expect(nearbySteppedTimes('09:00', 5, 3)).toHaveLength(3);
+  });
+  it('clamps at day start (never returns negative times)', () => {
+    const slots = nearbySteppedTimes('00:00', 5, 7);
+    expect(slots[0]).toBe('00:00');
+  });
+  it('clamps at day end (never returns times past 23:55)', () => {
+    const slots = nearbySteppedTimes('23:55', 5, 7);
+    expect(slots[slots.length - 1]).toBe('23:55');
+  });
+  it('uses the nearest stepped time as the anchor for off-step values', () => {
+    // 09:07 with step 5 should anchor around 09:05
+    const slots = nearbySteppedTimes('09:07', 5, 3);
+    expect(slots).toContain('09:05');
   });
 });

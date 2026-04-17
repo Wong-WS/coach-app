@@ -75,3 +75,42 @@ export function parseTimeInput(raw: string, opts: ParseOptions = {}): string | n
 
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
+
+function toMinutes(time: string): number {
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function fromMinutes(total: number): string {
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/** Round a time to the nearest `step` minutes. Ties round up. */
+export function snapToStep(time: string, step: number): string {
+  const mins = toMinutes(time);
+  const snapped = Math.round(mins / step) * step;
+  const clamped = Math.max(0, Math.min(24 * 60 - step, snapped));
+  return fromMinutes(clamped);
+}
+
+/**
+ * Build a list of stepped times around `anchor`, clamped to [00:00, 23:55].
+ * The anchor itself is included if on-step; otherwise the nearest stepped
+ * time is used.
+ */
+export function nearbySteppedTimes(anchor: string, step: number, count = 7): string[] {
+  const anchorSnapped = snapToStep(anchor, step);
+  const anchorMin = toMinutes(anchorSnapped);
+  const half = Math.floor(count / 2);
+  const first = Math.max(0, anchorMin - half * step);
+  const lastMax = 24 * 60 - step; // 23:55 for step=5
+  const slots: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const m = first + i * step;
+    if (m > lastMax) break;
+    slots.push(fromMinutes(m));
+  }
+  return slots;
+}
