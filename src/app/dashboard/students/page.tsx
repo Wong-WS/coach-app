@@ -54,7 +54,7 @@ export default function StudentsPage() {
   const [savingLessonRate, setSavingLessonRate] = useState(false);
 
   // Student's lesson history (per-student query with limit)
-  const { lessonLogs: studentLogs } = useLessonLogs(coach?.id, undefined, selectedStudent?.id, undefined, logLimit);
+  const { lessonLogs: studentLogs, loading: logsLoading } = useLessonLogs(coach?.id, undefined, selectedStudent?.id, undefined, logLimit);
 
 
   // Linked students for the selected student
@@ -808,9 +808,13 @@ export default function StudentsPage() {
             {/* Lesson history */}
             <div className="border-t border-gray-100 dark:border-[#333333] pt-4">
               <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-3">
-                Lesson History ({studentLogs.length})
+                Lesson History {!logsLoading && `(${studentLogs.length})`}
               </h3>
-              {studentLogs.length === 0 ? (
+              {logsLoading ? (
+                <div className="flex justify-center py-4">
+                  <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : studentLogs.length === 0 ? (
                 <p className="text-sm text-gray-400 dark:text-zinc-500">No lessons recorded yet.</p>
               ) : (
                 <div className="space-y-2 max-h-48 overflow-y-auto">
