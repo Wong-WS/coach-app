@@ -5,7 +5,7 @@ import { collection, doc, writeBatch, serverTimestamp, increment, updateDoc, del
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useLocations, useBookings, useLessonLogs, useClassExceptions, useStudents, useWallets } from '@/hooks/useCoachData';
-import { Button, Input, Modal, Select } from '@/components/ui';
+import { Button, DatePicker, Input, Modal, Select } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { Booking, ClassException, DayOfWeek } from '@/types';
 import { formatTimeDisplay } from '@/lib/time-format';
@@ -1965,8 +1965,7 @@ export default function DashboardPage() {
           <section>
             <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-500 mb-2">When</div>
             <div className="space-y-2">
-              <input type="date" value={lessonDate} onChange={e => setLessonDate(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100" />
+              <DatePicker value={lessonDate} onChange={setLessonDate} ariaLabel="Lesson date" />
               <label className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-700/50 text-sm text-gray-700 dark:text-zinc-300">
                 <input
                   type="checkbox"

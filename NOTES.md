@@ -33,6 +33,7 @@
 
 - ✅ (2026-03-25) Run full E2E bug hunt using Chrome MCP — fixed 12 UI/UX bugs, wrote 65 unit tests, fixed prepaidUsed increment bug for non-package students
 - (2026-03-23) UI/UX design overhaul — revisit the overall app design
+- (2026-04-17) **Consider migrating component primitives to shadcn/ui** — user likes the look. Would replace the hand-rolled Button/Input/Select/Modal in `src/components/ui/` with shadcn's copy-paste components (Radix primitives + Tailwind). Good pairing with the react-day-picker popover we're adding now. Weight the refactor cost against visual polish + accessibility gains before doing it.
 - WhatsApp/SMS notifications
 - Custom domains
 - ✅ (2026-03-24) Production guardrails: prevent marking done for future dates
