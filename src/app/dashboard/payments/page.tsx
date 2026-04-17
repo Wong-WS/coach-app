@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { collection, doc, addDoc, updateDoc, serverTimestamp, increment, Firestore, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { collection, doc, addDoc, updateDoc, deleteDoc, getDocs, writeBatch, serverTimestamp, increment, Firestore, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useWallets, useWalletTransactions, useStudents, useBookings, useLessonLogs } from '@/hooks/useCoachData';
@@ -55,6 +55,7 @@ function WalletDetail({
   wallets,
   onTopUp,
   onAdjust,
+  onDelete,
   showToast,
 }: {
   coachId: string;
@@ -63,6 +64,7 @@ function WalletDetail({
   wallets: Wallet[];
   onTopUp: () => void;
   onAdjust: () => void;
+  onDelete: () => void;
   showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }) {
   const [txnLimit, setTxnLimit] = useState(20);
@@ -213,6 +215,18 @@ function WalletDetail({
           </div>
         )}
       </div>
+
+      {/* Delete — only when no students linked */}
+      {linkedStudents.length === 0 && (
+        <div className="pt-4 border-t border-gray-100 dark:border-[#333333]">
+          <button
+            onClick={onDelete}
+            className="w-full py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+          >
+            Delete Wallet
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -314,6 +328,10 @@ export default function PaymentsPage() {
   const [adjAmount, setAdjAmount] = useState('');
   const [adjDescription, setAdjDescription] = useState('');
   const [adjusting, setAdjusting] = useState(false);
+
+  // Delete wallet modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletingWallet, setDeletingWallet] = useState(false);
 
   // Students not yet assigned to any wallet
   const unassignedStudents = students.filter(
@@ -467,6 +485,38 @@ export default function PaymentsPage() {
       showToast('Failed to apply adjustment', 'error');
     } finally {
       setAdjusting(false);
+    }
+  };
+
+  const handleDeleteWallet = async () => {
+    if (!db || !selectedWallet) return;
+    if (selectedWallet.studentIds.length > 0) {
+      showToast('Remove all linked students before deleting', 'error');
+      return;
+    }
+    setDeletingWallet(true);
+    try {
+      const firestore = db as Firestore;
+      const txnCol = collection(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id, 'transactions');
+      const txnSnap = await getDocs(txnCol);
+      // Chunk into batches of 450 to stay under Firestore's 500-write batch limit
+      const chunks: typeof txnSnap.docs[] = [];
+      for (let i = 0; i < txnSnap.docs.length; i += 450) {
+        chunks.push(txnSnap.docs.slice(i, i + 450));
+      }
+      for (const chunk of chunks) {
+        const batch = writeBatch(firestore);
+        for (const d of chunk) batch.delete(d.ref);
+        await batch.commit();
+      }
+      await deleteDoc(doc(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id));
+      showToast(`Wallet "${selectedWallet.name}" deleted`, 'success');
+      setShowDeleteModal(false);
+      setSelectedWallet(null);
+    } catch {
+      showToast('Failed to delete wallet', 'error');
+    } finally {
+      setDeletingWallet(false);
     }
   };
 
@@ -732,6 +782,7 @@ export default function PaymentsPage() {
             wallets={wallets}
             onTopUp={() => setShowTopUpModal(true)}
             onAdjust={() => setShowAdjustModal(true)}
+            onDelete={() => setShowDeleteModal(true)}
             showToast={showToast}
           />
         )}
@@ -952,6 +1003,51 @@ export default function PaymentsPage() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* ── Delete Wallet Confirmation Modal ── */}
+      <Modal
+        isOpen={showDeleteModal}
+        onClose={() => !deletingWallet && setShowDeleteModal(false)}
+        title="Delete Wallet?"
+      >
+        {selectedWallet && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-700 dark:text-zinc-300">
+              This will permanently delete <span className="font-medium">{selectedWallet.name}</span> and all its transaction history.
+            </p>
+            {selectedWallet.balance !== 0 && (
+              <div className="rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 px-3 py-2">
+                <p className="text-xs text-yellow-800 dark:text-yellow-300">
+                  Warning: this wallet has a balance of{' '}
+                  <span className="font-semibold">
+                    {selectedWallet.balance < 0 ? '-' : ''}RM {Math.abs(selectedWallet.balance).toFixed(0)}
+                  </span>
+                  {selectedWallet.balance < 0 ? ' owed.' : ' remaining.'} This will be lost.
+                </p>
+              </div>
+            )}
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="danger"
+                onClick={handleDeleteWallet}
+                loading={deletingWallet}
+                disabled={deletingWallet}
+                className="flex-1"
+              >
+                Delete
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deletingWallet}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );
