@@ -11,6 +11,7 @@ function makeBooking(overrides: Partial<Booking> = {}): Booking {
     startTime: '10:00',
     endTime: '11:00',
     status: 'confirmed',
+    className: 'Test Class',
     clientName: 'Alice',
     clientPhone: '+60123456789',
     lessonType: 'private',

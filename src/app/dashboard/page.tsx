@@ -73,7 +73,7 @@ export default function DashboardPage() {
   // Unified Add Lesson form state
   const [showAddLesson, setShowAddLesson] = useState(false);
   const [lessonType, setLessonType] = useState<'one-time' | 'recurring'>('one-time');
-  const [lessonMode, setLessonMode] = useState<'private' | 'group'>('private');
+  const [lessonClassName, setLessonClassName] = useState('');
   const [lessonDate, setLessonDate] = useState('');
   const [lessonDayOfWeek, setLessonDayOfWeek] = useState<string>('monday');
   const [lessonLocationId, setLessonLocationId] = useState('');
@@ -108,7 +108,7 @@ export default function DashboardPage() {
     );
     for (const b of recurringOnDay) {
       if (startTime < b.endTime && endTime > b.startTime) {
-        return `This overlaps with ${b.clientName} (${formatTimeDisplay(b.startTime)}–${formatTimeDisplay(b.endTime)})`;
+        return `This overlaps with ${b.className} (${formatTimeDisplay(b.startTime)}–${formatTimeDisplay(b.endTime)})`;
       }
     }
     return '';
@@ -125,6 +125,7 @@ export default function DashboardPage() {
 
   // Edit booking modal state
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
+  const [editClassName, setEditClassName] = useState('');
   const [editLocationId, setEditLocationId] = useState('');
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
@@ -217,7 +218,7 @@ export default function DashboardPage() {
 
   const resetLessonForm = () => {
     setLessonType('one-time');
-    setLessonMode('private');
+    setLessonClassName('');
     setLessonDate(getDateString(selectedDate));
     setLessonDayOfWeek('monday');
     setLessonLocationId(locations[0]?.id || '');
@@ -234,6 +235,10 @@ export default function DashboardPage() {
 
   const handleCreateLesson = async () => {
     if (!coach || !db || studentRows.length === 0 || !studentRows[0].displayName) return;
+    if (!lessonClassName.trim()) {
+      showToast('Please enter a class name', 'error');
+      return;
+    }
     if (lessonType === 'one-time' && !lessonDate) {
       showToast('Please select a date', 'error');
       return;
@@ -281,6 +286,7 @@ export default function DashboardPage() {
         ? lessonDayOfWeek
         : ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][new Date(lessonDate).getDay()];
 
+      const groupSize = studentRows.length;
       const bookingData: Record<string, unknown> = {
         locationId: lessonLocationId,
         locationName: locations.find(l => l.id === lessonLocationId)?.name || '',
@@ -288,12 +294,13 @@ export default function DashboardPage() {
         startTime: lessonStartTime,
         endTime: lessonEndTime,
         status: 'confirmed',
+        className: lessonClassName.trim(),
         clientName: primaryRow.displayName,
         clientPhone: primaryRow.phone,
-        lessonType: lessonMode,
-        groupSize: lessonMode === 'group' ? studentRows.length : 1,
+        lessonType: groupSize > 1 ? 'group' : 'private',
+        groupSize,
         notes: lessonNote,
-        price: lessonMode === 'group' ? studentRows.reduce((sum, r) => sum + r.price, 0) : primaryRow.price,
+        price: groupSize > 1 ? studentRows.reduce((sum, r) => sum + r.price, 0) : primaryRow.price,
         createdAt: serverTimestamp(),
       };
 
@@ -673,6 +680,7 @@ export default function DashboardPage() {
 
   const openEditBooking = (booking: Booking) => {
     setEditBooking(booking);
+    setEditClassName(booking.className || '');
     setEditLocationId(booking.locationId);
     setEditStartTime(booking.startTime);
     setEditEndTime(booking.endTime);
@@ -733,12 +741,18 @@ export default function DashboardPage() {
     return false;
   };
 
+  const hasEditBookingLevelChange = () => {
+    if (!editBooking) return false;
+    return editClassName !== (editBooking.className || '');
+  };
+
   const hasEditChanges = () => {
     if (!editBooking) return false;
     return editLocationId !== editBooking.locationId ||
       editStartTime !== editBooking.startTime ||
       editEndTime !== editBooking.endTime ||
       editNote !== (editBooking.notes || '') ||
+      hasEditBookingLevelChange() ||
       hasEditRosterChange();
   };
 
@@ -748,8 +762,12 @@ export default function DashboardPage() {
       showToast('No changes to save', 'error');
       return;
     }
-    if (mode === 'this' && hasEditRosterChange()) {
-      showToast('Student/price/wallet changes must apply to all or future occurrences', 'error');
+    if (mode === 'this' && (hasEditRosterChange() || hasEditBookingLevelChange())) {
+      showToast('Class name, student, price, and wallet changes must apply to all or future occurrences', 'error');
+      return;
+    }
+    if (!editClassName.trim()) {
+      showToast('Class name is required', 'error');
       return;
     }
     setEditSaving(true);
@@ -795,6 +813,7 @@ export default function DashboardPage() {
           endTime: editEndTime,
           price: editTotalPrice,
           notes: editNote,
+          className: editClassName.trim(),
           lessonType,
           groupSize,
           linkedStudentIds: editLinkedStudentIds.length > 0 ? editLinkedStudentIds : null,
@@ -826,6 +845,7 @@ export default function DashboardPage() {
           startTime: editStartTime,
           endTime: editEndTime,
           status: 'confirmed',
+          className: editClassName.trim(),
           clientName: primaryStudent?.clientName ?? editBooking.clientName,
           clientPhone: primaryStudent?.clientPhone ?? editBooking.clientPhone,
           lessonType,
@@ -1054,14 +1074,7 @@ export default function DashboardPage() {
                       )}
                     </div>
                     <p className="text-sm text-gray-600 dark:text-zinc-400 mt-0.5">
-                      {booking.linkedStudentIds?.length
-                        ? (() => {
-                            const names = [booking.clientName, ...booking.linkedStudentIds.map((id) => students.find((s) => s.id === id)?.clientName).filter(Boolean) as string[]];
-                            return names.length <= 2
-                              ? names.join(' and ')
-                              : names.slice(0, -1).join(', ') + ', and ' + names[names.length - 1];
-                          })()
-                        : booking.clientName}
+                      {booking.className}
                     </p>
                     <p className="text-xs text-gray-400 dark:text-zinc-500 truncate">
                       {booking.locationName}{booking.notes ? <span className="text-amber-500 dark:text-amber-400"> · {booking.notes}</span> : null}
@@ -1076,7 +1089,7 @@ export default function DashboardPage() {
                       </p>
                     )}
                     <p className="text-xs text-gray-400 dark:text-zinc-500">
-                      {booking.lessonType === 'group' ? `Group (${booking.groupSize})` : 'Private'}
+                      {booking.groupSize > 1 ? `Group (${booking.groupSize})` : 'Private'}
                     </p>
                   </div>
 
@@ -1123,6 +1136,7 @@ export default function DashboardPage() {
                               onClick={() => {
                                 resetLessonForm();
                                 setLessonType('one-time');
+                                setLessonClassName(booking.className || '');
                                 setLessonDate(selectedDateStr);
                                 setLessonLocationId(booking.locationId || locations[0]?.id || '');
                                 setLessonStartTime(booking.startTime || '09:00');
@@ -1155,7 +1169,6 @@ export default function DashboardPage() {
                                   studentId: '', displayName: '', phone: '', isNew: true,
                                   walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
                                 }]);
-                                setLessonMode(dupRows.length > 1 ? 'group' : 'private');
                                 setStudentSearches(dupRows.length ? dupRows.map(() => '') : ['']);
                                 setShowAddLesson(true);
                                 setMenuOpen(null);
@@ -1236,7 +1249,7 @@ export default function DashboardPage() {
                         Cancelled
                       </span>
                     </div>
-                    <p className="text-sm text-gray-600 dark:text-zinc-400 mt-0.5">{booking.clientName}</p>
+                    <p className="text-sm text-gray-600 dark:text-zinc-400 mt-0.5">{booking.className}</p>
                     <p className="text-xs text-gray-400 dark:text-zinc-500">{booking.locationName}</p>
                   </div>
 
@@ -1325,7 +1338,6 @@ export default function DashboardPage() {
                           walletOption: 'none' as const, existingWalletId: '', newWalletName: '',
                           price: l.price,
                         })));
-                        setLessonMode(group.length > 1 ? 'group' : 'private');
                         setStudentSearches(group.map(() => ''));
                         setShowAddLesson(true);
                       }}
@@ -1371,7 +1383,7 @@ export default function DashboardPage() {
           <div className="space-y-4">
             <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3">
               <p className="font-medium text-gray-900 dark:text-zinc-100">
-                {rescheduleBooking.clientName}
+                {rescheduleBooking.className}
               </p>
               <p className="text-sm text-gray-500 dark:text-zinc-400">
                 {formatTimeDisplay(rescheduleBooking.startTime)} – {formatTimeDisplay(rescheduleBooking.endTime)} &middot; {rescheduleBooking.locationName}
@@ -1431,7 +1443,7 @@ export default function DashboardPage() {
         {cancelScopeBooking && (
           <div className="space-y-4">
             <p className="text-sm text-gray-600 dark:text-zinc-400">
-              {cancelScopeBooking.clientName} — {formatDateShort(parseDateString(selectedDateStr))}
+              {cancelScopeBooking.className} — {formatDateShort(parseDateString(selectedDateStr))}
             </p>
 
             <label className={`flex gap-3 p-3 rounded-lg cursor-pointer border-2 ${cancelScope === 'this' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-[#333]'}`}>
@@ -1493,7 +1505,7 @@ export default function DashboardPage() {
         {oneTimeCancelBooking && (
           <div className="space-y-4">
             <p className="text-sm text-gray-600 dark:text-zinc-400">
-              {oneTimeCancelBooking.clientName} — {formatDateShort(parseDateString(selectedDateStr))}
+              {oneTimeCancelBooking.className} — {formatDateShort(parseDateString(selectedDateStr))}
             </p>
             <p className="text-sm text-gray-600 dark:text-zinc-400">
               The lesson will be cancelled for this date.
@@ -1524,19 +1536,20 @@ export default function DashboardPage() {
           <div className="space-y-4">
             <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3">
               <p className="font-medium text-gray-900 dark:text-zinc-100">
-                {(() => {
-                  const names = editStudentIds
-                    .map((id) => students.find((s) => s.id === id)?.clientName)
-                    .filter(Boolean) as string[];
-                  if (names.length === 0) return editBooking.clientName;
-                  if (names.length <= 2) return names.join(' and ');
-                  return names.slice(0, -1).join(', ') + ', ' + names[names.length - 1];
-                })()}
+                {editClassName || '(unnamed class)'}
               </p>
               <p className="text-sm text-gray-500 dark:text-zinc-400">
                 {formatDateFull(selectedDate)}
               </p>
             </div>
+
+            <Input
+              id="editClassName"
+              label="Class Name"
+              value={editClassName}
+              onChange={(e) => setEditClassName(e.target.value)}
+              placeholder="e.g. Tuesday swim squad"
+            />
 
             <Select
               id="editLocation"
@@ -1754,7 +1767,7 @@ export default function DashboardPage() {
           <div className="space-y-4">
             <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3">
               <p className="font-medium text-gray-900 dark:text-zinc-100">
-                {markDoneBooking.clientName}
+                {markDoneBooking.className}
               </p>
               <p className="text-sm text-gray-500 dark:text-zinc-400">
                 {formatTimeDisplay(markDoneBooking.startTime)} – {formatTimeDisplay(markDoneBooking.endTime)} &middot; {markDoneBooking.locationName}
@@ -1896,6 +1909,18 @@ export default function DashboardPage() {
             >Recurring</button>
           </div>
 
+          {/* Class name */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Class Name</label>
+            <input
+              type="text"
+              value={lessonClassName}
+              onChange={e => setLessonClassName(e.target.value)}
+              placeholder="e.g. Tuesday swim squad"
+              className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
+            />
+          </div>
+
           {/* Date or Day of Week */}
           {lessonType === 'one-time' ? (
             <div>
@@ -1945,32 +1970,17 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Lesson mode toggle */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Lesson Type</label>
-            <div className="flex gap-2">
-              <button
-                className={`flex-1 py-2 rounded-lg text-sm font-medium ${lessonMode === 'private' ? 'bg-blue-600 text-white' : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300'}`}
-                onClick={() => { setLessonMode('private'); setStudentRows(rows => [rows[0]]); }}
-              >Private</button>
-              <button
-                className={`flex-1 py-2 rounded-lg text-sm font-medium ${lessonMode === 'group' ? 'bg-blue-600 text-white' : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300'}`}
-                onClick={() => setLessonMode('group')}
-              >Group</button>
-            </div>
-          </div>
-
           {/* Student rows */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
-              {lessonMode === 'group' ? 'Students' : 'Student'}
+              {studentRows.length > 1 ? 'Students' : 'Student'}
             </label>
             {studentRows.map((row, i) => (
               <div
                 key={i}
-                className={`${lessonMode === 'group' ? 'mb-3 p-3 rounded-lg bg-zinc-800/50 border border-zinc-700' : ''}`}
+                className={`${studentRows.length > 1 ? 'mb-3 p-3 rounded-lg bg-zinc-800/50 border border-zinc-700' : ''}`}
               >
-                {lessonMode === 'group' && (
+                {studentRows.length > 1 && (
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-medium text-zinc-400">Student {i + 1}</span>
                     {i > 0 && (
@@ -2114,21 +2124,19 @@ export default function DashboardPage() {
               </div>
             ))}
 
-            {/* Add Student button — only in group mode */}
-            {lessonMode === 'group' && (
-              <button
-                onClick={() => {
-                  setStudentRows(rows => [...rows, {
-                    studentId: '', displayName: '', phone: '', isNew: true,
-                    walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
-                  }]);
-                  setStudentSearches(searches => [...searches, '']);
-                }}
-                className="text-sm text-blue-500 hover:text-blue-400 mt-2"
-              >
-                + Add Student
-              </button>
-            )}
+            {/* Add Student button */}
+            <button
+              onClick={() => {
+                setStudentRows(rows => [...rows, {
+                  studentId: '', displayName: '', phone: '', isNew: true,
+                  walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
+                }]);
+                setStudentSearches(searches => [...searches, '']);
+              }}
+              className="text-sm text-blue-500 hover:text-blue-400 mt-2"
+            >
+              + Add Student
+            </button>
           </div>
 
           {/* Notes */}

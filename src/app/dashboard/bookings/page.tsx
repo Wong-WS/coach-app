@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuth } from '@/lib/auth-context';
-import { useBookings, useStudents } from '@/hooks/useCoachData';
+import { useBookings } from '@/hooks/useCoachData';
 import { DayOfWeek, Booking } from '@/types';
 import { getDayDisplayName, formatTimeDisplay } from '@/lib/time-format';
 
@@ -10,7 +10,6 @@ const DAYS: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday
 export default function BookingsPage() {
   const { coach } = useAuth();
   const { bookings, loading } = useBookings(coach?.id);
-  const { students } = useStudents(coach?.id);
 
   const confirmedBookings = bookings.filter((b) =>
     b.status === 'confirmed' &&
@@ -66,23 +65,14 @@ export default function BookingsPage() {
                             {formatTimeDisplay(booking.startTime)} - {formatTimeDisplay(booking.endTime)}
                           </span>
                           <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            booking.lessonType === 'group'
+                            booking.groupSize > 1
                               ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
                               : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
                           }`}>
-                            {booking.lessonType === 'group' ? `Group (${booking.groupSize})` : 'Private'}
+                            {booking.groupSize > 1 ? `Group (${booking.groupSize})` : 'Private'}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-600 dark:text-zinc-400 mt-1">
-                          {booking.linkedStudentIds?.length
-                            ? (() => {
-                                const names = [booking.clientName, ...booking.linkedStudentIds.map((id) => students.find((s) => s.id === id)?.clientName).filter(Boolean) as string[]];
-                                return names.length <= 2
-                                  ? names.join(' and ')
-                                  : names.slice(0, -1).join(', ') + ', and ' + names[names.length - 1];
-                              })()
-                            : booking.clientName}
-                        </p>
+                        <p className="text-sm text-gray-600 dark:text-zinc-400 mt-1">{booking.className}</p>
                         <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{booking.locationName}</p>
                         {booking.price != null && (
                           <p className={`text-xs font-medium mt-1 ${booking.price > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-zinc-500'}`}>

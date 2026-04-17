@@ -24,6 +24,7 @@ export interface Booking {
   startTime: string;
   endTime: string;
   status: BookingStatus;
+  className: string;
   clientName: string;
   clientPhone: string;
   lessonType: LessonType;

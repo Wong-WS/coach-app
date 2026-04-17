@@ -62,6 +62,7 @@ export function useBookings(coachId: string | undefined, statusFilter?: 'confirm
         startTime: d.data().startTime,
         endTime: d.data().endTime,
         status: d.data().status,
+        className: d.data().className ?? '',
         clientName: d.data().clientName,
         clientPhone: d.data().clientPhone,
         lessonType: d.data().lessonType,
