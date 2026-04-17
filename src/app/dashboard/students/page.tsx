@@ -45,11 +45,6 @@ export default function StudentsPage() {
   });
   const [toppingUp, setToppingUp] = useState(false);
 
-  // Editable lesson rate state (pay-per-lesson)
-  const [editingLessonRate, setEditingLessonRate] = useState(false);
-  const [editLessonRate, setEditLessonRate] = useState(0);
-  const [savingLessonRate, setSavingLessonRate] = useState(false);
-
   // Student's lesson history (per-student query with limit) — only subscribe when a student is selected
   const { lessonLogs: studentLogs, loading: logsLoading } = useLessonLogs(
     selectedStudent ? coach?.id : undefined, undefined, selectedStudent?.id, undefined, logLimit
@@ -190,23 +185,6 @@ export default function StudentsPage() {
     setEditNotes(student.notes);
     setShowTopUp(false);
     setLogLimit(20);
-
-    // If lessonRate not set on student, derive it from recurring booking for display only (no Firestore write)
-    if (!student.lessonRate) {
-      const matchingBookings = bookings.filter(
-        (b) =>
-          (b.clientName === student.clientName && b.clientPhone === (student.clientPhone || '')) ||
-          b.linkedStudentIds?.includes(student.id) ||
-          (b.studentPrices && student.id in b.studentPrices)
-      );
-      const recurringBooking = matchingBookings.find((b) => !b.endDate);
-      const derivedRate = recurringBooking
-        ? (recurringBooking.studentPrices?.[student.id] ?? recurringBooking.price ?? 0)
-        : 0;
-      if (derivedRate > 0) {
-        setSelectedStudent((prev) => prev ? { ...prev, lessonRate: derivedRate } : null);
-      }
-    }
   };
 
   const handleSave = async () => {
@@ -464,15 +442,11 @@ export default function StudentsPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {studentWallet ? (
+                    {studentWallet && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
                         RM {studentWallet.balance.toFixed(0)}
                       </span>
-                    ) : student.payPerLesson ? (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
-                        Pay per lesson
-                      </span>
-                    ) : null}
+                    )}
                   </div>
                 </div>
               </button>
@@ -590,65 +564,6 @@ export default function StudentsPage() {
                 );
               })()}
             </div>
-
-            {/* Lesson rate (pay-per-lesson) */}
-            {selectedStudent.payPerLesson && (
-              <div className="border-t border-gray-100 dark:border-[#333333] pt-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300">Pay per Lesson</h3>
-                  {!editingLessonRate && (
-                    <button
-                      onClick={() => { setEditLessonRate(selectedStudent.lessonRate ?? 0); setEditingLessonRate(true); }}
-                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                    >
-                      {(selectedStudent.lessonRate ?? 0) > 0 ? 'Edit Rate' : 'Set Rate'}
-                    </button>
-                  )}
-                </div>
-                {editingLessonRate ? (
-                  <div className="space-y-3">
-                    <Input
-                      id="editLessonRate"
-                      label="Rate per Lesson (RM)"
-                      type="number"
-                      value={String(editLessonRate)}
-                      onChange={(e) => setEditLessonRate(Math.max(0, Number(e.target.value) || 0))}
-                    />
-                    <div className="flex gap-2">
-                      <Button size="sm" loading={savingLessonRate} onClick={async () => {
-                        if (!coach || !db || !selectedStudent) return;
-                        setSavingLessonRate(true);
-                        try {
-                          await updateDoc(doc(db as Firestore, 'coaches', coach.id, 'students', selectedStudent.id), {
-                            lessonRate: editLessonRate,
-                            updatedAt: serverTimestamp(),
-                          });
-                          setSelectedStudent((prev) => prev ? { ...prev, lessonRate: editLessonRate } : null);
-                          setEditingLessonRate(false);
-                          showToast('Lesson rate updated!', 'success');
-                        } catch {
-                          showToast('Failed to update rate', 'error');
-                        } finally {
-                          setSavingLessonRate(false);
-                        }
-                      }}>
-                        Save
-                      </Button>
-                      <Button variant="secondary" size="sm" onClick={() => setEditingLessonRate(false)}>
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ) : (selectedStudent.lessonRate ?? 0) > 0 ? (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600 dark:text-zinc-400">Rate per lesson</span>
-                    <span className="font-medium text-gray-900 dark:text-zinc-100">RM {selectedStudent.lessonRate}</span>
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-400 dark:text-zinc-500">No rate set.</p>
-                )}
-              </div>
-            )}
 
             {/* Portal link */}
             <div className="border-t border-gray-100 dark:border-[#333333] pt-4">

@@ -5,14 +5,7 @@ import { formatDateMedium, parseDateString } from '@/lib/date-format';
 
 interface PortalData {
   studentName: string;
-  prepaidTotal: number;
-  prepaidUsed: number;
-  credit: number;
-  pendingPayment: number;
-  useMonetaryBalance: boolean;
-  monetaryBalance: number;
-  lessonRate: number;
-  packageSize: number;
+  walletBalance: number | null;
   coachName: string;
   serviceType: string;
   lessons: {
@@ -82,10 +75,6 @@ export default function StudentPortalPage({ params }: { params: Promise<{ token:
     );
   }
 
-  const remaining = data.prepaidTotal - data.prepaidUsed;
-  const hasPrepaid = data.prepaidTotal > 0;
-  const hasCredit = (data.credit ?? 0) > 0;
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-[#262626]">
       <div className="max-w-lg mx-auto px-4 py-8 space-y-6">
@@ -97,84 +86,17 @@ export default function StudentPortalPage({ params }: { params: Promise<{ token:
           </h1>
         </div>
 
-        {/* Payment due banner */}
-        {Math.max(0, (data.pendingPayment ?? 0) - (data.credit ?? 0)) > 0 && (
-          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-              Payment due: RM {Math.max(0, (data.pendingPayment ?? 0) - (data.credit ?? 0))}
-            </p>
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-              Please arrange payment with your coach.
-            </p>
-          </div>
-        )}
-
-        {/* Balance mode status */}
-        {data.useMonetaryBalance && (
+        {/* Wallet balance */}
+        {data.walletBalance !== null && (
           <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-6">
-            <h2 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-3">Lesson Balance</h2>
-            <div className="flex items-center justify-between text-sm mb-2">
-              <span className="text-gray-600 dark:text-zinc-400">Balance</span>
-              <span className={`font-medium ${data.monetaryBalance > 0 ? 'text-green-600 dark:text-green-400' : data.monetaryBalance < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-zinc-100'}`}>
-                RM {data.monetaryBalance.toFixed(0)}
-              </span>
-            </div>
-            {data.lessonRate > 0 && (
-              <div className="flex items-center justify-between text-sm mb-2">
-                <span className="text-gray-600 dark:text-zinc-400">Approx. lessons remaining</span>
-                <span className={`font-medium ${data.monetaryBalance > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'}`}>
-                  ~{Math.max(0, Math.floor(data.monetaryBalance / data.lessonRate))} lessons
-                </span>
-              </div>
-            )}
-            {data.packageSize > 0 && data.lessonRate > 0 && (
-              <div className="w-full bg-gray-200 dark:bg-zinc-700 rounded-full h-2.5">
-                <div
-                  className={`h-2.5 rounded-full ${data.monetaryBalance > 0 ? 'bg-blue-600' : 'bg-red-500'}`}
-                  style={{
-                    width: `${Math.max(0, Math.min(100, (data.monetaryBalance / (data.packageSize * data.lessonRate)) * 100))}%`,
-                  }}
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Prepaid status */}
-        {!data.useMonetaryBalance && hasPrepaid && (
-          <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-6">
-            <h2 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-3">Lesson Package</h2>
-            <div className="flex items-center justify-between text-sm mb-2">
-              <span className="text-gray-600 dark:text-zinc-400">
-                {data.prepaidUsed} of {data.prepaidTotal} lessons used
-              </span>
-              <span className={`font-medium ${remaining > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'}`}>
-                {remaining > 0 ? `${remaining} remaining` : 'Package used up'}
-              </span>
-            </div>
-            <div className="w-full bg-gray-200 dark:bg-zinc-700 rounded-full h-2.5">
-              <div
-                className={`h-2.5 rounded-full ${remaining > 0 ? 'bg-blue-600' : 'bg-red-500'}`}
-                style={{
-                  width: `${Math.min(100, (data.prepaidUsed / data.prepaidTotal) * 100)}%`,
-                }}
-              />
-            </div>
-            {hasCredit && (
-              <div className="mt-3 pt-3 border-t border-gray-100 dark:border-[#333333] flex items-center justify-between">
-                <span className="text-sm text-gray-600 dark:text-zinc-400">Credit Balance</span>
-                <span className="text-sm font-medium text-green-600 dark:text-green-400">RM {data.credit}</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Credit balance (standalone if no prepaid package) */}
-        {!data.useMonetaryBalance && !hasPrepaid && hasCredit && (
-          <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] p-6">
+            <h2 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-3">Wallet Balance</h2>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700 dark:text-zinc-300">Credit Balance</span>
-              <span className="text-lg font-semibold text-green-600 dark:text-green-400">RM {data.credit}</span>
+              <span className="text-gray-600 dark:text-zinc-400">
+                {data.walletBalance < 0 ? 'You owe' : 'Available'}
+              </span>
+              <span className={`text-2xl font-bold ${data.walletBalance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {data.walletBalance < 0 ? '-' : ''}RM {Math.abs(data.walletBalance).toFixed(0)}
+              </span>
             </div>
           </div>
         )}

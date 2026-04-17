@@ -654,29 +654,7 @@ export default function PaymentsPage() {
             <p className="text-sm text-gray-500 dark:text-zinc-400">
               {wallets.length} {wallets.length === 1 ? 'wallet' : 'wallets'}
             </p>
-            <div className="flex items-center gap-2">
-              {unassignedStudents.length > 0 && (
-                <Button
-                  variant="ghost"
-                  onClick={async () => {
-                    try {
-                      const res = await fetch('/api/migrate-wallets', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ coachId: coach.id }),
-                      });
-                      const data = await res.json();
-                      showToast(`Migrated: ${data.walletsCreated} wallets, ${data.studentsProcessed} students`, 'success');
-                    } catch {
-                      showToast('Migration failed', 'error');
-                    }
-                  }}
-                >
-                  Migrate existing students
-                </Button>
-              )}
-              <Button onClick={() => setShowCreateModal(true)}>+ New Wallet</Button>
-            </div>
+            <Button onClick={() => setShowCreateModal(true)}>+ New Wallet</Button>
           </div>
 
           {/* Wallet cards grid */}
@@ -689,12 +667,6 @@ export default function PaymentsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {wallets.map((wallet) => {
                 const linkedStudents = students.filter((s) => wallet.studentIds.includes(s.id));
-                // Estimate lessons left based on average lesson rate of linked students
-                const rates = linkedStudents
-                  .map((s) => s.lessonRate)
-                  .filter((r): r is number => typeof r === 'number' && r > 0);
-                const avgRate = rates.length > 0 ? rates.reduce((a, b) => a + b, 0) / rates.length : 0;
-                const lessonsLeft = avgRate > 0 && wallet.balance > 0 ? Math.floor(wallet.balance / avgRate) : null;
 
                 return (
                   <button
@@ -725,11 +697,9 @@ export default function PaymentsPage() {
                       {wallet.balance < 0 ? '-' : ''}RM {Math.abs(wallet.balance).toFixed(0)}
                     </p>
 
-                    {/* Lessons left or owes label */}
+                    {/* Owes label */}
                     {wallet.balance < 0 ? (
                       <p className="text-xs text-red-500 dark:text-red-400">Owes you</p>
-                    ) : lessonsLeft !== null ? (
-                      <p className="text-xs text-gray-400 dark:text-zinc-500">~{lessonsLeft} lessons left</p>
                     ) : (
                       <p className="text-xs text-gray-400 dark:text-zinc-500">&nbsp;</p>
                     )}

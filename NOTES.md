@@ -26,6 +26,7 @@
 
 ## Next Session
 
+- (2026-04-17) **Add Vercel domains to Firebase Authorized Domains** — Google sign-in will fail on prod/preview URLs until done. Path: Firebase Console → Authentication → Settings tab → Authorized domains → Add: `coach-app-ashen-delta.vercel.app` + the redesign branch preview URL. Without this, Google sign-in throws `auth/unauthorized-domain`.
 - ✅ (2026-03-24) Edge case: Woojin + 3 kids class — 4 kids as one student record, one parent pays for all. Holiday scenario (2 kids away) handled by adjusting price on mark-as-done. Switching to pay-per-lesson now clears pending balance. Renamed "due" → "unpaid" labels.
 
 ## Ideas (not urgent)

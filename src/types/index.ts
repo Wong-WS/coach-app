@@ -90,17 +90,6 @@ export interface Student {
   clientName: string;
   clientPhone: string;
   linkToken: string;
-  prepaidTotal: number;
-  prepaidUsed: number;
-  credit: number;
-  pendingPayment: number;
-  lessonRate?: number; // per-lesson rate (RM) for this student
-  payPerLesson?: boolean;
-  nextPrepaidTotal?: number; // queued next package (set when student renews early)
-  nextPrepaidPaidAt?: Date;  // when the next package payment was recorded
-  useMonetaryBalance?: boolean; // opt-in: track RM balance instead of lesson counts
-  monetaryBalance?: number;     // current RM balance (positive = credit, negative = owes)
-  packageSize?: number;         // lessons per package, for renewal pricing (lessonRate × packageSize)
   notes: string;
   createdAt: Date;
   updatedAt: Date;

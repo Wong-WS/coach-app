@@ -9,7 +9,6 @@ export async function GET(
     const { token } = await params;
     const db = getAdminDb();
 
-    // Look up token
     const tokenDoc = await db.collection('studentTokens').doc(token).get();
     if (!tokenDoc.exists) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
@@ -17,7 +16,6 @@ export async function GET(
 
     const { coachId, studentId } = tokenDoc.data()!;
 
-    // Fetch student
     const studentDoc = await db
       .collection('coaches')
       .doc(coachId)
@@ -29,11 +27,18 @@ export async function GET(
     }
     const student = studentDoc.data()!;
 
-    // Fetch coach
     const coachDoc = await db.collection('coaches').doc(coachId).get();
     const coach = coachDoc.exists ? coachDoc.data()! : null;
 
-    // Fetch lesson logs for this student (filter only, sort client-side to avoid composite index requirement)
+    const walletSnap = await db
+      .collection('coaches')
+      .doc(coachId)
+      .collection('wallets')
+      .where('studentIds', 'array-contains', studentId)
+      .limit(1)
+      .get();
+    const walletBalance = walletSnap.empty ? null : (walletSnap.docs[0].data().balance ?? 0);
+
     const logsSnapshot = await db
       .collection('coaches')
       .doc(coachId)
@@ -54,14 +59,7 @@ export async function GET(
 
     return NextResponse.json({
       studentName: student.clientName,
-      prepaidTotal: student.prepaidTotal ?? 0,
-      prepaidUsed: student.prepaidUsed ?? 0,
-      credit: student.credit ?? 0,
-      pendingPayment: student.pendingPayment ?? 0,
-      useMonetaryBalance: student.useMonetaryBalance ?? false,
-      monetaryBalance: student.monetaryBalance ?? 0,
-      lessonRate: student.lessonRate ?? 0,
-      packageSize: student.packageSize ?? 0,
+      walletBalance,
       coachName: coach?.displayName ?? 'Coach',
       serviceType: coach?.serviceType ?? '',
       lessons,
