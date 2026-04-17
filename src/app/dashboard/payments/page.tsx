@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { formatTimeDisplay } from '@/lib/time-format';
 import { formatDateMedium } from '@/lib/date-format';
 import { getBookingTotal } from '@/lib/class-schedule';
-import type { Wallet, WalletTransaction } from '@/types';
+import type { Wallet, WalletTransaction, DayOfWeek } from '@/types';
 
 const TABS = ['Overview', 'Wallets', 'History'] as const;
 type Tab = typeof TABS[number];
@@ -334,6 +334,10 @@ export default function PaymentsPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingWallet, setDeletingWallet] = useState(false);
 
+  // Wallet list filters
+  const [walletSearch, setWalletSearch] = useState('');
+  const [walletDayFilter, setWalletDayFilter] = useState<DayOfWeek | 'all' | 'inactive'>('all');
+
   // Students not yet assigned to any wallet
   const unassignedStudents = students.filter(
     (s) => !wallets.some((w) => w.studentIds.includes(s.id))
@@ -346,6 +350,45 @@ export default function PaymentsPage() {
     () => recurringBookings.reduce((sum, b) => sum + getBookingTotal(b), 0),
     [recurringBookings],
   );
+
+  const { walletDayMap, activeDays, activeWalletIds } = useMemo(() => {
+    const dayMap = new Map<DayOfWeek, Set<string>>();
+    const active = new Set<string>();
+
+    for (const booking of recurringBookings) {
+      for (const walletId of Object.values(booking.studentWallets)) {
+        if (!walletId) continue;
+        active.add(walletId);
+        if (!dayMap.has(booking.dayOfWeek)) dayMap.set(booking.dayOfWeek, new Set());
+        dayMap.get(booking.dayOfWeek)!.add(walletId);
+      }
+    }
+
+    const allDays: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    return { walletDayMap: dayMap, activeDays: allDays.filter((d) => dayMap.has(d)), activeWalletIds: active };
+  }, [recurringBookings]);
+
+  const filteredWallets = useMemo(() => {
+    let result = wallets;
+
+    if (walletDayFilter === 'inactive') {
+      result = result.filter((w) => !activeWalletIds.has(w.id));
+    } else if (walletDayFilter !== 'all') {
+      const dayWallets = walletDayMap.get(walletDayFilter);
+      result = dayWallets ? result.filter((w) => dayWallets.has(w.id)) : [];
+    }
+
+    if (walletSearch.trim()) {
+      const q = walletSearch.toLowerCase();
+      result = result.filter((w) => {
+        if (w.name.toLowerCase().includes(q)) return true;
+        const linked = students.filter((s) => w.studentIds.includes(s.id));
+        return linked.some((s) => s.clientName.toLowerCase().includes(q));
+      });
+    }
+
+    return result;
+  }, [wallets, walletDayFilter, walletDayMap, activeWalletIds, walletSearch, students]);
   const monthlyTotal = useMemo(() => weeklyTotal * (52 / 12), [weeklyTotal]);
 
   const weekRange = useMemo(() => getWeekRange(), []);
@@ -705,14 +748,64 @@ export default function PaymentsPage() {
 
       {/* ── Wallets tab ── */}
       {activeTab === 'Wallets' && (
-        <div>
+        <div className="space-y-4">
           {/* Header */}
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between">
             <p className="text-sm text-gray-500 dark:text-zinc-400">
-              {wallets.length} {wallets.length === 1 ? 'wallet' : 'wallets'}
+              {filteredWallets.length} {filteredWallets.length === 1 ? 'wallet' : 'wallets'}
+              {(walletDayFilter !== 'all' || walletSearch) && wallets.length !== filteredWallets.length
+                ? ` (of ${wallets.length})`
+                : ''}
             </p>
             <Button onClick={() => setShowCreateModal(true)}>+ New Wallet</Button>
           </div>
+
+          {wallets.length > 0 && (
+            <Input
+              id="wallet-search"
+              placeholder="Search by wallet or student name..."
+              value={walletSearch}
+              onChange={(e) => setWalletSearch(e.target.value)}
+            />
+          )}
+
+          {activeDays.length > 0 && (
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={() => setWalletDayFilter('all')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  walletDayFilter === 'all'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 dark:bg-[#1f1f1f] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]'
+                }`}
+              >
+                All
+              </button>
+              {activeDays.map((day) => (
+                <button
+                  key={day}
+                  onClick={() => setWalletDayFilter(day)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    walletDayFilter === day
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 dark:bg-[#1f1f1f] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]'
+                  }`}
+                >
+                  {day.charAt(0).toUpperCase() + day.slice(1, 3)}
+                </button>
+              ))}
+              <button
+                onClick={() => setWalletDayFilter('inactive')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  walletDayFilter === 'inactive'
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-gray-100 dark:bg-[#1f1f1f] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]'
+                }`}
+              >
+                Inactive
+              </button>
+            </div>
+          )}
 
           {/* Wallet cards grid */}
           {wallets.length === 0 ? (
@@ -720,9 +813,17 @@ export default function PaymentsPage() {
               <p className="text-lg font-medium mb-1">No wallets yet</p>
               <p className="text-sm">Create a wallet to track prepaid balances for students.</p>
             </div>
+          ) : filteredWallets.length === 0 ? (
+            <div className="text-center py-12 text-gray-400 dark:text-zinc-500">
+              {walletDayFilter === 'inactive'
+                ? 'All wallets have active bookings.'
+                : walletDayFilter !== 'all'
+                ? `No wallets on ${walletDayFilter.charAt(0).toUpperCase() + walletDayFilter.slice(1)}.`
+                : 'No wallets match your search.'}
+            </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {wallets.map((wallet) => {
+              {filteredWallets.map((wallet) => {
                 const linkedStudents = students.filter((s) => wallet.studentIds.includes(s.id));
 
                 return (
