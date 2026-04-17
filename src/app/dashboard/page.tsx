@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { Booking } from '@/types';
 import { formatTimeDisplay } from '@/lib/availability-engine';
 import { findOrCreateStudent } from '@/lib/students';
+import { resolveWallet } from '@/lib/wallets';
 import { getClassesForDate, isRescheduledToDate, getCancelledClassesForDate } from '@/lib/class-schedule';
 import { formatDateFull, formatDateShort } from '@/lib/date-format';
 
@@ -172,31 +173,18 @@ export default function DashboardPage() {
     }));
   }, [students]);
 
-  const findWalletForStudent = useCallback((studentId: string) => {
-    if (!studentId || !markDoneBooking) return null;
-    const walletId = markDoneBooking.studentWallets?.[studentId]
-      || markDoneBooking.walletId
-      || wallets.find((w) => w.studentIds.includes(studentId))?.id;
-    return walletId ? wallets.find((w) => w.id === walletId) ?? null : null;
-  }, [markDoneBooking, wallets]);
+  const findWalletForStudent = useCallback(
+    (studentId: string) => resolveWallet(markDoneBooking, studentId, wallets),
+    [markDoneBooking, wallets],
+  );
 
-  const markDoneAttendingList = useMemo(() => {
-    return markDoneAttendees.length > 1
+  const canConfirmMarkDone = useMemo(() => {
+    if (!markDoneBooking || markDoneAttendees.length === 0) return false;
+    const attending = markDoneAttendees.length > 1
       ? markDoneAttendees.filter((a) => a.attended)
       : markDoneAttendees;
-  }, [markDoneAttendees]);
-
-  const markDoneMissingWalletNames = useMemo(() => {
-    if (!markDoneBooking) return [];
-    if (markDoneAttendees.length === 0) {
-      return [markDoneBooking.clientName];
-    }
-    return markDoneAttendingList
-      .filter((a) => !findWalletForStudent(a.studentId))
-      .map((a) => a.studentName);
-  }, [markDoneBooking, markDoneAttendees, markDoneAttendingList, findWalletForStudent]);
-
-  const canConfirmMarkDone = markDoneMissingWalletNames.length === 0;
+    return attending.every((a) => findWalletForStudent(a.studentId));
+  }, [markDoneBooking, markDoneAttendees, findWalletForStudent]);
 
   const getFilteredStudentsForRow = (rowIndex: number) => {
     const search = studentSearches[rowIndex] ?? '';
@@ -496,51 +484,37 @@ export default function DashboardPage() {
 
         const studentRef = doc(firestore, 'coaches', coach.id, 'students', attendee.studentId);
 
-        // Find wallet for this attendee
-        const walletId = booking.studentWallets?.[attendee.studentId]
-          || booking.walletId
-          || wallets.find((w) => w.studentIds.includes(attendee.studentId))?.id;
-
-        if (walletId && attendee.price > 0) {
-          const wallet = wallets.find((w) => w.id === walletId);
-          if (wallet) {
-            const newBalance = wallet.balance - attendee.price;
-            const txnRef = doc(collection(firestore, 'coaches', coach.id, 'wallets', walletId, 'transactions'));
-            batch.set(txnRef, {
-              type: 'charge',
-              amount: -attendee.price,
-              balanceAfter: newBalance,
-              description: `Lesson — ${attendee.studentName} (${booking.startTime})`,
-              studentId: attendee.studentId,
-              lessonLogId: logRef.id,
-              date: selectedDateStr,
-              createdAt: serverTimestamp(),
-            });
-            const walletRef = doc(firestore, 'coaches', coach.id, 'wallets', walletId);
-            batch.update(walletRef, {
-              balance: increment(-attendee.price),
-              updatedAt: serverTimestamp(),
-            });
-          }
+        const wallet = resolveWallet(booking, attendee.studentId, wallets);
+        if (wallet && attendee.price > 0) {
+          const newBalance = wallet.balance - attendee.price;
+          const txnRef = doc(collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'));
+          batch.set(txnRef, {
+            type: 'charge',
+            amount: -attendee.price,
+            balanceAfter: newBalance,
+            description: `Lesson — ${attendee.studentName} (${booking.startTime})`,
+            studentId: attendee.studentId,
+            lessonLogId: logRef.id,
+            date: selectedDateStr,
+            createdAt: serverTimestamp(),
+          });
+          const walletRef = doc(firestore, 'coaches', coach.id, 'wallets', wallet.id);
+          batch.update(walletRef, {
+            balance: increment(-attendee.price),
+            updatedAt: serverTimestamp(),
+          });
         }
 
-        // Still update student updatedAt timestamp
         batch.update(studentRef, { updatedAt: serverTimestamp() });
       }
 
       await batch.commit();
 
-      // Post-commit: show wallet balance notification
       for (const attendee of resolvedAttendees) {
-        const walletId = booking.studentWallets?.[attendee.studentId]
-          || booking.walletId
-          || wallets.find((w) => w.studentIds.includes(attendee.studentId))?.id;
-        if (walletId) {
-          const wallet = wallets.find((w) => w.id === walletId);
-          if (wallet && wallet.balance - attendee.price < 0) {
-            showToast(`${wallet.name} balance is now negative`, 'info');
-            break;
-          }
+        const wallet = resolveWallet(booking, attendee.studentId, wallets);
+        if (wallet && wallet.balance - attendee.price < 0) {
+          showToast(`${wallet.name} balance is now negative`, 'info');
+          break;
         }
       }
     } catch (error) {
@@ -1489,7 +1463,6 @@ export default function DashboardPage() {
             </div>
 
             {markDoneAttendees.length > 1 ? (
-              // Per-student attendance for group with linked students
               <div className="space-y-3">
                 <p className="text-sm font-medium text-gray-700 dark:text-zinc-300">Attendance & Pricing</p>
                 {markDoneAttendees.map((attendee, idx) => {
@@ -1530,22 +1503,22 @@ export default function DashboardPage() {
                         />
                       </div>
                     </div>
-                    {attendee.attended && !attendeeWallet && (
-                      <p className="text-xs text-red-600 dark:text-red-400 pl-7">
-                        No wallet linked — create one in the Payments tab.
-                      </p>
-                    )}
-                    {attendee.attended && attendeeWallet && (
-                      <p className="text-xs text-gray-400 dark:text-zinc-500 pl-7">
-                        {attendeeWallet.name}: RM {attendeeWallet.balance} → RM {attendeeWallet.balance - attendee.price}
-                      </p>
+                    {attendee.attended && (
+                      attendeeWallet ? (
+                        <p className="text-xs text-gray-400 dark:text-zinc-500 pl-7">
+                          {attendeeWallet.name}: RM {attendeeWallet.balance} → RM {attendeeWallet.balance - attendee.price}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-red-600 dark:text-red-400 pl-7">
+                          No wallet linked — create one in the Payments tab.
+                        </p>
+                      )
                     )}
                   </div>
                   );
                 })}
               </div>
             ) : (
-              // Single student — original price input
               <>
                 <Input
                   id="markDonePrice"
