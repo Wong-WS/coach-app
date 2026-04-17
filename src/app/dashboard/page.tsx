@@ -1377,20 +1377,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-[#1f1f1f] rounded-xl p-6 shadow-sm border border-gray-100 dark:border-[#333333]">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 dark:text-zinc-400">Locations</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-zinc-100">{locations.length}</p>
-            </div>
-          </div>
-        </div>
-
       </div>
 
       {/* Reschedule modal */}
