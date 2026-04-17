@@ -44,17 +44,11 @@ export function getClassesForDate(
       if (exception.newEndTime) overrides.endTime = exception.newEndTime;
       if (exception.newLocationId) overrides.locationId = exception.newLocationId;
       if (exception.newLocationName) overrides.locationName = exception.newLocationName;
-      if (exception.newPrice !== undefined) overrides.price = exception.newPrice;
       if (exception.newNote !== undefined) overrides.notes = exception.newNote;
       if (exception.newClassName !== undefined) overrides.className = exception.newClassName;
-      if (exception.newClientName !== undefined) overrides.clientName = exception.newClientName;
-      if (exception.newClientPhone !== undefined) overrides.clientPhone = exception.newClientPhone;
-      if (exception.newLinkedStudentIds !== undefined) overrides.linkedStudentIds = exception.newLinkedStudentIds ?? undefined;
-      if (exception.newStudentPrices !== undefined) overrides.studentPrices = exception.newStudentPrices ?? undefined;
-      if (exception.newStudentWallets !== undefined) overrides.studentWallets = exception.newStudentWallets ?? undefined;
-      if (exception.newWalletId !== undefined) overrides.walletId = exception.newWalletId ?? undefined;
-      if (exception.newGroupSize !== undefined) overrides.groupSize = exception.newGroupSize;
-      if (exception.newLessonType !== undefined) overrides.lessonType = exception.newLessonType;
+      if (exception.newStudentIds !== undefined) overrides.studentIds = exception.newStudentIds;
+      if (exception.newStudentPrices !== undefined) overrides.studentPrices = exception.newStudentPrices;
+      if (exception.newStudentWallets !== undefined) overrides.studentWallets = exception.newStudentWallets;
 
       const existingIdx = classes.findIndex((c) => c.id === originalBooking.id);
       if (existingIdx >= 0) {

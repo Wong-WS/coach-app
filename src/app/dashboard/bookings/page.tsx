@@ -55,7 +55,10 @@ export default function BookingsPage() {
                   <p className="text-sm text-gray-400 dark:text-zinc-500">No bookings</p>
                 ) : (
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {bookingsByDay[day].map((booking) => (
+                    {bookingsByDay[day].map((booking) => {
+                      const rosterSize = booking.studentIds.length;
+                      const total = Object.values(booking.studentPrices).reduce((s, p) => s + (p ?? 0), 0);
+                      return (
                       <div
                         key={booking.id}
                         className="p-4 bg-gray-50 dark:bg-[#1a1a1a]/50 rounded-lg"
@@ -65,22 +68,21 @@ export default function BookingsPage() {
                             {formatTimeDisplay(booking.startTime)} - {formatTimeDisplay(booking.endTime)}
                           </span>
                           <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            booking.groupSize > 1
+                            rosterSize > 1
                               ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
                               : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
                           }`}>
-                            {booking.groupSize > 1 ? `Group (${booking.groupSize})` : 'Private'}
+                            {rosterSize > 1 ? `Group (${rosterSize})` : 'Private'}
                           </span>
                         </div>
                         <p className="text-sm text-gray-600 dark:text-zinc-400 mt-1">{booking.className}</p>
                         <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{booking.locationName}</p>
-                        {booking.price != null && (
-                          <p className={`text-xs font-medium mt-1 ${booking.price > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-zinc-500'}`}>
-                            {booking.price > 0 ? `RM ${booking.price}` : 'Free'}
-                          </p>
-                        )}
+                        <p className={`text-xs font-medium mt-1 ${total > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-zinc-500'}`}>
+                          {total > 0 ? `RM ${total}` : 'Free'}
+                        </p>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

@@ -341,7 +341,14 @@ export default function PaymentsPage() {
   // ── Overview calculations ──────────────────────────────────────────────────
 
   const recurringBookings = useMemo(() => bookings.filter((b) => !b.endDate), [bookings]);
-  const weeklyTotal = useMemo(() => recurringBookings.reduce((sum, b) => sum + (b.price ?? 0), 0), [recurringBookings]);
+  const weeklyTotal = useMemo(
+    () =>
+      recurringBookings.reduce(
+        (sum, b) => sum + Object.values(b.studentPrices).reduce((s, p) => s + (p ?? 0), 0),
+        0,
+      ),
+    [recurringBookings],
+  );
   const monthlyTotal = useMemo(() => weeklyTotal * (52 / 12), [weeklyTotal]);
 
   const weekRange = useMemo(() => getWeekRange(), []);

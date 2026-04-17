@@ -21,10 +21,9 @@ function makeBooking(overrides: Partial<Booking> = {}): Booking {
     endTime: '11:00',
     status: 'confirmed',
     className: 'Test Class',
-    clientName: 'Alice',
-    clientPhone: '+60123456789',
-    lessonType: 'private',
-    groupSize: 1,
+    studentIds: [],
+    studentPrices: {},
+    studentWallets: {},
     notes: '',
     createdAt: new Date(),
     ...overrides,
@@ -174,7 +173,7 @@ describe('getClassesForDate', () => {
     });
 
     it('applies time/location/price overrides on rescheduled booking', () => {
-      const bookings = [makeBooking()];
+      const bookings = [makeBooking({ studentIds: ['s1'], studentPrices: { s1: 50 } })];
       const exceptions = [
         makeException({
           type: 'rescheduled',
@@ -184,7 +183,7 @@ describe('getClassesForDate', () => {
           newEndTime: '15:00',
           newLocationId: 'loc2',
           newLocationName: 'Court B',
-          newPrice: 100,
+          newStudentPrices: { s1: 100 },
         }),
       ];
       const result = getClassesForDate(THURSDAY, bookings, exceptions);
@@ -193,7 +192,7 @@ describe('getClassesForDate', () => {
       expect(result[0].endTime).toBe('15:00');
       expect(result[0].locationId).toBe('loc2');
       expect(result[0].locationName).toBe('Court B');
-      expect(result[0].price).toBe(100);
+      expect(result[0].studentPrices.s1).toBe(100);
     });
   });
 

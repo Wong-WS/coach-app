@@ -14,7 +14,6 @@ export interface Location {
 }
 
 export type BookingStatus = 'confirmed' | 'cancelled';
-export type LessonType = 'private' | 'group';
 
 export interface Booking {
   id: string;
@@ -25,16 +24,10 @@ export interface Booking {
   endTime: string;
   status: BookingStatus;
   className: string;
-  clientName: string;
-  clientPhone: string;
-  lessonType: LessonType;
-  groupSize: number;
   notes: string;
-  price?: number;
-  linkedStudentIds?: string[];
-  studentPrices?: Record<string, number>;
-  walletId?: string;
-  studentWallets?: Record<string, string>;
+  studentIds: string[];
+  studentPrices: Record<string, number>;
+  studentWallets: Record<string, string>;
   startDate?: string;
   endDate?: string;
   createdAt: Date;
@@ -80,17 +73,11 @@ export interface ClassException {
   newEndTime?: string;
   newLocationId?: string;
   newLocationName?: string;
-  newPrice?: number;
   newNote?: string;
   newClassName?: string;
-  newClientName?: string;
-  newClientPhone?: string;
-  newLinkedStudentIds?: string[] | null;
-  newStudentPrices?: Record<string, number> | null;
-  newStudentWallets?: Record<string, string> | null;
-  newWalletId?: string | null;
-  newGroupSize?: number;
-  newLessonType?: LessonType;
+  newStudentIds?: string[];
+  newStudentPrices?: Record<string, number>;
+  newStudentWallets?: Record<string, string>;
   createdAt: Date;
 }
 

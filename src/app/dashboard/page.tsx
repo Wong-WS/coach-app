@@ -66,7 +66,6 @@ export default function DashboardPage() {
     studentName: string;
     attended: boolean;
     price: number;
-    isPrimary: boolean;
   }>>([]);
   const [deletingAdHocGroup, setDeletingAdHocGroup] = useState<number | null>(null);
 
@@ -256,17 +255,10 @@ export default function DashboardPage() {
   };
 
   const getLastPriceForStudent = (studentId: string): number => {
-    const student = students.find((s) => s.id === studentId);
-    if (!student) return 0;
     const sorted = [...bookings].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     for (const b of sorted) {
-      if (b.studentPrices && studentId in b.studentPrices) {
-        const p = b.studentPrices[studentId];
-        if (p > 0) return p;
-      }
-      const isPrimary = b.clientName === student.clientName && (b.clientPhone || '') === (student.clientPhone || '');
-      const isGroup = (b.linkedStudentIds?.length ?? 0) > 0;
-      if (isPrimary && !isGroup && (b.price ?? 0) > 0) return b.price ?? 0;
+      const p = b.studentPrices[studentId];
+      if (p !== undefined && p > 0) return p;
     }
     return 0;
   };
@@ -331,7 +323,6 @@ export default function DashboardPage() {
     setAddingLesson(true);
     try {
       const firestore = db as Firestore;
-      const primaryRow = studentRows[0];
 
       // If creating a new location, save it first and use its ID going forward
       let resolvedLocationId = lessonLocationId;
@@ -348,39 +339,60 @@ export default function DashboardPage() {
         resolvedLocationName = trimmed;
       }
 
-      // Resolve primary student
-      const primaryStudentId = await findOrCreateStudent(
-        firestore, coach.id, primaryRow.displayName, primaryRow.phone
-      );
+      // Resolve every student row + wallet in order — all students are equal.
+      const studentIds: string[] = [];
+      const studentPrices: Record<string, number> = {};
+      const studentWallets: Record<string, string> = {};
+      const createdWalletsByRow = new Map<number, string>();
 
-      // Create new wallet if needed, or link to existing
-      let walletId: string | undefined;
-      if (primaryRow.walletOption === 'create' && primaryRow.newWalletName && primaryStudentId) {
-        const walletRef = await addDoc(collection(firestore, 'coaches', coach.id, 'wallets'), {
-          name: primaryRow.newWalletName,
-          balance: 0,
-          studentIds: [primaryStudentId],
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        walletId = walletRef.id;
-      } else if (primaryRow.walletOption === 'existing' && primaryRow.existingWalletId && primaryStudentId) {
-        walletId = primaryRow.existingWalletId;
-        const walletRef = doc(firestore, 'coaches', coach.id, 'wallets', walletId);
-        const walletSnap = await getDoc(walletRef);
-        const currentIds: string[] = walletSnap.data()?.studentIds || [];
-        if (!currentIds.includes(primaryStudentId)) {
-          await updateDoc(walletRef, {
-            studentIds: [...currentIds, primaryStudentId],
+      for (let i = 0; i < studentRows.length; i++) {
+        const row = studentRows[i];
+        if (!row.displayName) continue;
+
+        const studentId = await findOrCreateStudent(
+          firestore, coach.id, row.displayName, row.phone
+        );
+        studentIds.push(studentId);
+        studentPrices[studentId] = row.price;
+
+        let walletId: string | undefined;
+        if (row.walletOption === 'create' && row.newWalletName) {
+          const walletRef = await addDoc(collection(firestore, 'coaches', coach.id, 'wallets'), {
+            name: row.newWalletName,
+            balance: 0,
+            studentIds: [studentId],
+            createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
+          walletId = walletRef.id;
+          createdWalletsByRow.set(i, walletId);
+        } else if (row.walletOption === 'existing' && row.existingWalletId) {
+          if (row.existingWalletId.startsWith('pending:')) {
+            const refIdx = parseInt(row.existingWalletId.split(':')[1]);
+            walletId = createdWalletsByRow.get(refIdx);
+          } else {
+            walletId = row.existingWalletId;
+          }
+
+          if (walletId) {
+            const walletRef = doc(firestore, 'coaches', coach.id, 'wallets', walletId);
+            const walletSnap = await getDoc(walletRef);
+            const currentIds: string[] = walletSnap.data()?.studentIds || [];
+            if (!currentIds.includes(studentId)) {
+              await updateDoc(walletRef, {
+                studentIds: [...currentIds, studentId],
+                updatedAt: serverTimestamp(),
+              });
+            }
+          }
         }
+
+        if (walletId) studentWallets[studentId] = walletId;
       }
 
-      // Build booking data — day of week is always derived from the picked date
+      // Day of week is always derived from the picked date
       const dayOfWeek = (['sunday','monday','tuesday','wednesday','thursday','friday','saturday'] as const)[new Date(lessonDate + 'T00:00:00').getDay()];
 
-      const groupSize = studentRows.length;
       const bookingData: Record<string, unknown> = {
         locationId: resolvedLocationId,
         locationName: resolvedLocationName,
@@ -389,94 +401,16 @@ export default function DashboardPage() {
         endTime: lessonEndTime,
         status: 'confirmed',
         className: lessonClassName.trim(),
-        clientName: primaryRow.displayName,
-        clientPhone: primaryRow.phone,
-        lessonType: groupSize > 1 ? 'group' : 'private',
-        groupSize,
         notes: lessonNote,
-        price: groupSize > 1 ? studentRows.reduce((sum, r) => sum + r.price, 0) : primaryRow.price,
+        studentIds,
+        studentPrices,
+        studentWallets,
+        startDate: lessonDate,
         createdAt: serverTimestamp(),
       };
-
       // One-time: startDate === endDate. Recurring: only startDate, no endDate.
-      bookingData.startDate = lessonDate;
       if (!lessonRepeatWeekly) {
         bookingData.endDate = lessonDate;
-      }
-
-      // Attach wallet to booking if one was selected/created
-      if (walletId) {
-        bookingData.walletId = walletId;
-      }
-
-      // Handle group booking — resolve linked students
-      if (studentRows.length > 1) {
-        const linkedIds: string[] = [];
-        const studentPricesMap: Record<string, number> = {};
-        const studentWalletsMap: Record<string, string> = {};
-
-        // Primary student
-        studentPricesMap[primaryStudentId] = primaryRow.price;
-        if (walletId) studentWalletsMap[primaryStudentId] = walletId;
-
-        // Track wallets created per row index (for pending: references)
-        const createdWalletsByRow = new Map<number, string>();
-        if (walletId) createdWalletsByRow.set(0, walletId);
-
-        // Linked students (rows 1+)
-        for (let i = 1; i < studentRows.length; i++) {
-          const row = studentRows[i];
-          if (!row.displayName) continue;
-
-          const linkedStudentId = await findOrCreateStudent(
-            firestore, coach.id, row.displayName, row.phone
-          );
-          linkedIds.push(linkedStudentId);
-          studentPricesMap[linkedStudentId] = row.price;
-
-          // Handle wallet for this linked student
-          let linkedWalletId: string | undefined;
-          if (row.walletOption === 'create' && row.newWalletName) {
-            const wRef = await addDoc(collection(firestore, 'coaches', coach.id, 'wallets'), {
-              name: row.newWalletName,
-              balance: 0,
-              studentIds: [linkedStudentId],
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            });
-            linkedWalletId = wRef.id;
-            createdWalletsByRow.set(i, linkedWalletId);
-          } else if (row.walletOption === 'existing') {
-            if (row.existingWalletId.startsWith('pending:')) {
-              // References a wallet being created by a prior row
-              const refIndex = parseInt(row.existingWalletId.split(':')[1]);
-              linkedWalletId = createdWalletsByRow.get(refIndex);
-            } else {
-              linkedWalletId = row.existingWalletId;
-            }
-
-            // Link student to that wallet
-            if (linkedWalletId) {
-              const wRef = doc(firestore, 'coaches', coach.id, 'wallets', linkedWalletId);
-              const wSnap = await getDoc(wRef);
-              const ids: string[] = wSnap.data()?.studentIds || [];
-              if (!ids.includes(linkedStudentId)) {
-                await updateDoc(wRef, {
-                  studentIds: [...ids, linkedStudentId],
-                  updatedAt: serverTimestamp(),
-                });
-              }
-            }
-          }
-
-          if (linkedWalletId) studentWalletsMap[linkedStudentId] = linkedWalletId;
-        }
-
-        bookingData.linkedStudentIds = linkedIds;
-        bookingData.studentPrices = studentPricesMap;
-        if (Object.keys(studentWalletsMap).length > 0) {
-          bookingData.studentWallets = studentWalletsMap;
-        }
       }
 
       await addDoc(collection(firestore, 'coaches', coach.id, 'bookings'), bookingData);
@@ -487,8 +421,8 @@ export default function DashboardPage() {
       resetLessonForm();
       showToast('Lesson created!', 'success');
 
-      if (primaryStudentId) {
-        updateDoc(doc(firestore, 'coaches', coach.id, 'students', primaryStudentId), {
+      for (const id of studentIds) {
+        updateDoc(doc(firestore, 'coaches', coach.id, 'students', id), {
           updatedAt: serverTimestamp(),
         }).catch(err => console.error('Failed to touch student record:', err));
       }
@@ -502,42 +436,23 @@ export default function DashboardPage() {
 
   const openMarkDone = (booking: Booking) => {
     setMarkDoneBooking(booking);
-    setMarkDonePrice(booking.price ?? 0);
+    const total = Object.values(booking.studentPrices).reduce((s, p) => s + (p ?? 0), 0);
+    setMarkDonePrice(total);
     setMarkDoneNote(booking.notes || '');
     setMenuOpen(null);
 
-    // Build attendees list: primary + linked students
-    const attendees: typeof markDoneAttendees = [];
-    // Primary student (from booking client info)
-    const primaryStudent = students.find(
-      (s) => s.clientName === booking.clientName && s.clientPhone === (booking.clientPhone || '')
-    );
-    if (primaryStudent) {
-      const studentPrice = booking.studentPrices?.[primaryStudent.id] ?? booking.price ?? 0;
-      attendees.push({
-        studentId: primaryStudent.id,
-        studentName: primaryStudent.clientName,
-        attended: true,
-        price: studentPrice,
-        isPrimary: true,
-      });
-    }
-    // Linked students
-    if (booking.linkedStudentIds?.length) {
-      for (const linkedId of booking.linkedStudentIds) {
-        const ls = students.find((s) => s.id === linkedId);
-        if (ls) {
-          const studentPrice = booking.studentPrices?.[ls.id] ?? 0;
-          attendees.push({
-            studentId: ls.id,
-            studentName: ls.clientName,
-            attended: true,
-            price: studentPrice,
-            isPrimary: false,
-          });
-        }
-      }
-    }
+    const attendees = booking.studentIds
+      .map((id) => {
+        const student = students.find((s) => s.id === id);
+        if (!student) return null;
+        return {
+          studentId: id,
+          studentName: student.clientName,
+          attended: true,
+          price: booking.studentPrices[id] ?? 0,
+        };
+      })
+      .filter((a): a is NonNullable<typeof a> => a !== null);
     setMarkDoneAttendees(attendees);
   };
 
@@ -547,7 +462,7 @@ export default function DashboardPage() {
     setMarking(booking.id);
 
     const firestore = db as Firestore;
-    const hasLinkedStudents = markDoneAttendees.length > 1;
+    const isGroup = markDoneAttendees.length > 1;
     const noteText = markDoneNote.trim();
     const price = markDonePrice;
 
@@ -556,21 +471,11 @@ export default function DashboardPage() {
     showToast('Class marked as done!', 'success');
 
     try {
-      // Determine which students to process
-      const attendeesToProcess = hasLinkedStudents
+      // Group: use per-attendee price. Single: split the total form-price to
+      // the sole attendee.
+      const resolvedAttendees = isGroup
         ? markDoneAttendees.filter((a) => a.attended)
-        : [{ studentId: markDoneAttendees[0]?.studentId || '', studentName: booking.clientName, attended: true, price, isPrimary: true }];
-
-      // Resolve student IDs first (requires async lookup)
-      const resolvedAttendees = await Promise.all(
-        attendeesToProcess.map(async (attendee) => ({
-          ...attendee,
-          studentId: attendee.studentId || await findOrCreateStudent(
-            firestore, coach.id, booking.clientName, booking.clientPhone
-          ),
-          price: hasLinkedStudents ? attendee.price : price,
-        }))
-      );
+        : markDoneAttendees.map((a) => ({ ...a, price }));
 
       const batch = writeBatch(firestore);
 
@@ -783,31 +688,9 @@ export default function DashboardPage() {
     setEditStartTime(booking.startTime);
     setEditEndTime(booking.endTime);
     setEditNote(booking.notes || '');
-
-    // Resolve primary student id by matching clientName + clientPhone
-    const primary = students.find(
-      (s) => s.clientName === booking.clientName && s.clientPhone === (booking.clientPhone || '')
-    );
-    const primaryId = primary?.id ?? '';
-    const studentIds = [primaryId, ...(booking.linkedStudentIds ?? [])].filter(Boolean);
-    setEditStudentIds(studentIds);
-
-    // Seed per-student prices
-    const prices: Record<string, number> = {};
-    if (booking.studentPrices && Object.keys(booking.studentPrices).length > 0) {
-      for (const id of studentIds) prices[id] = booking.studentPrices[id] ?? 0;
-    } else if (primaryId) {
-      prices[primaryId] = booking.price ?? 0;
-    }
-    setEditStudentPrices(prices);
-
-    // Seed per-student wallets ('' = auto)
-    const sw: Record<string, string> = {};
-    for (const id of studentIds) {
-      sw[id] = booking.studentWallets?.[id] ?? (id === primaryId ? (booking.walletId ?? '') : '');
-    }
-    setEditStudentWallets(sw);
-
+    setEditStudentIds([...booking.studentIds]);
+    setEditStudentPrices({ ...booking.studentPrices });
+    setEditStudentWallets({ ...booking.studentWallets });
     setEditAddStudentOpen(false);
     setEditAddStudentSearch('');
     setShowEditSaveOptions(false);
@@ -816,25 +699,14 @@ export default function DashboardPage() {
 
   const editTotalPrice = editStudentIds.reduce((sum, id) => sum + (editStudentPrices[id] ?? 0), 0);
 
-  const editPrimaryStudentId = editStudentIds[0] ?? '';
-  const editLinkedStudentIds = editStudentIds.slice(1);
-
   const hasEditRosterChange = () => {
     if (!editBooking) return false;
-    const origLinked = editBooking.linkedStudentIds ?? [];
-    if (editLinkedStudentIds.length !== origLinked.length) return true;
-    for (const id of editLinkedStudentIds) if (!origLinked.includes(id)) return true;
-    // Compare per-student prices
+    const origIds = editBooking.studentIds;
+    if (editStudentIds.length !== origIds.length) return true;
+    for (const id of editStudentIds) if (!origIds.includes(id)) return true;
     for (const id of editStudentIds) {
-      const orig = editBooking.studentPrices?.[id];
-      const current = editStudentPrices[id] ?? 0;
-      if (orig !== undefined && orig !== current) return true;
-      if (orig === undefined && id === editPrimaryStudentId && (editBooking.price ?? 0) !== current) return true;
-    }
-    // Compare per-student wallets
-    for (const id of editStudentIds) {
-      const origWallet = editBooking.studentWallets?.[id] ?? (id === editPrimaryStudentId ? (editBooking.walletId ?? '') : '');
-      if (origWallet !== (editStudentWallets[id] ?? '')) return true;
+      if ((editBooking.studentPrices[id] ?? 0) !== (editStudentPrices[id] ?? 0)) return true;
+      if ((editBooking.studentWallets[id] ?? '') !== (editStudentWallets[id] ?? '')) return true;
     }
     return false;
   };
@@ -870,18 +742,13 @@ export default function DashboardPage() {
       const newLocation = locations.find((l) => l.id === editLocationId);
       const newLocationName = newLocation?.name || editBooking.locationName;
 
-      // Build booking-level fields shared by the future mode
-      const primaryStudent = students.find((s) => s.id === editPrimaryStudentId);
-      const primaryWalletId = editStudentWallets[editPrimaryStudentId] || '';
+      const studentPricesOut: Record<string, number> = {};
+      for (const id of editStudentIds) studentPricesOut[id] = editStudentPrices[id] ?? 0;
       const studentWalletsOut: Record<string, string> = {};
       for (const id of editStudentIds) {
         const w = editStudentWallets[id];
         if (w) studentWalletsOut[id] = w;
       }
-      const studentPricesOut: Record<string, number> = {};
-      for (const id of editStudentIds) studentPricesOut[id] = editStudentPrices[id] ?? 0;
-      const groupSize = editStudentIds.length;
-      const lessonType = groupSize > 1 ? 'group' : 'private';
 
       if (mode === 'this') {
         const exRef = doc(collection(firestore, 'coaches', coach.id, 'classExceptions'));
@@ -894,17 +761,11 @@ export default function DashboardPage() {
           newEndTime: editEndTime,
           newLocationId: editLocationId,
           newLocationName: newLocationName,
-          newPrice: editTotalPrice,
           newNote: editNote,
           newClassName: editClassName.trim(),
-          newClientName: primaryStudent?.clientName ?? editBooking.clientName,
-          newClientPhone: primaryStudent?.clientPhone ?? editBooking.clientPhone,
-          newLinkedStudentIds: editLinkedStudentIds.length > 0 ? editLinkedStudentIds : null,
-          newStudentPrices: groupSize > 1 ? studentPricesOut : null,
-          newStudentWallets: Object.keys(studentWalletsOut).length > 0 ? studentWalletsOut : null,
-          newWalletId: primaryWalletId || null,
-          newGroupSize: groupSize,
-          newLessonType: lessonType,
+          newStudentIds: editStudentIds,
+          newStudentPrices: studentPricesOut,
+          newStudentWallets: studentWalletsOut,
           createdAt: serverTimestamp(),
         });
         showToast('Updated for this date', 'success');
@@ -926,16 +787,10 @@ export default function DashboardPage() {
           endTime: editEndTime,
           status: 'confirmed',
           className: editClassName.trim(),
-          clientName: primaryStudent?.clientName ?? editBooking.clientName,
-          clientPhone: primaryStudent?.clientPhone ?? editBooking.clientPhone,
-          lessonType,
-          groupSize,
           notes: editNote,
-          price: editTotalPrice,
-          linkedStudentIds: editLinkedStudentIds.length > 0 ? editLinkedStudentIds : null,
-          studentPrices: groupSize > 1 ? studentPricesOut : null,
-          studentWallets: Object.keys(studentWalletsOut).length > 0 ? studentWalletsOut : null,
-          walletId: primaryWalletId || null,
+          studentIds: editStudentIds,
+          studentPrices: studentPricesOut,
+          studentWallets: studentWalletsOut,
           startDate: selectedDateStr,
           createdAt: serverTimestamp(),
         };
@@ -1163,13 +1018,16 @@ export default function DashboardPage() {
 
                   {/* Price + type */}
                   <div className={`text-right flex-shrink-0 ${isDone ? 'opacity-50' : ''}`}>
-                    {(booking.price ?? 0) > 0 && (
-                      <p className="text-sm font-medium text-green-600 dark:text-green-400">
-                        RM {booking.price}
-                      </p>
-                    )}
+                    {(() => {
+                      const total = Object.values(booking.studentPrices).reduce((s, p) => s + (p ?? 0), 0);
+                      return total > 0 ? (
+                        <p className="text-sm font-medium text-green-600 dark:text-green-400">
+                          RM {total}
+                        </p>
+                      ) : null;
+                    })()}
                     <p className="text-xs text-gray-400 dark:text-zinc-500">
-                      {booking.groupSize > 1 ? `Group (${booking.groupSize})` : 'Private'}
+                      {booking.studentIds.length > 1 ? `Group (${booking.studentIds.length})` : 'Private'}
                     </p>
                   </div>
 
@@ -1223,27 +1081,15 @@ export default function DashboardPage() {
                                 setLessonEndTime(booking.endTime || '10:00');
                                 setLessonNote(booking.notes || '');
                                 const dupRows: StudentRow[] = [];
-                                const primaryStudent = students.find(s => s.clientName === booking.clientName);
-                                if (primaryStudent) {
+                                for (const sid of booking.studentIds) {
+                                  const s = students.find((st) => st.id === sid);
+                                  if (!s) continue;
                                   dupRows.push({
-                                    studentId: primaryStudent.id, displayName: primaryStudent.clientName,
-                                    phone: primaryStudent.clientPhone || '', isNew: false,
+                                    studentId: s.id, displayName: s.clientName,
+                                    phone: s.clientPhone || '', isNew: false,
                                     walletOption: 'none', existingWalletId: '', newWalletName: '',
-                                    price: booking.studentPrices?.[primaryStudent.id] ?? booking.price ?? 0,
+                                    price: booking.studentPrices[s.id] ?? 0,
                                   });
-                                }
-                                if (booking.linkedStudentIds?.length) {
-                                  for (const linkedId of booking.linkedStudentIds) {
-                                    const ls = students.find(s => s.id === linkedId);
-                                    if (ls) {
-                                      dupRows.push({
-                                        studentId: ls.id, displayName: ls.clientName,
-                                        phone: ls.clientPhone || '', isNew: false,
-                                        walletOption: 'none', existingWalletId: '', newWalletName: '',
-                                        price: booking.studentPrices?.[ls.id] ?? 0,
-                                      });
-                                    }
-                                  }
                                 }
                                 setStudentRows(dupRows.length ? dupRows : [{
                                   studentId: '', displayName: '', phone: '', isNew: true,
@@ -1675,9 +1521,8 @@ export default function DashboardPage() {
                 <p className="text-sm text-gray-600 dark:text-zinc-400">Total: RM {editTotalPrice.toFixed(0)}</p>
               </div>
 
-              {editStudentIds.map((sid, idx) => {
+              {editStudentIds.map((sid) => {
                 const student = students.find((s) => s.id === sid);
-                const isPrimary = idx === 0;
                 return (
                   <div key={sid} className="p-3 bg-gray-50 dark:bg-[#1a1a1a] rounded-lg space-y-2">
                     <div className="flex items-center justify-between gap-2">
@@ -1689,7 +1534,7 @@ export default function DashboardPage() {
                           <p className="text-xs text-gray-500 dark:text-zinc-400 truncate">{student.clientPhone}</p>
                         )}
                       </div>
-                      {!isPrimary && (
+                      {editStudentIds.length > 1 && (
                         <button
                           onClick={() => {
                             setEditStudentIds((ids) => ids.filter((i) => i !== sid));
@@ -1877,9 +1722,6 @@ export default function DashboardPage() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-gray-900 dark:text-zinc-100">
                           {attendee.studentName}
-                          {!attendee.isPrimary && (
-                            <span className="text-xs text-purple-600 dark:text-purple-400 ml-1">(linked)</span>
-                          )}
                         </p>
                       </div>
                       <div className="w-24">

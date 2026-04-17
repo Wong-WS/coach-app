@@ -9,7 +9,6 @@ import { Button, Input, Modal, PhoneInput } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { Student, DayOfWeek } from '@/types';
 import { formatTimeDisplay } from '@/lib/time-format';
-import { findOrCreateStudent } from '@/lib/students';
 import { formatDateMedium, parseDateString } from '@/lib/date-format';
 
 export default function StudentsPage() {
@@ -19,8 +18,6 @@ export default function StudentsPage() {
   const { bookings } = useBookings(coach?.id, 'confirmed');
   const { wallets } = useWallets(coach?.id);
   const { showToast } = useToast();
-
-  const [syncing, setSyncing] = useState(false);
 
   const [search, setSearch] = useState('');
   const [dayFilter, setDayFilter] = useState<DayOfWeek | 'all' | 'no-booking'>('all');
@@ -55,19 +52,14 @@ export default function StudentsPage() {
     const dayMap = new Map<DayOfWeek, Map<string, { startTime: string; endTime: string; locationName: string }>>();
 
     for (const booking of bookings) {
-      if (!booking.clientName || booking.endDate) continue;
-      const matched = students.find(
-        (s) =>
-          s.clientName === booking.clientName &&
-          s.clientPhone === (booking.clientPhone || '')
-      );
-      if (!matched) continue;
-
-      if (!dayMap.has(booking.dayOfWeek)) dayMap.set(booking.dayOfWeek, new Map());
-      const dayStudents = dayMap.get(booking.dayOfWeek)!;
-      const existing = dayStudents.get(matched.id);
-      if (!existing || booking.startTime < existing.startTime) {
-        dayStudents.set(matched.id, { startTime: booking.startTime, endTime: booking.endTime, locationName: booking.locationName });
+      if (booking.endDate) continue;
+      for (const sid of booking.studentIds) {
+        if (!dayMap.has(booking.dayOfWeek)) dayMap.set(booking.dayOfWeek, new Map());
+        const dayStudents = dayMap.get(booking.dayOfWeek)!;
+        const existing = dayStudents.get(sid);
+        if (!existing || booking.startTime < existing.startTime) {
+          dayStudents.set(sid, { startTime: booking.startTime, endTime: booking.endTime, locationName: booking.locationName });
+        }
       }
     }
 
@@ -75,26 +67,17 @@ export default function StudentsPage() {
     const active = allDays.filter((d) => dayMap.has(d));
 
     return { dayToStudents: dayMap, activeDays: active };
-  }, [bookings, students]);
+  }, [bookings]);
 
-  // Set of all student IDs that appear in any booking (including linked students)
+  // Set of all student IDs that appear in any recurring booking
   const studentsWithBookings = useMemo(() => {
     const ids = new Set<string>();
-    for (const dayStudents of dayToStudents.values()) {
-      for (const id of dayStudents.keys()) {
-        ids.add(id);
-      }
-    }
-    // Also include linked students from recurring bookings
     for (const booking of bookings) {
-      if (booking.linkedStudentIds && !booking.endDate) {
-        for (const id of booking.linkedStudentIds) {
-          ids.add(id);
-        }
-      }
+      if (booking.endDate) continue;
+      for (const sid of booking.studentIds) ids.add(sid);
     }
     return ids;
-  }, [dayToStudents, bookings]);
+  }, [bookings]);
 
   const filtered = useMemo(() => {
     let result = students;
@@ -129,8 +112,7 @@ export default function StudentsPage() {
       (b) =>
         b.status === 'confirmed' &&
         !b.endDate &&
-        b.clientName === student.clientName &&
-        b.clientPhone === (student.clientPhone || '')
+        b.studentIds.includes(student.id)
     );
   };
 
@@ -279,32 +261,6 @@ export default function StudentsPage() {
     }
   };
 
-  const handleSyncStudents = async () => {
-    if (!coach || !db) return;
-    setSyncing(true);
-    try {
-      const uniqueClients = new Map<string, { name: string; phone: string }>();
-      for (const booking of bookings) {
-        if (!booking.clientName) continue;
-        const key = `${booking.clientName}::${booking.clientPhone || ''}`;
-        if (!uniqueClients.has(key)) {
-          uniqueClients.set(key, { name: booking.clientName, phone: booking.clientPhone || '' });
-        }
-      }
-      let created = 0;
-      for (const client of uniqueClients.values()) {
-        await findOrCreateStudent(db as Firestore, coach.id, client.name, client.phone);
-        created++;
-      }
-      showToast(`Synced ${created} client${created !== 1 ? 's' : ''} from bookings!`, 'success');
-    } catch (error) {
-      console.error('Error syncing students:', error);
-      showToast('Failed to sync students', 'error');
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -322,11 +278,6 @@ export default function StudentsPage() {
             {filtered.length} student{filtered.length !== 1 ? 's' : ''}{dayFilter !== 'all' || search ? ` (of ${students.length})` : ''}
           </p>
         </div>
-        {bookings.length > 0 && (
-          <Button variant="secondary" size="sm" onClick={handleSyncStudents} loading={syncing}>
-            Sync from Bookings
-          </Button>
-        )}
       </div>
 
       {/* Search */}
@@ -382,13 +333,7 @@ export default function StudentsPage() {
           {students.length === 0 ? (
             <div className="space-y-3">
               <p>No students yet.</p>
-              {bookings.length > 0 ? (
-                <Button variant="secondary" size="sm" onClick={handleSyncStudents} loading={syncing}>
-                  Sync {bookings.length} booking{bookings.length !== 1 ? 's' : ''} into students
-                </Button>
-              ) : (
-                <p className="text-sm">Students are created automatically when you add bookings or mark classes as done.</p>
-              )}
+              <p className="text-sm">Students are created automatically when you add bookings or mark classes as done.</p>
             </div>
           ) : (
             dayFilter === 'no-booking' ? 'All students have bookings.'
