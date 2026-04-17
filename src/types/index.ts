@@ -96,7 +96,6 @@ export interface Student {
   pendingPayment: number;
   lessonRate?: number; // per-lesson rate (RM) for this student
   payPerLesson?: boolean;
-  linkedToStudentId?: string; // if set, this is a secondary student linked to a primary
   nextPrepaidTotal?: number; // queued next package (set when student renews early)
   nextPrepaidPaidAt?: Date;  // when the next package payment was recorded
   useMonetaryBalance?: boolean; // opt-in: track RM balance instead of lesson counts

@@ -45,9 +45,6 @@ export default function StudentsPage() {
   });
   const [toppingUp, setToppingUp] = useState(false);
 
-  // Linked student state
-  const [unlinking, setUnlinking] = useState(false);
-
   // Editable lesson rate state (pay-per-lesson)
   const [editingLessonRate, setEditingLessonRate] = useState(false);
   const [editLessonRate, setEditLessonRate] = useState(0);
@@ -58,19 +55,6 @@ export default function StudentsPage() {
     selectedStudent ? coach?.id : undefined, undefined, selectedStudent?.id, undefined, logLimit
   );
 
-
-  // Linked students for the selected student
-  const linkedStudents = useMemo(() => {
-    if (!selectedStudent) return [];
-    // If this is a primary student, find all students linked TO them
-    return students.filter((s) => s.linkedToStudentId === selectedStudent.id);
-  }, [students, selectedStudent]);
-
-  // If selected student is a secondary, find their primary
-  const primaryStudent = useMemo(() => {
-    if (!selectedStudent?.linkedToStudentId) return null;
-    return students.find((s) => s.id === selectedStudent.linkedToStudentId) ?? null;
-  }, [students, selectedStudent]);
 
   // Map students to their booking days, tracking earliest startTime and locationName per day
   const { dayToStudents, activeDays } = useMemo(() => {
@@ -196,45 +180,6 @@ export default function StudentsPage() {
       showToast('Failed to delete student', 'error');
     } finally {
       setDeletingStudent(false);
-    }
-  };
-
-  const handleUnlinkStudent = async (secondaryStudentId: string, primaryStudentId: string) => {
-    if (!coach || !db) return;
-    setUnlinking(true);
-    try {
-      const firestore = db as Firestore;
-      const batch = writeBatch(firestore);
-
-      // Clear linkedToStudentId on the secondary student
-      batch.update(doc(firestore, 'coaches', coach.id, 'students', secondaryStudentId), {
-        linkedToStudentId: null,
-        updatedAt: serverTimestamp(),
-      });
-
-      // Remove from linkedStudentIds on all bookings for the primary student
-      const primary = students.find((s) => s.id === primaryStudentId);
-      if (primary) {
-        for (const booking of bookings) {
-          if (
-            booking.clientName === primary.clientName &&
-            booking.clientPhone === (primary.clientPhone || '') &&
-            booking.linkedStudentIds?.includes(secondaryStudentId)
-          ) {
-            batch.update(doc(firestore, 'coaches', coach.id, 'bookings', booking.id), {
-              linkedStudentIds: booking.linkedStudentIds.filter((id) => id !== secondaryStudentId),
-            });
-          }
-        }
-      }
-
-      await batch.commit();
-      showToast('Student unlinked!', 'success');
-    } catch (error) {
-      console.error('Error unlinking student:', error);
-      showToast('Failed to unlink student', 'error');
-    } finally {
-      setUnlinking(false);
     }
   };
 
@@ -510,14 +455,7 @@ export default function StudentsPage() {
                 <div className="flex items-center justify-between">
                   <div className="min-w-0">
                     <p className="font-medium text-gray-900 dark:text-zinc-100 truncate">
-                      {(() => {
-                        const linked = students.filter((s) => s.linkedToStudentId === student.id);
-                        if (linked.length === 0) return student.clientName;
-                        const names = [student.clientName, ...linked.map((s) => s.clientName)];
-                        return names.length <= 2
-                          ? names.join(' and ')
-                          : names.slice(0, -1).join(', ') + ', ' + names[names.length - 1];
-                      })()}
+                      {student.clientName}
                     </p>
                     {dayInfo && (
                       <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
@@ -526,14 +464,6 @@ export default function StudentsPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {student.linkedToStudentId && (() => {
-                      const primary = students.find((s) => s.id === student.linkedToStudentId);
-                      return primary ? (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
-                          Linked to {primary.clientName}
-                        </span>
-                      ) : null;
-                    })()}
                     {studentWallet ? (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
                         RM {studentWallet.balance.toFixed(0)}
@@ -729,83 +659,6 @@ export default function StudentsPage() {
                 {copied ? 'Copied!' : 'Copy Portal Link'}
               </Button>
             </div>
-
-            {/* Linked Students */}
-            {(linkedStudents.length > 0 || primaryStudent || !selectedStudent.linkedToStudentId) && (
-              <div className="border-t border-gray-100 dark:border-[#333333] pt-4">
-                {primaryStudent ? (
-                  // This is a secondary student — show who they're linked to
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">
-                      Linked To
-                    </h3>
-                    <div className="flex items-center justify-between bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700 rounded-lg p-3">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">{primaryStudent.clientName}</p>
-                        <p className="text-xs text-gray-500 dark:text-zinc-400">{primaryStudent.clientPhone}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => openDetail(primaryStudent)}
-                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                        >
-                          View
-                        </button>
-                        <button
-                          onClick={() => handleUnlinkStudent(selectedStudent.id, primaryStudent.id)}
-                          disabled={unlinking}
-                          className="text-xs text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
-                        >
-                          {unlinking ? 'Unlinking...' : 'Unlink'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  // This is a primary student (or unlinked) — show linked students + link button
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">
-                      Linked Students {linkedStudents.length > 0 && `(${linkedStudents.length})`}
-                    </h3>
-
-                    {linkedStudents.length > 0 ? (
-                      <div className="space-y-2">
-                        {linkedStudents.map((ls) => (
-                          <div
-                            key={ls.id}
-                            className="flex items-center justify-between bg-gray-50 dark:bg-[#1a1a1a]/50 rounded-lg p-3"
-                          >
-                            <div>
-                              <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">{ls.clientName}</p>
-                              <p className="text-xs text-gray-500 dark:text-zinc-400">{ls.clientPhone}</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => openDetail(ls)}
-                                className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                              >
-                                View
-                              </button>
-                              <button
-                                onClick={() => handleUnlinkStudent(ls.id, selectedStudent.id)}
-                                disabled={unlinking}
-                                className="text-xs text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
-                              >
-                                {unlinking ? '...' : 'Unlink'}
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-400 dark:text-zinc-500">
-                        No linked students. Link students via split payment when creating a booking.
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Lesson history */}
             <div className="border-t border-gray-100 dark:border-[#333333] pt-4">

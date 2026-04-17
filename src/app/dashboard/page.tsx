@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { collection, doc, writeBatch, serverTimestamp, increment, updateDoc, deleteDoc, addDoc, getDoc, Firestore, getDocs, query, where } from 'firebase/firestore';
+import { collection, doc, writeBatch, serverTimestamp, increment, updateDoc, deleteDoc, addDoc, getDoc, setDoc, Firestore, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useLocations, useBookings, useLessonLogs, useClassExceptions, useStudents, useWallets } from '@/hooks/useCoachData';
 import { Button, Input, Modal, Select } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
-import { Booking } from '@/types';
+import { Booking, DayOfWeek } from '@/types';
 import { formatTimeDisplay } from '@/lib/availability-engine';
 import { findOrCreateStudent } from '@/lib/students';
 import { resolveWallet } from '@/lib/wallets';
@@ -124,8 +124,12 @@ export default function DashboardPage() {
   const [editLocationId, setEditLocationId] = useState('');
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
-  const [editPrice, setEditPrice] = useState(0);
   const [editNote, setEditNote] = useState('');
+  const [editStudentIds, setEditStudentIds] = useState<string[]>([]);
+  const [editStudentPrices, setEditStudentPrices] = useState<Record<string, number>>({});
+  const [editStudentWallets, setEditStudentWallets] = useState<Record<string, string>>({});
+  const [editAddStudentOpen, setEditAddStudentOpen] = useState(false);
+  const [editAddStudentSearch, setEditAddStudentSearch] = useState('');
   const [showEditSaveOptions, setShowEditSaveOptions] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
 
@@ -293,6 +297,16 @@ export default function DashboardPage() {
       if (lessonType === 'one-time') {
         bookingData.startDate = lessonDate;
         bookingData.endDate = lessonDate;
+      } else {
+        // Recurring: startDate = first occurrence of dayOfWeek on or after today
+        const days: DayOfWeek[] = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+        const targetIdx = days.indexOf(lessonDayOfWeek as DayOfWeek);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const daysAhead = (targetIdx - today.getDay() + 7) % 7;
+        const first = new Date(today);
+        first.setDate(today.getDate() + daysAhead);
+        bookingData.startDate = getDateString(first);
       }
 
       // Attach wallet to booking if one was selected/created
@@ -623,10 +637,61 @@ export default function DashboardPage() {
     setEditLocationId(booking.locationId);
     setEditStartTime(booking.startTime);
     setEditEndTime(booking.endTime);
-    setEditPrice(booking.price ?? 0);
     setEditNote(booking.notes || '');
+
+    // Resolve primary student id by matching clientName + clientPhone
+    const primary = students.find(
+      (s) => s.clientName === booking.clientName && s.clientPhone === (booking.clientPhone || '')
+    );
+    const primaryId = primary?.id ?? '';
+    const studentIds = [primaryId, ...(booking.linkedStudentIds ?? [])].filter(Boolean);
+    setEditStudentIds(studentIds);
+
+    // Seed per-student prices
+    const prices: Record<string, number> = {};
+    if (booking.studentPrices && Object.keys(booking.studentPrices).length > 0) {
+      for (const id of studentIds) prices[id] = booking.studentPrices[id] ?? 0;
+    } else if (primaryId) {
+      prices[primaryId] = booking.price ?? 0;
+    }
+    setEditStudentPrices(prices);
+
+    // Seed per-student wallets ('' = auto)
+    const sw: Record<string, string> = {};
+    for (const id of studentIds) {
+      sw[id] = booking.studentWallets?.[id] ?? (id === primaryId ? (booking.walletId ?? '') : '');
+    }
+    setEditStudentWallets(sw);
+
+    setEditAddStudentOpen(false);
+    setEditAddStudentSearch('');
     setShowEditSaveOptions(false);
     setMenuOpen(null);
+  };
+
+  const editTotalPrice = editStudentIds.reduce((sum, id) => sum + (editStudentPrices[id] ?? 0), 0);
+
+  const editPrimaryStudentId = editStudentIds[0] ?? '';
+  const editLinkedStudentIds = editStudentIds.slice(1);
+
+  const hasEditRosterChange = () => {
+    if (!editBooking) return false;
+    const origLinked = editBooking.linkedStudentIds ?? [];
+    if (editLinkedStudentIds.length !== origLinked.length) return true;
+    for (const id of editLinkedStudentIds) if (!origLinked.includes(id)) return true;
+    // Compare per-student prices
+    for (const id of editStudentIds) {
+      const orig = editBooking.studentPrices?.[id];
+      const current = editStudentPrices[id] ?? 0;
+      if (orig !== undefined && orig !== current) return true;
+      if (orig === undefined && id === editPrimaryStudentId && (editBooking.price ?? 0) !== current) return true;
+    }
+    // Compare per-student wallets
+    for (const id of editStudentIds) {
+      const origWallet = editBooking.studentWallets?.[id] ?? (id === editPrimaryStudentId ? (editBooking.walletId ?? '') : '');
+      if (origWallet !== (editStudentWallets[id] ?? '')) return true;
+    }
+    return false;
   };
 
   const hasEditChanges = () => {
@@ -634,8 +699,8 @@ export default function DashboardPage() {
     return editLocationId !== editBooking.locationId ||
       editStartTime !== editBooking.startTime ||
       editEndTime !== editBooking.endTime ||
-      editPrice !== (editBooking.price ?? 0) ||
-      editNote !== (editBooking.notes || '');
+      editNote !== (editBooking.notes || '') ||
+      hasEditRosterChange();
   };
 
   const handleEditSave = async (mode: 'this' | 'all' | 'future') => {
@@ -644,18 +709,32 @@ export default function DashboardPage() {
       showToast('No changes to save', 'error');
       return;
     }
+    if (mode === 'this' && hasEditRosterChange()) {
+      showToast('Student/price/wallet changes must apply to all or future occurrences', 'error');
+      return;
+    }
     setEditSaving(true);
     try {
       const firestore = db as Firestore;
       const newLocation = locations.find((l) => l.id === editLocationId);
       const newLocationName = newLocation?.name || editBooking.locationName;
 
+      // Build booking-level fields shared by 'all' and 'future'
+      const primaryStudent = students.find((s) => s.id === editPrimaryStudentId);
+      const primaryWalletId = editStudentWallets[editPrimaryStudentId] || '';
+      const studentWalletsOut: Record<string, string> = {};
+      for (const id of editStudentIds) {
+        const w = editStudentWallets[id];
+        if (w) studentWalletsOut[id] = w;
+      }
+      const studentPricesOut: Record<string, number> = {};
+      for (const id of editStudentIds) studentPricesOut[id] = editStudentPrices[id] ?? 0;
+      const groupSize = editStudentIds.length;
+      const lessonType = groupSize > 1 ? 'group' : 'private';
+
       if (mode === 'this') {
-        // Create a rescheduled exception for this date only
-        const batch = writeBatch(firestore);
-        // Cancel original on this date
         const exRef = doc(collection(firestore, 'coaches', coach.id, 'classExceptions'));
-        batch.set(exRef, {
+        await setDoc(exRef, {
           bookingId: editBooking.id,
           originalDate: selectedDateStr,
           type: 'rescheduled',
@@ -664,27 +743,35 @@ export default function DashboardPage() {
           newEndTime: editEndTime,
           newLocationId: editLocationId,
           newLocationName: newLocationName,
-          newPrice: editPrice,
+          newPrice: editTotalPrice,
           newNote: editNote,
           createdAt: serverTimestamp(),
         });
-        await batch.commit();
         showToast('Updated for this date', 'success');
       } else if (mode === 'all') {
-        // Update the booking directly
-        await updateDoc(doc(firestore, 'coaches', coach.id, 'bookings', editBooking.id), {
+        const updates: Record<string, unknown> = {
           locationId: editLocationId,
           locationName: newLocationName,
           startTime: editStartTime,
           endTime: editEndTime,
-          price: editPrice,
+          price: editTotalPrice,
           notes: editNote,
+          lessonType,
+          groupSize,
+          linkedStudentIds: editLinkedStudentIds.length > 0 ? editLinkedStudentIds : null,
+          studentPrices: groupSize > 1 ? studentPricesOut : null,
+          studentWallets: Object.keys(studentWalletsOut).length > 0 ? studentWalletsOut : null,
+          walletId: primaryWalletId || null,
           updatedAt: serverTimestamp(),
-        });
+        };
+        if (primaryStudent) {
+          updates.clientName = primaryStudent.clientName;
+          updates.clientPhone = primaryStudent.clientPhone;
+        }
+        await updateDoc(doc(firestore, 'coaches', coach.id, 'bookings', editBooking.id), updates);
         showToast('All events updated', 'success');
       } else if (mode === 'future') {
         const batch = writeBatch(firestore);
-        // End old booking the day before the selected date
         const oldBookingRef = doc(firestore, 'coaches', coach.id, 'bookings', editBooking.id);
         const prevDay = new Date(selectedDate);
         prevDay.setDate(prevDay.getDate() - 1);
@@ -692,26 +779,28 @@ export default function DashboardPage() {
           endDate: getDateString(prevDay),
           updatedAt: serverTimestamp(),
         });
-        // Create new booking starting from selected date
         const newBookingRef = doc(collection(firestore, 'coaches', coach.id, 'bookings'));
-        batch.set(newBookingRef, {
+        const newData: Record<string, unknown> = {
           locationId: editLocationId,
           locationName: newLocationName,
           dayOfWeek: editBooking.dayOfWeek,
           startTime: editStartTime,
           endTime: editEndTime,
           status: 'confirmed',
-          clientName: editBooking.clientName,
-          clientPhone: editBooking.clientPhone,
-          lessonType: editBooking.lessonType,
-          groupSize: editBooking.groupSize,
+          clientName: primaryStudent?.clientName ?? editBooking.clientName,
+          clientPhone: primaryStudent?.clientPhone ?? editBooking.clientPhone,
+          lessonType,
+          groupSize,
           notes: editNote,
-          price: editPrice,
-          linkedStudentIds: editBooking.linkedStudentIds ?? null,
-          studentPrices: editBooking.studentPrices ?? null,
+          price: editTotalPrice,
+          linkedStudentIds: editLinkedStudentIds.length > 0 ? editLinkedStudentIds : null,
+          studentPrices: groupSize > 1 ? studentPricesOut : null,
+          studentWallets: Object.keys(studentWalletsOut).length > 0 ? studentWalletsOut : null,
+          walletId: primaryWalletId || null,
           startDate: selectedDateStr,
           createdAt: serverTimestamp(),
-        });
+        };
+        batch.set(newBookingRef, newData);
         await batch.commit();
         showToast('Future events updated', 'success');
       }
@@ -1340,7 +1429,14 @@ export default function DashboardPage() {
           <div className="space-y-4">
             <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3">
               <p className="font-medium text-gray-900 dark:text-zinc-100">
-                {editBooking.clientName}
+                {(() => {
+                  const names = editStudentIds
+                    .map((id) => students.find((s) => s.id === id)?.clientName)
+                    .filter(Boolean) as string[];
+                  if (names.length === 0) return editBooking.clientName;
+                  if (names.length <= 2) return names.join(' and ');
+                  return names.slice(0, -1).join(', ') + ', ' + names[names.length - 1];
+                })()}
               </p>
               <p className="text-sm text-gray-500 dark:text-zinc-400">
                 {formatDateFull(selectedDate)}
@@ -1372,14 +1468,125 @@ export default function DashboardPage() {
               />
             </div>
 
-            <Input
-              id="editPrice"
-              label="Price (RM)"
-              type="number"
-              value={editPrice.toString()}
-              onChange={(e) => setEditPrice(parseFloat(e.target.value) || 0)}
-              min={0}
-            />
+            {/* Students section */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300">
+                  Students ({editStudentIds.length})
+                </label>
+                <p className="text-sm text-gray-600 dark:text-zinc-400">Total: RM {editTotalPrice.toFixed(0)}</p>
+              </div>
+
+              {editStudentIds.map((sid, idx) => {
+                const student = students.find((s) => s.id === sid);
+                const isPrimary = idx === 0;
+                return (
+                  <div key={sid} className="p-3 bg-gray-50 dark:bg-[#1a1a1a] rounded-lg space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 dark:text-zinc-100 truncate">
+                          {student?.clientName ?? '(unknown)'}
+                          {isPrimary && (
+                            <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                              Primary
+                            </span>
+                          )}
+                        </p>
+                        {student?.clientPhone && (
+                          <p className="text-xs text-gray-500 dark:text-zinc-400 truncate">{student.clientPhone}</p>
+                        )}
+                      </div>
+                      {!isPrimary && (
+                        <button
+                          onClick={() => {
+                            setEditStudentIds((ids) => ids.filter((i) => i !== sid));
+                            setEditStudentPrices((p) => { const next = { ...p }; delete next[sid]; return next; });
+                            setEditStudentWallets((w) => { const next = { ...w }; delete next[sid]; return next; });
+                          }}
+                          className="text-xs text-red-500 dark:text-red-400 hover:underline shrink-0"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        id={`editPrice-${sid}`}
+                        label="Price (RM)"
+                        type="number"
+                        value={String(editStudentPrices[sid] ?? 0)}
+                        onChange={(e) => setEditStudentPrices({ ...editStudentPrices, [sid]: parseFloat(e.target.value) || 0 })}
+                        min={0}
+                      />
+                      <Select
+                        id={`editWallet-${sid}`}
+                        label="Wallet"
+                        value={editStudentWallets[sid] ?? ''}
+                        onChange={(e) => setEditStudentWallets({ ...editStudentWallets, [sid]: e.target.value })}
+                        options={[
+                          { value: '', label: 'Auto (student\u2019s own)' },
+                          ...wallets.map((w) => ({ value: w.id, label: `${w.name} (RM ${w.balance.toFixed(0)})` })),
+                        ]}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Add student */}
+              {editAddStudentOpen ? (
+                <div className="p-3 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-[#333] rounded-lg space-y-2">
+                  <Input
+                    id="editAddStudentSearch"
+                    label="Find student"
+                    placeholder="Search name or phone"
+                    value={editAddStudentSearch}
+                    onChange={(e) => setEditAddStudentSearch(e.target.value)}
+                  />
+                  <div className="max-h-40 overflow-y-auto space-y-1">
+                    {students
+                      .filter((s) => !editStudentIds.includes(s.id))
+                      .filter((s) => {
+                        if (!editAddStudentSearch.trim()) return true;
+                        const q = editAddStudentSearch.toLowerCase();
+                        return s.clientName.toLowerCase().includes(q) || s.clientPhone.toLowerCase().includes(q);
+                      })
+                      .slice(0, 8)
+                      .map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => {
+                            setEditStudentIds([...editStudentIds, s.id]);
+                            setEditStudentPrices({ ...editStudentPrices, [s.id]: 0 });
+                            setEditStudentWallets({ ...editStudentWallets, [s.id]: '' });
+                            setEditAddStudentOpen(false);
+                            setEditAddStudentSearch('');
+                          }}
+                          className="w-full text-left p-2 text-sm rounded hover:bg-gray-100 dark:hover:bg-[#2a2a2a]"
+                        >
+                          <span className="text-gray-900 dark:text-zinc-100">{s.clientName}</span>
+                          {s.clientPhone && <span className="text-gray-500 dark:text-zinc-400 ml-2">{s.clientPhone}</span>}
+                        </button>
+                      ))}
+                    {students.filter((s) => !editStudentIds.includes(s.id)).length === 0 && (
+                      <p className="text-xs text-gray-400 dark:text-zinc-500 p-2">No other students to add.</p>
+                    )}
+                  </div>
+                  <div className="flex justify-end">
+                    <Button variant="secondary" size="sm" onClick={() => { setEditAddStudentOpen(false); setEditAddStudentSearch(''); }}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setEditAddStudentOpen(true)}
+                  className="w-full text-sm text-blue-600 dark:text-blue-400 hover:underline py-1"
+                >
+                  + Add student
+                </button>
+              )}
+            </div>
 
             <div>
               <label htmlFor="editNote" className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
@@ -1400,7 +1607,7 @@ export default function DashboardPage() {
               </Button>
               <Button
                 onClick={() => setShowEditSaveOptions(true)}
-                disabled={!hasEditChanges()}
+                disabled={!hasEditChanges() || editStudentIds.length === 0}
               >
                 Save
               </Button>
@@ -1412,14 +1619,16 @@ export default function DashboardPage() {
             <p className="text-sm text-gray-600 dark:text-zinc-400">
               How would you like to apply these changes?
             </p>
-            <button
-              onClick={() => handleEditSave('this')}
-              disabled={editSaving}
-              className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-[#444] hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
-            >
-              <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This event only</p>
-              <p className="text-xs text-gray-500 dark:text-zinc-400">Only change the class on {formatDateShort(selectedDate)}</p>
-            </button>
+            {!hasEditRosterChange() && (
+              <button
+                onClick={() => handleEditSave('this')}
+                disabled={editSaving}
+                className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-[#444] hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
+              >
+                <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This event only</p>
+                <p className="text-xs text-gray-500 dark:text-zinc-400">Only change the class on {formatDateShort(selectedDate)}</p>
+              </button>
+            )}
             <button
               onClick={() => handleEditSave('future')}
               disabled={editSaving}
