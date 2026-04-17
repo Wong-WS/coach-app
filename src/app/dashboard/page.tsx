@@ -239,6 +239,22 @@ export default function DashboardPage() {
     setStudentRows(rows => rows.map((r, i) => i === index ? { ...r, ...updates } : r));
   };
 
+  const getLastPriceForStudent = (studentId: string): number => {
+    const student = students.find((s) => s.id === studentId);
+    if (!student) return 0;
+    const sorted = [...bookings].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    for (const b of sorted) {
+      if (b.studentPrices && studentId in b.studentPrices) {
+        const p = b.studentPrices[studentId];
+        if (p > 0) return p;
+      }
+      const isPrimary = b.clientName === student.clientName && (b.clientPhone || '') === (student.clientPhone || '');
+      const isGroup = (b.linkedStudentIds?.length ?? 0) > 0;
+      if (isPrimary && !isGroup && (b.price ?? 0) > 0) return b.price ?? 0;
+    }
+    return 0;
+  };
+
   const getStudentRowSummary = (row: StudentRow): string => {
     if (!row.displayName.trim()) return '';
     const parts: string[] = [];
@@ -1694,9 +1710,11 @@ export default function DashboardPage() {
                         <button
                           key={s.id}
                           onClick={() => {
+                            const lastPrice = getLastPriceForStudent(s.id);
+                            const linkedWallet = wallets.find((w) => w.studentIds.includes(s.id));
                             setEditStudentIds([...editStudentIds, s.id]);
-                            setEditStudentPrices({ ...editStudentPrices, [s.id]: 0 });
-                            setEditStudentWallets({ ...editStudentWallets, [s.id]: '' });
+                            setEditStudentPrices({ ...editStudentPrices, [s.id]: lastPrice });
+                            setEditStudentWallets({ ...editStudentWallets, [s.id]: linkedWallet?.id || '' });
                             setEditAddStudentOpen(false);
                             setEditAddStudentSearch('');
                           }}
@@ -2043,6 +2061,7 @@ export default function DashboardPage() {
                                     onClick={() => {
                                       const studentRecord = students.find(st => st.id === s.studentId);
                                       const linkedWallet = wallets.find(w => w.studentIds.includes(s.studentId));
+                                      const lastPrice = getLastPriceForStudent(s.studentId);
                                       updateStudentRow(i, {
                                         studentId: s.studentId,
                                         displayName: s.displayName,
@@ -2051,6 +2070,7 @@ export default function DashboardPage() {
                                         walletOption: linkedWallet ? 'existing' : 'none',
                                         existingWalletId: linkedWallet?.id || '',
                                         newWalletName: '',
+                                        ...(row.price === 0 && lastPrice > 0 ? { price: lastPrice } : {}),
                                       });
                                       setStudentSearches(searches => {
                                         const next = [...searches];
