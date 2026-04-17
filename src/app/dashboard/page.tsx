@@ -139,12 +139,12 @@ export default function DashboardPage() {
 
   // Check for overlaps when repeat-weekly toggle or time fields change
   useEffect(() => {
-    if (lessonRepeatWeekly && lessonDayOfWeek) {
-      setOverlapWarning(checkOverlap(lessonDayOfWeek, lessonStartTime, lessonEndTime));
-    } else {
+    if (!showAddLesson || !lessonRepeatWeekly || !lessonDayOfWeek) {
       setOverlapWarning('');
+      return;
     }
-  }, [lessonRepeatWeekly, lessonDayOfWeek, lessonStartTime, lessonEndTime, checkOverlap]);
+    setOverlapWarning(checkOverlap(lessonDayOfWeek, lessonStartTime, lessonEndTime));
+  }, [showAddLesson, lessonRepeatWeekly, lessonDayOfWeek, lessonStartTime, lessonEndTime, checkOverlap]);
 
   // Edit booking modal state
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
@@ -449,16 +449,17 @@ export default function DashboardPage() {
 
       await addDoc(collection(firestore, 'coaches', coach.id, 'bookings'), bookingData);
 
-      // Touch the student record
-      if (primaryStudentId) {
-        await updateDoc(doc(firestore, 'coaches', coach.id, 'students', primaryStudentId), {
-          updatedAt: serverTimestamp(),
-        });
-      }
-
-      showToast('Lesson created!', 'success');
+      // Close the modal before any Firestore snapshot can arrive with the new
+      // booking and trigger a self-overlap warning flash.
       setShowAddLesson(false);
       resetLessonForm();
+      showToast('Lesson created!', 'success');
+
+      if (primaryStudentId) {
+        updateDoc(doc(firestore, 'coaches', coach.id, 'students', primaryStudentId), {
+          updatedAt: serverTimestamp(),
+        }).catch(err => console.error('Failed to touch student record:', err));
+      }
     } catch (error) {
       console.error('Error creating lesson:', error);
       showToast('Failed to create lesson', 'error');
