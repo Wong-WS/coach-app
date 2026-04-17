@@ -645,7 +645,20 @@ export default function DashboardPage() {
       const firestore = db as Firestore;
       const batch = writeBatch(firestore);
 
-      if (scope === 'this') {
+      const isOneTime = !!(booking.startDate && booking.endDate && booking.startDate === booking.endDate);
+
+      if (isOneTime) {
+        // One-time bookings are hard-deleted along with any orphaned exceptions.
+        batch.delete(doc(firestore, 'coaches', coach.id, 'bookings', booking.id));
+        const exQuery = query(
+          collection(firestore, 'coaches', coach.id, 'classExceptions'),
+          where('bookingId', '==', booking.id),
+        );
+        const exSnapshot = await getDocs(exQuery);
+        for (const d of exSnapshot.docs) {
+          batch.delete(doc(firestore, 'coaches', coach.id, 'classExceptions', d.id));
+        }
+      } else if (scope === 'this') {
         const exRef = doc(collection(firestore, 'coaches', coach.id, 'classExceptions'));
         batch.set(exRef, {
           bookingId: booking.id,
@@ -681,7 +694,7 @@ export default function DashboardPage() {
 
       await batch.commit();
       showToast(
-        scope === 'this' ? 'Class cancelled for this date' : 'Recurring series ended',
+        isOneTime ? 'Lesson deleted' : scope === 'this' ? 'Class cancelled for this date' : 'Recurring series ended',
         'success',
       );
       setCancelScopeBooking(null);
@@ -1258,24 +1271,28 @@ export default function DashboardPage() {
                               Reschedule
                             </button>
                             )}
-                            {!isDone && (
-                            <button
-                              onClick={() => {
-                                const isOneTime = !!(booking.startDate && booking.endDate && booking.startDate === booking.endDate);
-                                if (isOneTime) {
-                                  setOneTimeCancelBooking(booking);
-                                } else {
-                                  setCancelScopeBooking(booking);
-                                  setCancelScope('this');
-                                }
-                                setMenuOpen(null);
-                              }}
-                              disabled={cancelling === booking.id}
-                              className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-[#333] disabled:opacity-50"
-                            >
-                              {cancelling === booking.id ? 'Cancelling...' : 'Cancel'}
-                            </button>
-                            )}
+                            {!isDone && (() => {
+                              const isOneTime = !!(booking.startDate && booking.endDate && booking.startDate === booking.endDate);
+                              return (
+                                <button
+                                  onClick={() => {
+                                    if (isOneTime) {
+                                      setOneTimeCancelBooking(booking);
+                                    } else {
+                                      setCancelScopeBooking(booking);
+                                      setCancelScope('this');
+                                    }
+                                    setMenuOpen(null);
+                                  }}
+                                  disabled={cancelling === booking.id}
+                                  className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-[#333] disabled:opacity-50"
+                                >
+                                  {cancelling === booking.id
+                                    ? (isOneTime ? 'Deleting...' : 'Cancelling...')
+                                    : (isOneTime ? 'Delete' : 'Cancel')}
+                                </button>
+                              );
+                            })()}
                           </div>
                         </>
                       )}
@@ -1563,11 +1580,11 @@ export default function DashboardPage() {
         )}
       </Modal>
 
-      {/* One-time cancel confirm modal */}
+      {/* One-time delete confirm modal */}
       <Modal
         isOpen={!!oneTimeCancelBooking}
         onClose={() => setOneTimeCancelBooking(null)}
-        title="Cancel this lesson?"
+        title="Delete this lesson?"
       >
         {oneTimeCancelBooking && (
           <div className="space-y-4">
@@ -1575,7 +1592,7 @@ export default function DashboardPage() {
               {oneTimeCancelBooking.className} — {formatDateShort(parseDateString(selectedDateStr))}
             </p>
             <p className="text-sm text-gray-600 dark:text-zinc-400">
-              The lesson will be cancelled for this date.
+              This lesson will be permanently deleted.
             </p>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="secondary" onClick={() => setOneTimeCancelBooking(null)}>
@@ -1586,7 +1603,7 @@ export default function DashboardPage() {
                 disabled={cancelling === oneTimeCancelBooking.id}
                 onClick={() => handleCancelScoped(oneTimeCancelBooking, 'this')}
               >
-                {cancelling === oneTimeCancelBooking.id ? 'Cancelling...' : 'Cancel lesson'}
+                {cancelling === oneTimeCancelBooking.id ? 'Deleting...' : 'Delete lesson'}
               </Button>
             </div>
           </div>
