@@ -82,6 +82,15 @@ export interface ClassException {
   newLocationName?: string;
   newPrice?: number;
   newNote?: string;
+  newClassName?: string;
+  newClientName?: string;
+  newClientPhone?: string;
+  newLinkedStudentIds?: string[] | null;
+  newStudentPrices?: Record<string, number> | null;
+  newStudentWallets?: Record<string, string> | null;
+  newWalletId?: string | null;
+  newGroupSize?: number;
+  newLessonType?: LessonType;
   createdAt: Date;
 }
 

@@ -815,10 +815,6 @@ export default function DashboardPage() {
       showToast('No changes to save', 'error');
       return;
     }
-    if (mode === 'this' && (hasEditRosterChange() || hasEditBookingLevelChange())) {
-      showToast('Class name, student, price, and wallet changes must apply to all or future occurrences', 'error');
-      return;
-    }
     if (!editClassName.trim()) {
       showToast('Class name is required', 'error');
       return;
@@ -855,6 +851,15 @@ export default function DashboardPage() {
           newLocationName: newLocationName,
           newPrice: editTotalPrice,
           newNote: editNote,
+          newClassName: editClassName.trim(),
+          newClientName: primaryStudent?.clientName ?? editBooking.clientName,
+          newClientPhone: primaryStudent?.clientPhone ?? editBooking.clientPhone,
+          newLinkedStudentIds: editLinkedStudentIds.length > 0 ? editLinkedStudentIds : null,
+          newStudentPrices: groupSize > 1 ? studentPricesOut : null,
+          newStudentWallets: Object.keys(studentWalletsOut).length > 0 ? studentWalletsOut : null,
+          newWalletId: primaryWalletId || null,
+          newGroupSize: groupSize,
+          newLessonType: lessonType,
           createdAt: serverTimestamp(),
         });
         showToast('Updated for this date', 'success');
@@ -1752,16 +1757,14 @@ export default function DashboardPage() {
             <p className="text-sm text-gray-600 dark:text-zinc-400">
               How would you like to apply these changes?
             </p>
-            {!hasEditRosterChange() && (
-              <button
-                onClick={() => handleEditSave('this')}
-                disabled={editSaving}
-                className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-[#444] hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
-              >
-                <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This event only</p>
-                <p className="text-xs text-gray-500 dark:text-zinc-400">Only change the class on {formatDateShort(selectedDate)}</p>
-              </button>
-            )}
+            <button
+              onClick={() => handleEditSave('this')}
+              disabled={editSaving}
+              className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-[#444] hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
+            >
+              <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This event only</p>
+              <p className="text-xs text-gray-500 dark:text-zinc-400">Only change the class on {formatDateShort(selectedDate)}</p>
+            </button>
             <button
               onClick={() => handleEditSave('future')}
               disabled={editSaving}
