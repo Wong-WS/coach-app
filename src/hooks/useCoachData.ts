@@ -106,7 +106,6 @@ export function useStudents(coachId: string | undefined) {
           id: d.id,
           clientName: d.data().clientName,
           clientPhone: d.data().clientPhone,
-          linkToken: d.data().linkToken,
           notes: d.data().notes ?? '',
           createdAt: d.data().createdAt?.toDate() || new Date(),
           updatedAt: d.data().updatedAt?.toDate() || new Date(),

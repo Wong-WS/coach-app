@@ -41,23 +41,18 @@ coach-app/src/
 │   │   ├── bookings/page.tsx         # Read-only recurring schedule
 │   │   ├── students/page.tsx         # Student list + wallet top-up + lesson history
 │   │   └── payments/page.tsx         # Wallet management + transaction history
-│   ├── [slug]/page.tsx               # Public coach page with availability
-│   ├── student/[token]/page.tsx      # Student portal (read-only lesson history)
 │   └── api/
-│       ├── availability/[coachId]/route.ts  # Available slots API (GET)
-│       ├── student/[token]/route.ts         # Student portal API (Admin SDK, GET)
-│       ├── migrate-wallets/route.ts         # One-off migration: legacy prepaid → wallets
 │       └── reset-account/route.ts           # Dev/testing nuke
 ├── lib/
 │   ├── firebase.ts                   # Firebase client init
 │   ├── firebase-admin.ts             # Firebase Admin SDK (server-side)
 │   ├── auth-context.tsx              # Auth React context
 │   ├── theme-context.tsx             # Dark-mode toggle
-│   ├── availability-engine.ts        # Core slot calculation algorithm
 │   ├── class-schedule.ts             # getClassesForDate, rescheduling helpers
 │   ├── cancel-scope.ts               # computeCancelFuture (cancel-this vs cancel-future)
 │   ├── wallets.ts                    # resolveWallet helper
 │   ├── students.ts                   # findOrCreateStudent utility
+│   ├── time-format.ts                # formatTimeDisplay, getDayDisplayName
 │   └── date-format.ts                # en-MY date formatters
 ├── components/
 │   └── ui/                           # Button, Input, Select, Modal, PhoneInput, Toast, GoogleButton
@@ -82,9 +77,6 @@ coach-app/src/
 coachSlugs/{slug}                        # Top-level lookup: slug → coachId
   coachId: string
 
-studentTokens/{linkToken}               # Student portal token → coachId + studentId
-  coachId, studentId
-
 coaches/{coachId}                        # Coach profile & settings
   displayName, slug, email, serviceType
   lessonDurationMinutes, travelBufferMinutes
@@ -108,10 +100,7 @@ coaches/{coachId}/bookings/{bookingId}   # Recurring weekly bookings
   createdAt, cancelledAt
 
 coaches/{coachId}/students/{studentId}   # Student records
-  clientName, clientPhone, linkToken
-  lessonRate, notes, createdAt, updatedAt
-  # Legacy fields (pre-wallet): prepaidTotal, prepaidUsed, credit, pendingPayment,
-  # useMonetaryBalance, monetaryBalance — still read by /student/[token] portal
+  clientName, clientPhone, notes, createdAt, updatedAt
 
 coaches/{coachId}/lessonLogs/{logId}     # Completed lesson records
   date, bookingId, studentId, studentName
@@ -135,40 +124,18 @@ coaches/{coachId}/wallets/{walletId}/transactions/{txnId}  # Wallet history
 
 ### Key Features
 
-#### Phase 1 (Implemented)
-1. Coach signup with unique slug (public URL)
-2. Working hours configuration with multiple time ranges per day
-3. Overlap and invalid time range validation before saving
-4. Lesson duration and travel buffer settings
-5. Multiple location management
-6. Booking creation/cancellation by coach (5-minute time increments)
-7. Public page showing availability by location
-8. After 3 PM time filter on public schedule page
-9. WhatsApp contact button for clients
-10. Availability engine with smart travel buffer calculation
-
-#### Phase 2 (Implemented)
-11. Student tracking — auto-created on booking creation and mark-as-done
-12. Student portal — public read-only page at /student/[token] (via Admin SDK API)
-13. Linked students — for group lessons with separate-paying parents (linkedStudentIds[], studentPrices{})
-14. Class exceptions — cancel or reschedule individual occurrences of recurring bookings
-15. Lesson logging — mark-as-done creates lessonLog + wallet charge transaction
-16. Wallet system — shared balance per student group, top-up/charge/refund/adjustment transactions
-
-### Availability Engine Logic
-
-- Takes: workingHours, lessonDuration, travelBuffer, confirmedBookings, clientLocationId
-- Supports multiple time ranges per day (timeRanges array)
-- For each day and each range, finds gaps between bookings
-- Applies travel buffer only when adjacent booking is at DIFFERENT location than clientLocationId
-- Generates available start times in 30-minute increments
-- Backward compatible with old single startTime/endTime format
+- Coach signup with unique slug
+- Recurring weekly bookings (read-only list)
+- Today's Classes with mark-as-done
+- Class exceptions — per-date cancel/reschedule of recurring bookings
+- Linked students — group lessons with separate-paying parents (linkedStudentIds[], studentPrices{})
+- Lesson logging — mark-as-done creates lessonLog + wallet charge transaction
+- Wallet system — shared balance per student group, top-up/charge/refund/adjustment transactions
 
 ### Security Rules
 
 - coachSlugs: authenticated read, create own uid only
-- studentTokens: no public read (Admin SDK only); owner create/delete
-- coaches + all subcollections: owner read/write (public data served via API routes using Admin SDK)
+- coaches + all subcollections: owner read/write
 
 ### Test Account
 

@@ -8,7 +8,7 @@ import { useStudents, useLessonLogs, useBookings, useWallets } from '@/hooks/use
 import { Button, Input, Modal, PhoneInput } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { Student, DayOfWeek } from '@/types';
-import { formatTimeDisplay } from '@/lib/availability-engine';
+import { formatTimeDisplay } from '@/lib/time-format';
 import { findOrCreateStudent } from '@/lib/students';
 import { formatDateMedium, parseDateString } from '@/lib/date-format';
 
@@ -31,7 +31,6 @@ export default function StudentsPage() {
   const [editPhone, setEditPhone] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [saving, setSaving] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
   const [confirmDeleteLogId, setConfirmDeleteLogId] = useState<string | null>(null);
@@ -156,14 +155,6 @@ export default function StudentsPage() {
 
       await batch.commit();
 
-      // Try to delete their portal token (may fail due to security rules)
-      if (student.linkToken) {
-        try {
-          await deleteDoc(doc(firestore, 'studentTokens', student.linkToken));
-        } catch {
-          // Token cleanup is best-effort
-        }
-      }
       setSelectedStudent(null);
       setConfirmDeleteStudent(false);
       const msg = studentBookings.length > 0
@@ -285,19 +276,6 @@ export default function StudentsPage() {
       showToast('Failed to delete lesson', 'error');
     } finally {
       setDeletingLogId(null);
-    }
-  };
-
-  const copyPortalLink = async () => {
-    if (!selectedStudent) return;
-    const url = `${window.location.origin}/student/${selectedStudent.linkToken}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      showToast('Portal link copied!', 'success');
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      showToast('Failed to copy link', 'error');
     }
   };
 
@@ -563,16 +541,6 @@ export default function StudentsPage() {
                   </div>
                 );
               })()}
-            </div>
-
-            {/* Portal link */}
-            <div className="border-t border-gray-100 dark:border-[#333333] pt-4">
-              <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">
-                Student Portal Link
-              </h3>
-              <Button variant="secondary" size="sm" onClick={copyPortalLink}>
-                {copied ? 'Copied!' : 'Copy Portal Link'}
-              </Button>
             </div>
 
             {/* Lesson history */}

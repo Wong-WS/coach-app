@@ -3,7 +3,7 @@
 import { useAuth } from '@/lib/auth-context';
 import { useBookings, useStudents } from '@/hooks/useCoachData';
 import { DayOfWeek, Booking } from '@/types';
-import { getDayDisplayName, formatTimeDisplay } from '@/lib/availability-engine';
+import { getDayDisplayName, formatTimeDisplay } from '@/lib/time-format';
 
 const DAYS: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 

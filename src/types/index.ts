@@ -89,7 +89,6 @@ export interface Student {
   id: string;
   clientName: string;
   clientPhone: string;
-  linkToken: string;
   notes: string;
   createdAt: Date;
   updatedAt: Date;

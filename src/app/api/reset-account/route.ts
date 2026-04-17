@@ -30,14 +30,5 @@ export async function POST(req: NextRequest) {
     deleted[col] = await deleteCollection(db, `${base}/${col}`);
   }
 
-  // Delete student tokens for this coach
-  const tokensSnap = await db.collection('studentTokens').where('coachId', '==', coachId).get();
-  if (!tokensSnap.empty) {
-    const batch = db.batch();
-    tokensSnap.docs.forEach((doc) => batch.delete(doc.ref));
-    await batch.commit();
-    deleted['studentTokens'] = tokensSnap.size;
-  }
-
   return NextResponse.json({ deleted });
 }

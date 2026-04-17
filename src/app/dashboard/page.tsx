@@ -8,7 +8,7 @@ import { useLocations, useBookings, useLessonLogs, useClassExceptions, useStuden
 import { Button, Input, Modal, Select } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { Booking, ClassException, DayOfWeek } from '@/types';
-import { formatTimeDisplay } from '@/lib/availability-engine';
+import { formatTimeDisplay } from '@/lib/time-format';
 import { findOrCreateStudent } from '@/lib/students';
 import { resolveWallet } from '@/lib/wallets';
 import { computeCancelFuture } from '@/lib/cancel-scope';

@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useWallets, useWalletTransactions, useStudents, useBookings, useLessonLogs } from '@/hooks/useCoachData';
 import { Button, Input, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
-import { formatTimeDisplay } from '@/lib/availability-engine';
+import { formatTimeDisplay } from '@/lib/time-format';
 import { formatDateMedium } from '@/lib/date-format';
 import type { Wallet, WalletTransaction } from '@/types';
 
