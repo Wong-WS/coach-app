@@ -490,7 +490,10 @@ export default function PaymentsPage() {
 
   const handleDeleteWallet = async () => {
     if (!db || !selectedWallet) return;
-    if (selectedWallet.studentIds.length > 0) {
+    const existingLinked = selectedWallet.studentIds.filter((id) =>
+      students.some((s) => s.id === id)
+    );
+    if (existingLinked.length > 0) {
       showToast('Remove all linked students before deleting', 'error');
       return;
     }
