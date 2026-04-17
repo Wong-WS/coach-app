@@ -235,6 +235,22 @@ export default function DashboardPage() {
     return options;
   };
 
+  const shiftEndTime = (oldStart: string, oldEnd: string, newStart: string): string => {
+    const toMin = (t: string) => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const toStr = (min: number) => {
+      const h = Math.floor(min / 60);
+      const m = min % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    };
+    const duration = toMin(oldEnd) - toMin(oldStart);
+    if (duration <= 0) return oldEnd;
+    const maxMin = 23 * 60 + 55;
+    return toStr(Math.min(toMin(newStart) + duration, maxMin));
+  };
+
   const updateStudentRow = (index: number, updates: Partial<StudentRow>) => {
     setStudentRows(rows => rows.map((r, i) => i === index ? { ...r, ...updates } : r));
   };
@@ -1616,7 +1632,13 @@ export default function DashboardPage() {
                 label="Start Time"
                 type="time"
                 value={editStartTime}
-                onChange={(e) => setEditStartTime(e.target.value)}
+                onChange={(e) => {
+                  const newStart = e.target.value;
+                  if (editStartTime && editEndTime) {
+                    setEditEndTime(shiftEndTime(editStartTime, editEndTime, newStart));
+                  }
+                  setEditStartTime(newStart);
+                }}
               />
               <Input
                 id="editEndTime"
@@ -1967,7 +1989,11 @@ export default function DashboardPage() {
                 <span>Repeat every {lessonDayName || 'week'}</span>
               </label>
               <div className="grid grid-cols-2 gap-2">
-                <select value={lessonStartTime} onChange={e => setLessonStartTime(e.target.value)}
+                <select value={lessonStartTime} onChange={e => {
+                    const newStart = e.target.value;
+                    setLessonEndTime(shiftEndTime(lessonStartTime, lessonEndTime, newStart));
+                    setLessonStartTime(newStart);
+                  }}
                   aria-label="Start time"
                   className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100">
                   {generateTimeOptions().map(t => <option key={t} value={t}>{formatTimeDisplay(t)}</option>)}
