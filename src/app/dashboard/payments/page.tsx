@@ -245,10 +245,11 @@ export default function PaymentsPage() {
   const { bookings } = useBookings(coach?.id, 'confirmed');
   const { lessonLogs } = useLessonLogs(coach?.id, undefined, undefined, 1);
 
-  // All transactions across wallets (for History tab)
-  const [historyLimit, setHistoryLimit] = useState(20);
-  const [allTransactions, setAllTransactions] = useState<(WalletTransaction & { walletName: string })[]>([]);
-  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  // All transactions across wallets (for History tab) — global limit, not per-wallet
+  const HISTORY_PAGE_SIZE = 10;
+  const [historyLimit, setHistoryLimit] = useState(HISTORY_PAGE_SIZE);
+  const [mergedTransactions, setMergedTransactions] = useState<(WalletTransaction & { walletName: string })[]>([]);
+  const [anyWalletAtLimit, setAnyWalletAtLimit] = useState(false);
 
   // Stable wallet identity — only re-run listeners when wallet IDs change
   const walletIds = wallets.map(w => w.id).join(',');
@@ -260,6 +261,8 @@ export default function PaymentsPage() {
     const txnsByWallet = new Map<string, (WalletTransaction & { walletName: string })[]>();
     const atLimitByWallet = new Map<string, boolean>();
 
+    // Each wallet only needs to surface its top `historyLimit` candidates —
+    // anything older than that can't be in the merged top `historyLimit`.
     for (const wallet of wallets) {
       const q = query(
         collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'),
@@ -283,8 +286,8 @@ export default function PaymentsPage() {
         atLimitByWallet.set(wallet.id, snap.docs.length >= historyLimit);
         const merged = Array.from(txnsByWallet.values()).flat();
         merged.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-        setAllTransactions(merged);
-        setHasMoreHistory(Array.from(atLimitByWallet.values()).some(v => v));
+        setMergedTransactions(merged);
+        setAnyWalletAtLimit(Array.from(atLimitByWallet.values()).some(v => v));
       });
       unsubs.push(unsub);
     }
@@ -292,6 +295,12 @@ export default function PaymentsPage() {
     return () => unsubs.forEach((u) => u());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coach?.id, walletIds, historyLimit]);
+
+  const allTransactions = useMemo(
+    () => mergedTransactions.slice(0, historyLimit),
+    [mergedTransactions, historyLimit],
+  );
+  const hasMoreHistory = mergedTransactions.length > historyLimit || anyWalletAtLimit;
 
   // Wallet detail panel
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
@@ -736,7 +745,7 @@ export default function PaymentsPage() {
               </table>
               {hasMoreHistory && (
               <button
-                onClick={() => setHistoryLimit(historyLimit + 20)}
+                onClick={() => setHistoryLimit(historyLimit + HISTORY_PAGE_SIZE)}
                 className="w-full text-center py-3 text-sm text-blue-600 dark:text-blue-400 hover:underline border-t border-gray-100 dark:border-[#333333]"
               >
                 Load more
