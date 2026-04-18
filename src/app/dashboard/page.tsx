@@ -897,6 +897,11 @@ export default function DashboardPage() {
     setSelectedDate(d);
   };
 
+  const lowWallets = useMemo(() => {
+    const today = getDateString(new Date());
+    return wallets.filter((w) => isLowBalance(w, bookings, today));
+  }, [wallets, bookings]);
+
   if (!coach) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -906,11 +911,6 @@ export default function DashboardPage() {
   }
 
   const formattedDate = formatDateFull(selectedDate);
-
-  const lowWallets = useMemo(() => {
-    const today = getDateString(new Date());
-    return wallets.filter((w) => isLowBalance(w, bookings, today));
-  }, [wallets, bookings]);
 
   return (
     <div className="space-y-6">

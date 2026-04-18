@@ -11,6 +11,7 @@ export function useLocations(coachId: string | undefined) {
 
   useEffect(() => {
     if (!coachId || !db) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- guard branch: hydrate loading=false when no subscription will be opened
       setLoading(false);
       return;
     }
@@ -43,6 +44,7 @@ export function useBookings(coachId: string | undefined, statusFilter?: 'confirm
 
   useEffect(() => {
     if (!coachId || !db) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- guard branch: hydrate loading=false when no subscription will be opened
       setLoading(false);
       return;
     }
@@ -89,6 +91,7 @@ export function useStudents(coachId: string | undefined) {
 
   useEffect(() => {
     if (!coachId || !db) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- guard branch: hydrate loading=false when no subscription will be opened
       setLoading(false);
       return;
     }
@@ -122,6 +125,7 @@ export function useLessonLogs(coachId: string | undefined, dateFilter?: string, 
 
   useEffect(() => {
     if (!coachId || !db) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- guard branch: hydrate loading=false when no subscription will be opened
       setLoading(false);
       return;
     }
@@ -189,6 +193,7 @@ export function useClassExceptions(coachId: string | undefined, referenceDate?: 
 
   useEffect(() => {
     if (!coachId || !db) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- guard branch: hydrate loading=false when no subscription will be opened
       setLoading(false);
       return;
     }
@@ -234,6 +239,7 @@ export function useWallets(coachId: string | undefined) {
 
   useEffect(() => {
     if (!coachId || !db) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- guard branch: hydrate loading=false when no subscription will be opened
       setLoading(false);
       return;
     }
@@ -271,6 +277,7 @@ export function useWalletTransactions(coachId: string | undefined, walletId: str
 
   useEffect(() => {
     if (!coachId || !walletId || !db) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- guard branch: reset state when no subscription will be opened
       setTransactions([]);
       setLoading(false);
       return;

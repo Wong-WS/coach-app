@@ -16,6 +16,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const stored = localStorage.getItem('theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const dark = stored === 'dark' || (!stored && prefersDark);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot hydration from localStorage on mount; no SSR equivalent
     setIsDark(dark);
     if (dark) {
       document.documentElement.classList.add('dark');

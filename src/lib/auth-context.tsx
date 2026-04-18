@@ -54,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!auth) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate loading=false when Firebase auth isn't configured (dev-only path)
       setLoading(false);
       return;
     }

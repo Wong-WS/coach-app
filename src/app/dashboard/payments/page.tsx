@@ -8,7 +8,6 @@ import { useWallets, useWalletTransactions, useStudents, useBookings, useLessonL
 import { Button, Input, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { formatTimeDisplay } from '@/lib/time-format';
-import { formatDateMedium } from '@/lib/date-format';
 import { getBookingTotal } from '@/lib/class-schedule';
 import { isLowBalance, getWalletStatus } from '@/lib/wallet-alerts';
 import { useSearchParams } from 'next/navigation';
@@ -475,6 +474,7 @@ export default function PaymentsPage() {
         setSelectedWallet(updated);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-sync only when the wallets list changes; including selectedWallet loops
   }, [wallets]);
 
   // Create wallet modal

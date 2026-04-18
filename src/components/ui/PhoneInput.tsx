@@ -56,6 +56,7 @@ export function PhoneInput({ id, label, value, onChange, placeholder = 'Phone nu
   // Sync from external value changes
   useEffect(() => {
     const p = parsePhone(value);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing split country/number state from parent's combined `value` prop
     setCountryCode(p.countryCode);
     setNumber(p.number);
   }, [value]);
