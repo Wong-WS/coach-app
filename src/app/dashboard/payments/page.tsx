@@ -10,6 +10,8 @@ import { useToast } from '@/components/ui/Toast';
 import { formatTimeDisplay } from '@/lib/time-format';
 import { formatDateMedium } from '@/lib/date-format';
 import { getBookingTotal } from '@/lib/class-schedule';
+import { isLowBalance } from '@/lib/wallet-alerts';
+import { useSearchParams } from 'next/navigation';
 import type { Wallet, WalletTransaction, DayOfWeek } from '@/types';
 
 const TABS = ['Overview', 'Wallets', 'History'] as const;
@@ -472,7 +474,17 @@ export default function PaymentsPage() {
   const [deletingWallet, setDeletingWallet] = useState(false);
 
   const [walletSearch, setWalletSearch] = useState('');
-  const [walletDayFilter, setWalletDayFilter] = useState<DayOfWeek | 'all' | 'adhoc' | 'negative'>('all');
+  const [walletDayFilter, setWalletDayFilter] = useState<
+    DayOfWeek | 'all' | 'adhoc' | 'negative' | 'low'
+  >('all');
+  const [showArchived, setShowArchived] = useState(false);
+
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get('filter') === 'low') {
+      setWalletDayFilter('low');
+    }
+  }, [searchParams]);
 
   // Students not yet assigned to any wallet
   const unassignedStudents = students.filter(
@@ -510,13 +522,22 @@ export default function PaymentsPage() {
     return map;
   }, [students]);
 
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+
   const filteredWallets = useMemo(() => {
     let result = wallets;
-
+    if (!showArchived) {
+      result = result.filter((w) => !(w.archived ?? false));
+    }
     if (walletDayFilter === 'adhoc') {
       result = result.filter((w) => !activeWalletIds.has(w.id));
     } else if (walletDayFilter === 'negative') {
       result = result.filter((w) => w.balance < 0);
+    } else if (walletDayFilter === 'low') {
+      result = result.filter((w) => isLowBalance(w, bookings, todayStr));
     } else if (walletDayFilter !== 'all') {
       const dayWallets = walletDayMap.get(walletDayFilter);
       result = dayWallets ? result.filter((w) => dayWallets.has(w.id)) : [];
@@ -524,20 +545,21 @@ export default function PaymentsPage() {
 
     const q = walletSearch.trim().toLowerCase();
     if (q) {
-      result = result.filter((w) => {
-        if (w.name.toLowerCase().includes(q)) return true;
-        return w.studentIds.some((id) => studentNameById.get(id)?.includes(q));
-      });
+      result = result.filter((w) =>
+        w.name.toLowerCase().includes(q) ||
+        w.studentIds.some((id) => studentNameById.get(id)?.toLowerCase().includes(q))
+      );
     }
 
     return result;
-  }, [wallets, walletDayFilter, walletDayMap, activeWalletIds, walletSearch, studentNameById]);
+  }, [wallets, walletDayFilter, walletDayMap, activeWalletIds, walletSearch, studentNameById, showArchived, bookings, todayStr]);
 
   useEffect(() => {
     if (
       walletDayFilter !== 'all' &&
       walletDayFilter !== 'adhoc' &&
       walletDayFilter !== 'negative' &&
+      walletDayFilter !== 'low' &&
       !activeDays.includes(walletDayFilter)
     ) {
       setWalletDayFilter('all');
@@ -917,6 +939,7 @@ export default function PaymentsPage() {
           )}
 
           {activeDays.length > 0 && (
+            <>
             <div className="flex gap-2 flex-wrap">
               <button
                 onClick={() => setWalletDayFilter('all')}
@@ -961,7 +984,34 @@ export default function PaymentsPage() {
               >
                 Negative
               </button>
+              {(() => {
+                const lowCount = wallets.filter((w) =>
+                  !(w.archived ?? false) && isLowBalance(w, bookings, todayStr)
+                ).length;
+                return (
+                  <button
+                    onClick={() => setWalletDayFilter('low')}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      walletDayFilter === 'low'
+                        ? 'bg-red-600 text-white'
+                        : 'bg-gray-100 dark:bg-[#1f1f1f] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]'
+                    }`}
+                  >
+                    Running low{lowCount > 0 ? ` (${lowCount})` : ''}
+                  </button>
+                );
+              })()}
             </div>
+            <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-zinc-400">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(e) => setShowArchived(e.target.checked)}
+                className="rounded"
+              />
+              Show archived
+            </label>
+            </>
           )}
 
           {/* Wallet cards grid */}
@@ -976,6 +1026,8 @@ export default function PaymentsPage() {
                 ? 'All wallets have recurring bookings.'
                 : walletDayFilter === 'negative'
                 ? 'No wallets in the negative.'
+                : walletDayFilter === 'low'
+                ? 'No wallets need topping up.'
                 : walletDayFilter !== 'all'
                 ? `No wallets on ${walletDayFilter.charAt(0).toUpperCase() + walletDayFilter.slice(1)}.`
                 : 'No wallets match your search.'}
@@ -993,9 +1045,26 @@ export default function PaymentsPage() {
                   >
                     {/* Name + student count */}
                     <div className="flex items-center justify-between mb-3">
-                      <span className="font-medium text-gray-900 dark:text-zinc-100 truncate">
-                        {wallet.name}
-                      </span>
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="font-medium text-gray-900 dark:text-zinc-100 truncate">
+                          {wallet.name}
+                        </span>
+                        {isLowBalance(wallet, bookings, todayStr) && (
+                          <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 font-medium">
+                            Running low
+                          </span>
+                        )}
+                        {(wallet.payPerLesson ?? false) && (
+                          <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-zinc-800 dark:text-zinc-400 font-medium">
+                            Pay per lesson
+                          </span>
+                        )}
+                        {(wallet.archived ?? false) && (
+                          <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-zinc-500 font-medium">
+                            Archived
+                          </span>
+                        )}
+                      </div>
                       {linkedStudents.length > 0 && (
                         <span className="ml-2 flex-shrink-0 text-xs bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-zinc-400 px-2 py-0.5 rounded-full">
                           {linkedStudents.length} {linkedStudents.length === 1 ? 'student' : 'students'}
