@@ -1655,8 +1655,17 @@ export default function DashboardPage() {
             {markDoneAttendees.length > 1 ? (
               <div className="space-y-3">
                 <p className="text-sm font-medium text-gray-700 dark:text-zinc-300">Attendance & Pricing</p>
-                {markDoneAttendees.map((attendee, idx) => {
+                {(() => {
+                  const walletCharges = new Map<string, number>();
+                  for (const a of markDoneAttendees) {
+                    if (!a.attended) continue;
+                    const w = findWalletForStudent(a.studentId);
+                    if (!w) continue;
+                    walletCharges.set(w.id, (walletCharges.get(w.id) ?? 0) + a.price);
+                  }
+                  return markDoneAttendees.map((attendee, idx) => {
                   const attendeeWallet = findWalletForStudent(attendee.studentId);
+                  const totalCharge = attendeeWallet ? walletCharges.get(attendeeWallet.id) ?? 0 : 0;
                   return (
                   <div key={attendee.studentId} className="p-3 bg-gray-50 dark:bg-[#1a1a1a] rounded-lg space-y-2">
                     <div className="flex items-center gap-3">
@@ -1693,7 +1702,7 @@ export default function DashboardPage() {
                     {attendee.attended && (
                       attendeeWallet ? (
                         <p className="text-xs text-gray-400 dark:text-zinc-500 pl-7">
-                          {attendeeWallet.name}: RM {attendeeWallet.balance} → RM {attendeeWallet.balance - attendee.price}
+                          {attendeeWallet.name}: RM {attendeeWallet.balance} → RM {attendeeWallet.balance - totalCharge}
                         </p>
                       ) : (
                         <p className="text-xs text-red-600 dark:text-red-400 pl-7">
@@ -1703,7 +1712,8 @@ export default function DashboardPage() {
                     )}
                   </div>
                   );
-                })}
+                });
+                })()}
               </div>
             ) : (
               <>
