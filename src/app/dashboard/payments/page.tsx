@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { formatTimeDisplay } from '@/lib/time-format';
 import { formatDateMedium } from '@/lib/date-format';
 import { getBookingTotal } from '@/lib/class-schedule';
-import { isLowBalance } from '@/lib/wallet-alerts';
+import { isLowBalance, getNextLessonCost, getTopUpMinimum } from '@/lib/wallet-alerts';
 import { useSearchParams } from 'next/navigation';
 import type { Wallet, WalletTransaction, DayOfWeek } from '@/types';
 
@@ -1208,6 +1208,47 @@ export default function PaymentsPage() {
         title={`Top Up — ${selectedWallet?.name ?? ''}`}
       >
         <div className="space-y-4">
+          {selectedWallet && !(selectedWallet.payPerLesson ?? false) && (() => {
+            const rate = getNextLessonCost(selectedWallet, bookings);
+            const packageSize = selectedWallet.minLessonsPerTopUp ?? 5;
+            const minimum = getTopUpMinimum(selectedWallet, bookings);
+            const walletAfter = selectedWallet.balance + minimum;
+            if (rate === 0) return null;
+            return (
+              <div className="bg-gray-50 dark:bg-[#2a2a2a] rounded-lg p-3 text-sm space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-zinc-400">Next lesson:</span>
+                  <span className="text-gray-900 dark:text-zinc-100">RM {rate.toFixed(0)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-zinc-400">Package size:</span>
+                  <span className="text-gray-900 dark:text-zinc-100">{packageSize} lessons</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-zinc-400">Current balance:</span>
+                  <span className="text-gray-900 dark:text-zinc-100">
+                    {selectedWallet.balance < 0 ? '-' : ''}RM {Math.abs(selectedWallet.balance).toFixed(0)}
+                  </span>
+                </div>
+                <div className="border-t border-gray-200 dark:border-[#333333] my-1" />
+                <div className="flex justify-between font-medium">
+                  <span className="text-gray-700 dark:text-zinc-300">Cash to hit {packageSize} lessons:</span>
+                  <span className="text-gray-900 dark:text-zinc-100">RM {minimum.toFixed(0)}</span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-500 dark:text-zinc-400">
+                  <span>Wallet after:</span>
+                  <span>RM {walletAfter.toFixed(0)}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTopUpAmount(String(minimum))}
+                  className="mt-2 w-full text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  Fill to {packageSize} lessons (RM {minimum.toFixed(0)})
+                </button>
+              </div>
+            );
+          })()}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
               Amount (RM)
