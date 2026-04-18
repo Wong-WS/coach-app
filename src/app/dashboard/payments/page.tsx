@@ -217,17 +217,15 @@ function WalletDetail({
         )}
       </div>
 
-      {/* Delete — only when no students linked */}
-      {linkedStudents.length === 0 && (
-        <div className="pt-4 border-t border-gray-100 dark:border-[#333333]">
-          <button
-            onClick={onDelete}
-            className="w-full py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-          >
-            Delete Wallet
-          </button>
-        </div>
-      )}
+      {/* Delete */}
+      <div className="pt-4 border-t border-gray-100 dark:border-[#333333]">
+        <button
+          onClick={onDelete}
+          className="w-full py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+        >
+          Delete Wallet
+        </button>
+      </div>
     </div>
   );
 }
@@ -547,13 +545,6 @@ export default function PaymentsPage() {
 
   const handleDeleteWallet = async () => {
     if (!db || !selectedWallet) return;
-    const existingLinked = selectedWallet.studentIds.filter((id) =>
-      students.some((s) => s.id === id)
-    );
-    if (existingLinked.length > 0) {
-      showToast('Remove all linked students before deleting', 'error');
-      return;
-    }
     setDeletingWallet(true);
     try {
       const firestore = db as Firestore;
@@ -1129,11 +1120,23 @@ export default function PaymentsPage() {
         onClose={() => !deletingWallet && setShowDeleteModal(false)}
         title="Delete Wallet?"
       >
-        {selectedWallet && (
+        {selectedWallet && (() => {
+          const linkedStudents = students.filter((s) => selectedWallet.studentIds.includes(s.id));
+          return (
           <div className="space-y-4">
             <p className="text-sm text-gray-700 dark:text-zinc-300">
               This will permanently delete <span className="font-medium">{selectedWallet.name}</span> and all its transaction history.
             </p>
+            {linkedStudents.length > 0 && (
+              <div className="rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 px-3 py-2">
+                <p className="text-xs text-yellow-800 dark:text-yellow-300">
+                  <span className="font-semibold">
+                    {linkedStudents.length} {linkedStudents.length === 1 ? 'student' : 'students'}
+                  </span>{' '}
+                  will be unlinked: {linkedStudents.map((s) => s.clientName).join(', ')}.
+                </p>
+              </div>
+            )}
             {selectedWallet.balance !== 0 && (
               <div className="rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 px-3 py-2">
                 <p className="text-xs text-yellow-800 dark:text-yellow-300">
@@ -1165,7 +1168,8 @@ export default function PaymentsPage() {
               </Button>
             </div>
           </div>
-        )}
+          );
+        })()}
       </Modal>
     </div>
   );
