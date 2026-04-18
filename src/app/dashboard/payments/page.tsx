@@ -405,7 +405,7 @@ export default function PaymentsPage() {
   const [deletingWallet, setDeletingWallet] = useState(false);
 
   const [walletSearch, setWalletSearch] = useState('');
-  const [walletDayFilter, setWalletDayFilter] = useState<DayOfWeek | 'all' | 'inactive'>('all');
+  const [walletDayFilter, setWalletDayFilter] = useState<DayOfWeek | 'all' | 'adhoc' | 'negative'>('all');
 
   // Students not yet assigned to any wallet
   const unassignedStudents = students.filter(
@@ -446,8 +446,10 @@ export default function PaymentsPage() {
   const filteredWallets = useMemo(() => {
     let result = wallets;
 
-    if (walletDayFilter === 'inactive') {
+    if (walletDayFilter === 'adhoc') {
       result = result.filter((w) => !activeWalletIds.has(w.id));
+    } else if (walletDayFilter === 'negative') {
+      result = result.filter((w) => w.balance < 0);
     } else if (walletDayFilter !== 'all') {
       const dayWallets = walletDayMap.get(walletDayFilter);
       result = dayWallets ? result.filter((w) => dayWallets.has(w.id)) : [];
@@ -465,7 +467,12 @@ export default function PaymentsPage() {
   }, [wallets, walletDayFilter, walletDayMap, activeWalletIds, walletSearch, studentNameById]);
 
   useEffect(() => {
-    if (walletDayFilter !== 'all' && walletDayFilter !== 'inactive' && !activeDays.includes(walletDayFilter)) {
+    if (
+      walletDayFilter !== 'all' &&
+      walletDayFilter !== 'adhoc' &&
+      walletDayFilter !== 'negative' &&
+      !activeDays.includes(walletDayFilter)
+    ) {
       setWalletDayFilter('all');
     }
   }, [activeDays, walletDayFilter]);
@@ -868,14 +875,24 @@ export default function PaymentsPage() {
                 </button>
               ))}
               <button
-                onClick={() => setWalletDayFilter('inactive')}
+                onClick={() => setWalletDayFilter('adhoc')}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  walletDayFilter === 'inactive'
+                  walletDayFilter === 'adhoc'
                     ? 'bg-orange-500 text-white'
                     : 'bg-gray-100 dark:bg-[#1f1f1f] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]'
                 }`}
               >
-                Inactive
+                Ad-hoc
+              </button>
+              <button
+                onClick={() => setWalletDayFilter('negative')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  walletDayFilter === 'negative'
+                    ? 'bg-red-600 text-white'
+                    : 'bg-gray-100 dark:bg-[#1f1f1f] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]'
+                }`}
+              >
+                Negative
               </button>
             </div>
           )}
@@ -888,8 +905,10 @@ export default function PaymentsPage() {
             </div>
           ) : filteredWallets.length === 0 ? (
             <div className="text-center py-12 text-gray-400 dark:text-zinc-500">
-              {walletDayFilter === 'inactive'
-                ? 'All wallets have active bookings.'
+              {walletDayFilter === 'adhoc'
+                ? 'All wallets have recurring bookings.'
+                : walletDayFilter === 'negative'
+                ? 'No wallets in the negative.'
                 : walletDayFilter !== 'all'
                 ? `No wallets on ${walletDayFilter.charAt(0).toUpperCase() + walletDayFilter.slice(1)}.`
                 : 'No wallets match your search.'}
