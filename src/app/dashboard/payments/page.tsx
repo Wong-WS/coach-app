@@ -746,7 +746,7 @@ export default function PaymentsPage() {
               {hasMoreHistory && (
               <button
                 onClick={() => setHistoryLimit(historyLimit + HISTORY_PAGE_SIZE)}
-                className="w-full text-center py-3 text-sm text-blue-600 dark:text-blue-400 hover:underline border-t border-gray-100 dark:border-[#333333]"
+                className="w-full text-center py-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
               >
                 Load more
               </button>
