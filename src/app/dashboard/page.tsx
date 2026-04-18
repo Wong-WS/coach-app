@@ -5,7 +5,7 @@ import { collection, doc, writeBatch, serverTimestamp, increment, updateDoc, del
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useLocations, useBookings, useLessonLogs, useClassExceptions, useStudents, useWallets } from '@/hooks/useCoachData';
-import { Button, DatePicker, Input, Modal, Select } from '@/components/ui';
+import { Button, DatePicker, Input, Modal, Select, TimePicker } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { Booking, ClassException, DayOfWeek } from '@/types';
 import { formatTimeDisplay } from '@/lib/time-format';
@@ -1840,20 +1840,22 @@ export default function DashboardPage() {
                 <span>Repeat every {lessonDayName || 'week'}</span>
               </label>
               <div className="grid grid-cols-2 gap-2">
-                <select value={lessonStartTime} onChange={e => {
-                    const newStart = e.target.value;
+                <TimePicker
+                  id="lessonStartTime"
+                  value={lessonStartTime}
+                  onChange={(newStart) => {
                     setLessonEndTime(shiftEndTime(lessonStartTime, lessonEndTime, newStart));
                     setLessonStartTime(newStart);
                   }}
-                  aria-label="Start time"
-                  className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100">
-                  {generateTimeOptions().map(t => <option key={t} value={t}>{formatTimeDisplay(t)}</option>)}
-                </select>
-                <select value={lessonEndTime} onChange={e => setLessonEndTime(e.target.value)}
-                  aria-label="End time"
-                  className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100">
-                  {generateTimeOptions().map(t => <option key={t} value={t}>{formatTimeDisplay(t)}</option>)}
-                </select>
+                  ariaLabel="Start time"
+                />
+                <TimePicker
+                  id="lessonEndTime"
+                  value={lessonEndTime}
+                  onChange={setLessonEndTime}
+                  ariaLabel="End time"
+                  contextHalfDay={Number(lessonStartTime.split(':')[0]) >= 12 ? 'PM' : 'AM'}
+                />
               </div>
             </div>
           </section>
