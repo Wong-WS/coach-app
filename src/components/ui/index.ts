@@ -3,5 +3,6 @@ export { Input } from './Input';
 export { Select } from './Select';
 export { Modal } from './Modal';
 export { DatePicker } from './DatePicker';
+export { TimePicker } from './TimePicker';
 export { PhoneInput } from './PhoneInput';
 export { ToastProvider, useToast } from './Toast';
