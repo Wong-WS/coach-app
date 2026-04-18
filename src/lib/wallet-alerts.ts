@@ -69,3 +69,23 @@ export function getTopUpMinimum(wallet: Wallet, bookings: Booking[]): number {
   const packageSize = wallet.minLessonsPerTopUp ?? 5;
   return Math.max(0, rate * packageSize - wallet.balance);
 }
+
+/**
+ * Combined selector — one pass each for rate and active-booking check.
+ * Use this when a caller needs two or more of { rate, isLow, topUpMinimum }.
+ */
+export function getWalletStatus(
+  wallet: Wallet,
+  bookings: Booking[],
+  today: string
+): { rate: number; isLow: boolean; topUpMinimum: number } {
+  if (wallet.payPerLesson || wallet.archived) {
+    return { rate: 0, isLow: false, topUpMinimum: 0 };
+  }
+  const rate = getNextLessonCost(wallet, bookings);
+  const active = hasActiveBooking(wallet, bookings, today);
+  const isLow = active && wallet.balance < rate;
+  const packageSize = wallet.minLessonsPerTopUp ?? 5;
+  const topUpMinimum = rate === 0 ? 0 : Math.max(0, rate * packageSize - wallet.balance);
+  return { rate, isLow, topUpMinimum };
+}

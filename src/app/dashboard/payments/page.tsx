@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { formatTimeDisplay } from '@/lib/time-format';
 import { formatDateMedium } from '@/lib/date-format';
 import { getBookingTotal } from '@/lib/class-schedule';
-import { isLowBalance, getNextLessonCost, getTopUpMinimum } from '@/lib/wallet-alerts';
+import { isLowBalance, getWalletStatus } from '@/lib/wallet-alerts';
 import { useSearchParams } from 'next/navigation';
 import type { Wallet, WalletTransaction, DayOfWeek } from '@/types';
 
@@ -49,6 +49,39 @@ function getMonthRange(): { start: string; end: string } {
   return { start: fmt(start), end: fmt(end) };
 }
 
+// Keyed by wallet.id at the call site so the draft resets naturally on switch.
+function PackageSizeInput({
+  initial,
+  onCommit,
+}: {
+  initial: number;
+  onCommit: (value: number) => Promise<void> | void;
+}) {
+  const [draft, setDraft] = useState(String(initial));
+  return (
+    <input
+      type="number"
+      min="1"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={async () => {
+        const n = parseInt(draft, 10);
+        if (isNaN(n) || n < 1) {
+          setDraft(String(initial));
+          return;
+        }
+        if (n === initial) return;
+        try {
+          await onCommit(n);
+        } catch {
+          setDraft(String(initial));
+        }
+      }}
+      className="w-16 px-2 py-1 border border-gray-300 dark:border-zinc-500 rounded text-sm bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
+    />
+  );
+}
+
 // ─── WalletDetail ────────────────────────────────────────────────────────────
 
 function WalletDetail({
@@ -73,11 +106,6 @@ function WalletDetail({
   showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }) {
   const [txnLimit, setTxnLimit] = useState(20);
-  const [packageDraft, setPackageDraft] = useState<string>(String(wallet.minLessonsPerTopUp ?? 5));
-
-  useEffect(() => {
-    setPackageDraft(String(wallet.minLessonsPerTopUp ?? 5));
-  }, [wallet.id, wallet.minLessonsPerTopUp]);
   const { transactions } = useWalletTransactions(coachId, wallet.id, txnLimit);
   const linkedStudents = students.filter((s) => wallet.studentIds.includes(s.id));
   const unlinkedStudents = students.filter(
@@ -196,31 +224,21 @@ function WalletDetail({
 
         <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-zinc-300">
           Package size:
-          <input
-            type="number"
-            min="1"
-            value={packageDraft}
-            onChange={(e) => setPackageDraft(e.target.value)}
-            onBlur={async () => {
+          <PackageSizeInput
+            key={wallet.id}
+            initial={wallet.minLessonsPerTopUp ?? 5}
+            onCommit={async (n) => {
               if (!db) return;
-              const n = parseInt(packageDraft, 10);
-              const current = wallet.minLessonsPerTopUp ?? 5;
-              if (isNaN(n) || n < 1) {
-                setPackageDraft(String(current));
-                return;
-              }
-              if (n === current) return;
               try {
                 await updateDoc(
                   doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
                   { minLessonsPerTopUp: n, updatedAt: serverTimestamp() }
                 );
-              } catch {
+              } catch (err) {
                 showToast('Failed to update package size', 'error');
-                setPackageDraft(String(current));
+                throw err;
               }
             }}
-            className="w-16 px-2 py-1 border border-gray-300 dark:border-zinc-500 rounded text-sm bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
           />
           lessons
         </label>
@@ -1046,8 +1064,7 @@ export default function PaymentsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredWallets.map((wallet) => {
                 const linkedStudents = students.filter((s) => wallet.studentIds.includes(s.id));
-                const isLow = isLowBalance(wallet, bookings, todayStr);
-                const nextPayment = isLow ? getTopUpMinimum(wallet, bookings) : 0;
+                const { isLow, topUpMinimum: nextPayment } = getWalletStatus(wallet, bookings, todayStr);
 
                 return (
                   <button
@@ -1102,7 +1119,6 @@ export default function PaymentsPage() {
                       <p className="text-xs text-gray-400 dark:text-zinc-500">&nbsp;</p>
                     )}
 
-                    {/* Next payment */}
                     {nextPayment > 0 && (
                       <p className="text-xs text-red-500 dark:text-red-400 font-medium mt-1">
                         Next payment: RM {nextPayment.toFixed(0)}
@@ -1230,9 +1246,8 @@ export default function PaymentsPage() {
       >
         <div className="space-y-4">
           {selectedWallet && !(selectedWallet.payPerLesson ?? false) && (() => {
-            const rate = getNextLessonCost(selectedWallet, bookings);
+            const { rate, topUpMinimum: minimum } = getWalletStatus(selectedWallet, bookings, todayStr);
             const packageSize = selectedWallet.minLessonsPerTopUp ?? 5;
-            const minimum = getTopUpMinimum(selectedWallet, bookings);
             const walletAfter = selectedWallet.balance + minimum;
             if (rate === 0) return null;
             return (
