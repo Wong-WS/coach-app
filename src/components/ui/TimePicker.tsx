@@ -96,14 +96,23 @@ function TimePickerDesktop({
 
   useEffect(() => {
     if (!open || !listRef.current) return;
-    const idx = slots.indexOf(currentHighlight);
+    const idx = slots.indexOf(snappedValue);
     if (idx < 0) return;
     const el = listRef.current.children[idx] as HTMLElement | undefined;
     if (!el) return;
     const container = listRef.current;
     const target = el.offsetTop - container.clientHeight / 2 + el.clientHeight / 2;
     container.scrollTop = Math.max(0, target);
-  }, [open, currentHighlight, slots]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  function scrollHighlightIntoView(slot: string) {
+    if (!listRef.current) return;
+    const idx = slots.indexOf(slot);
+    if (idx < 0) return;
+    const el = listRef.current.children[idx] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: 'nearest' });
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -157,12 +166,14 @@ function TimePickerDesktop({
       const idx = slots.indexOf(currentHighlight);
       const next = slots[Math.min(slots.length - 1, idx + 1)] ?? slots[0];
       setHighlight(next);
+      scrollHighlightIntoView(next);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       if (!open) { openDropdown(); return; }
       const idx = slots.indexOf(currentHighlight);
       const prev = slots[Math.max(0, idx - 1)] ?? slots[slots.length - 1];
       setHighlight(prev);
+      scrollHighlightIntoView(prev);
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (editing) {
@@ -241,7 +252,6 @@ function TimePickerDesktop({
                   setOpen(false);
                   inputRef.current?.blur();
                 }}
-                onMouseEnter={() => setHighlight(slot)}
                 className={`block w-full text-left px-3 py-1.5 text-sm font-mono ${
                   isHighlighted
                     ? 'bg-blue-600 text-white'
