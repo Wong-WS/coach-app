@@ -51,11 +51,6 @@ export default function DashboardPage() {
   const [cancelScopeBooking, setCancelScopeBooking] = useState<Booking | null>(null);
   const [cancelScope, setCancelScope] = useState<'this' | 'future'>('this');
   const [oneTimeCancelBooking, setOneTimeCancelBooking] = useState<Booking | null>(null);
-  const [rescheduleBooking, setRescheduleBooking] = useState<Booking | null>(null);
-  const [rescheduleDate, setRescheduleDate] = useState('');
-  const [rescheduleStartTime, setRescheduleStartTime] = useState('');
-  const [rescheduleEndTime, setRescheduleEndTime] = useState('');
-  const [rescheduling, setRescheduling] = useState(false);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [undoingCancel, setUndoingCancel] = useState<string | null>(null);
   const [markDoneBooking, setMarkDoneBooking] = useState<Booking | null>(null);
@@ -147,6 +142,7 @@ export default function DashboardPage() {
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
   const [editClassName, setEditClassName] = useState('');
   const [editLocationId, setEditLocationId] = useState('');
+  const [editDate, setEditDate] = useState('');
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
   const [editNote, setEditNote] = useState('');
@@ -597,41 +593,6 @@ export default function DashboardPage() {
     }
   };
 
-  const handleReschedule = async () => {
-    if (!coach || !db || !rescheduleBooking || !rescheduleDate) return;
-    if (rescheduleDate === selectedDateStr && rescheduleStartTime === rescheduleBooking.startTime && rescheduleEndTime === rescheduleBooking.endTime) {
-      showToast('Must change date or time', 'error');
-      return;
-    }
-    setRescheduling(true);
-    try {
-      const firestore = db as Firestore;
-      const exRef = doc(collection(firestore, 'coaches', coach.id, 'classExceptions'));
-      const batch = writeBatch(firestore);
-      const exData: Record<string, unknown> = {
-        bookingId: rescheduleBooking.id,
-        originalDate: selectedDateStr,
-        type: 'rescheduled',
-        newDate: rescheduleDate,
-        createdAt: serverTimestamp(),
-      };
-      if (rescheduleStartTime !== rescheduleBooking.startTime || rescheduleEndTime !== rescheduleBooking.endTime) {
-        exData.newStartTime = rescheduleStartTime;
-        exData.newEndTime = rescheduleEndTime;
-      }
-      batch.set(exRef, exData);
-      await batch.commit();
-      showToast('Class rescheduled!', 'success');
-      setRescheduleBooking(null);
-      setRescheduleDate('');
-    } catch (error) {
-      console.error('Error rescheduling class:', error);
-      showToast('Failed to reschedule class', 'error');
-    } finally {
-      setRescheduling(false);
-    }
-  };
-
   const handleUndoCancel = async (exceptionId: string) => {
     if (!coach || !db) return;
     setUndoingCancel(exceptionId);
@@ -647,29 +608,11 @@ export default function DashboardPage() {
     }
   };
 
-  const handleRescheduleInstead = async (exceptionId: string, booking: Booking) => {
-    if (!coach || !db) return;
-    setUndoingCancel(exceptionId);
-    try {
-      const firestore = db as Firestore;
-      await deleteDoc(doc(firestore, 'coaches', coach.id, 'classExceptions', exceptionId));
-      // Open reschedule modal pre-filled
-      setRescheduleBooking(booking);
-      setRescheduleDate(selectedDateStr);
-      setRescheduleStartTime(booking.startTime);
-      setRescheduleEndTime(booking.endTime);
-    } catch (error) {
-      console.error('Error removing cancellation:', error);
-      showToast('Failed to undo cancellation', 'error');
-    } finally {
-      setUndoingCancel(null);
-    }
-  };
-
   const openEditBooking = (booking: Booking) => {
     setEditBooking(booking);
     setEditClassName(booking.className || '');
     setEditLocationId(booking.locationId);
+    setEditDate(selectedDateStr);
     setEditStartTime(booking.startTime);
     setEditEndTime(booking.endTime);
     setEditNote(booking.notes || '');
@@ -680,6 +623,21 @@ export default function DashboardPage() {
     setEditAddStudentSearch('');
     setShowEditSaveOptions(false);
     setMenuOpen(null);
+  };
+
+  const handleRescheduleInstead = async (exceptionId: string, booking: Booking) => {
+    if (!coach || !db) return;
+    setUndoingCancel(exceptionId);
+    try {
+      const firestore = db as Firestore;
+      await deleteDoc(doc(firestore, 'coaches', coach.id, 'classExceptions', exceptionId));
+      openEditBooking(booking);
+    } catch (error) {
+      console.error('Error removing cancellation:', error);
+      showToast('Failed to undo cancellation', 'error');
+    } finally {
+      setUndoingCancel(null);
+    }
   };
 
   const editTotalPrice = editStudentIds.reduce((sum, id) => sum + (editStudentPrices[id] ?? 0), 0);
@@ -704,6 +662,7 @@ export default function DashboardPage() {
   const hasEditChanges = () => {
     if (!editBooking) return false;
     return editLocationId !== editBooking.locationId ||
+      editDate !== selectedDateStr ||
       editStartTime !== editBooking.startTime ||
       editEndTime !== editBooking.endTime ||
       editNote !== (editBooking.notes || '') ||
@@ -736,9 +695,10 @@ export default function DashboardPage() {
       }
 
       const isOneTime = !!(editBooking.startDate && editBooking.endDate && editBooking.startDate === editBooking.endDate);
+      const effectiveDate = editDate || selectedDateStr;
 
       if (isOneTime) {
-        await updateDoc(doc(firestore, 'coaches', coach.id, 'bookings', editBooking.id), {
+        const update: Record<string, unknown> = {
           className: editClassName.trim(),
           locationId: editLocationId,
           locationName: newLocationName,
@@ -749,7 +709,13 @@ export default function DashboardPage() {
           studentPrices: studentPricesOut,
           studentWallets: studentWalletsOut,
           updatedAt: serverTimestamp(),
-        });
+        };
+        if (effectiveDate !== selectedDateStr) {
+          update.startDate = effectiveDate;
+          update.endDate = effectiveDate;
+          update.dayOfWeek = getDayOfWeekForDate(effectiveDate);
+        }
+        await updateDoc(doc(firestore, 'coaches', coach.id, 'bookings', editBooking.id), update);
         showToast('Updated', 'success');
       } else if (mode === 'this') {
         const exRef = doc(collection(firestore, 'coaches', coach.id, 'classExceptions'));
@@ -757,7 +723,7 @@ export default function DashboardPage() {
           bookingId: editBooking.id,
           originalDate: selectedDateStr,
           type: 'rescheduled',
-          newDate: selectedDateStr,
+          newDate: effectiveDate,
           newStartTime: editStartTime,
           newEndTime: editEndTime,
           newLocationId: editLocationId,
@@ -780,10 +746,13 @@ export default function DashboardPage() {
           updatedAt: serverTimestamp(),
         });
         const newBookingRef = doc(collection(firestore, 'coaches', coach.id, 'bookings'));
+        const newDayOfWeek = effectiveDate !== selectedDateStr
+          ? getDayOfWeekForDate(effectiveDate)
+          : editBooking.dayOfWeek;
         const newData: Record<string, unknown> = {
           locationId: editLocationId,
           locationName: newLocationName,
-          dayOfWeek: editBooking.dayOfWeek,
+          dayOfWeek: newDayOfWeek,
           startTime: editStartTime,
           endTime: editEndTime,
           status: 'confirmed',
@@ -792,7 +761,7 @@ export default function DashboardPage() {
           studentIds: editStudentIds,
           studentPrices: studentPricesOut,
           studentWallets: studentWalletsOut,
-          startDate: selectedDateStr,
+          startDate: effectiveDate,
           createdAt: serverTimestamp(),
         };
         batch.set(newBookingRef, newData);
@@ -1101,20 +1070,6 @@ export default function DashboardPage() {
                             >
                               Duplicate
                             </button>
-                            {!isDone && (
-                            <button
-                              onClick={() => {
-                                setRescheduleBooking(booking);
-                                setRescheduleDate(selectedDateStr);
-                                setRescheduleStartTime(booking.startTime);
-                                setRescheduleEndTime(booking.endTime);
-                                setMenuOpen(null);
-                              }}
-                              className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#333]"
-                            >
-                              Reschedule
-                            </button>
-                            )}
                             {!isDone && (() => {
                               const isOneTime = !!(booking.startDate && booking.endDate && booking.startDate === booking.endDate);
                               return (
@@ -1301,66 +1256,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Reschedule modal */}
-      <Modal
-        isOpen={rescheduleBooking !== null}
-        onClose={() => setRescheduleBooking(null)}
-        title="Reschedule Class"
-      >
-        {rescheduleBooking && (
-          <div className="space-y-4">
-            <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3">
-              <p className="font-medium text-gray-900 dark:text-zinc-100">
-                {rescheduleBooking.className}
-              </p>
-              <p className="text-sm text-gray-500 dark:text-zinc-400">
-                {formatTimeDisplay(rescheduleBooking.startTime)} – {formatTimeDisplay(rescheduleBooking.endTime)} &middot; {rescheduleBooking.locationName}
-              </p>
-              <p className="text-sm text-gray-400 dark:text-zinc-500 mt-1">
-                Original date: {formatDateFull(selectedDate)}
-              </p>
-            </div>
-
-            <Input
-              id="rescheduleDate"
-              label="New Date"
-              type="date"
-              value={rescheduleDate}
-              onChange={(e) => setRescheduleDate(e.target.value)}
-            />
-
-            <div className="grid grid-cols-2 gap-3">
-              <TimePicker
-                id="rescheduleStartTime"
-                label="Start Time"
-                value={rescheduleStartTime}
-                onChange={setRescheduleStartTime}
-              />
-              <TimePicker
-                id="rescheduleEndTime"
-                label="End Time"
-                value={rescheduleEndTime}
-                onChange={setRescheduleEndTime}
-                contextHalfDay={Number(rescheduleStartTime.split(':')[0]) >= 12 ? 'PM' : 'AM'}
-              />
-            </div>
-
-            <div className="flex gap-2 justify-end">
-              <Button variant="secondary" onClick={() => setRescheduleBooking(null)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleReschedule}
-                loading={rescheduling}
-                disabled={!rescheduleDate}
-              >
-                Reschedule
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
-
       {/* Cancel scope modal (recurring) */}
       <Modal
         isOpen={!!cancelScopeBooking}
@@ -1485,6 +1380,13 @@ export default function DashboardPage() {
               onChange={(e) => setEditLocationId(e.target.value)}
               options={locations.map((l) => ({ value: l.id, label: l.name }))}
             />
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
+                Date
+              </label>
+              <DatePicker value={editDate} onChange={setEditDate} ariaLabel="Class date" />
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <TimePicker
@@ -1657,34 +1559,50 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
-        {editBooking && showEditSaveOptions && (
-          <div className="space-y-3">
-            <p className="text-sm text-gray-600 dark:text-zinc-400">
-              How would you like to apply these changes?
-            </p>
-            <button
-              onClick={() => handleEditSave('this')}
-              disabled={editSaving}
-              className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-[#444] hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
-            >
-              <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This event only</p>
-              <p className="text-xs text-gray-500 dark:text-zinc-400">Only change the class on {formatDateShort(selectedDate)}</p>
-            </button>
-            <button
-              onClick={() => handleEditSave('future')}
-              disabled={editSaving}
-              className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-[#444] hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
-            >
-              <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This and future events</p>
-              <p className="text-xs text-gray-500 dark:text-zinc-400">Apply from {formatDateShort(selectedDate)} onwards</p>
-            </button>
-            <div className="flex justify-end pt-1">
-              <Button variant="secondary" size="sm" onClick={() => setShowEditSaveOptions(false)}>
-                Back
-              </Button>
+        {editBooking && showEditSaveOptions && (() => {
+          const editDateObj = editDate ? parseDateString(editDate) : selectedDate;
+          const dateChanged = editDate !== selectedDateStr;
+          const oldDow = editBooking.dayOfWeek;
+          const newDow = dateChanged ? getDayOfWeekForDate(editDate) : oldDow;
+          const dowChanged = dateChanged && newDow !== oldDow;
+          const plural = (dow: string) => dow.charAt(0).toUpperCase() + dow.slice(1) + 's';
+          const futureDesc = dowChanged
+            ? `Move all future classes from ${plural(oldDow)} to ${plural(newDow)}, starting ${formatDateShort(editDateObj)}`
+            : dateChanged
+              ? `Apply from ${formatDateShort(editDateObj)} onwards`
+              : `Apply from ${formatDateShort(selectedDate)} onwards`;
+          const thisDesc = dateChanged
+            ? `Move only the ${formatDateShort(selectedDate)} class to ${formatDateShort(editDateObj)}`
+            : `Only change the class on ${formatDateShort(selectedDate)}`;
+          return (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600 dark:text-zinc-400">
+                How would you like to apply these changes?
+              </p>
+              <button
+                onClick={() => handleEditSave('this')}
+                disabled={editSaving}
+                className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-[#444] hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
+              >
+                <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This event only</p>
+                <p className="text-xs text-gray-500 dark:text-zinc-400">{thisDesc}</p>
+              </button>
+              <button
+                onClick={() => handleEditSave('future')}
+                disabled={editSaving}
+                className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-[#444] hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
+              >
+                <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This and future events</p>
+                <p className="text-xs text-gray-500 dark:text-zinc-400">{futureDesc}</p>
+              </button>
+              <div className="flex justify-end pt-1">
+                <Button variant="secondary" size="sm" onClick={() => setShowEditSaveOptions(false)}>
+                  Back
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </Modal>
 
       {/* Mark Done confirmation modal */}
