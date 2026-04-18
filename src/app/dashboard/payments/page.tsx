@@ -1046,6 +1046,8 @@ export default function PaymentsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredWallets.map((wallet) => {
                 const linkedStudents = students.filter((s) => wallet.studentIds.includes(s.id));
+                const isLow = isLowBalance(wallet, bookings, todayStr);
+                const nextPayment = isLow ? getTopUpMinimum(wallet, bookings) : 0;
 
                 return (
                   <button
@@ -1059,7 +1061,7 @@ export default function PaymentsPage() {
                         <span className="font-medium text-gray-900 dark:text-zinc-100 truncate">
                           {wallet.name}
                         </span>
-                        {isLowBalance(wallet, bookings, todayStr) && (
+                        {isLow && (
                           <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 font-medium">
                             Running low
                           </span>
@@ -1098,6 +1100,13 @@ export default function PaymentsPage() {
                       <p className="text-xs text-red-500 dark:text-red-400">Owes you</p>
                     ) : (
                       <p className="text-xs text-gray-400 dark:text-zinc-500">&nbsp;</p>
+                    )}
+
+                    {/* Next payment */}
+                    {nextPayment > 0 && (
+                      <p className="text-xs text-red-500 dark:text-red-400 font-medium mt-1">
+                        Next payment: RM {nextPayment.toFixed(0)}
+                      </p>
                     )}
 
                     {/* Linked student names */}
