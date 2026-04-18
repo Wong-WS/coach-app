@@ -222,16 +222,6 @@ export default function DashboardPage() {
     return selectableStudentList.filter((s) => s.displayName.toLowerCase().includes(q));
   };
 
-  const generateTimeOptions = () => {
-    const options: string[] = [];
-    for (let h = 6; h < 24; h++) {
-      for (let m = 0; m < 60; m += 5) {
-        options.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
-      }
-    }
-    return options;
-  };
-
   const shiftEndTime = (oldStart: string, oldEnd: string, newStart: string): string => {
     const toMin = (t: string) => {
       const [h, m] = t.split(':').map(Number);
