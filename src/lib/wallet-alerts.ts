@@ -67,5 +67,5 @@ export function getTopUpMinimum(wallet: Wallet, bookings: Booking[]): number {
   const rate = getNextLessonCost(wallet, bookings);
   if (rate === 0) return 0;
   const packageSize = wallet.minLessonsPerTopUp ?? 5;
-  return rate * packageSize - wallet.balance;
+  return Math.max(0, rate * packageSize - wallet.balance);
 }

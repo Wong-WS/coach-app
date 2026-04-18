@@ -190,4 +190,10 @@ describe('getTopUpMinimum', () => {
     const wallet = makeWallet({ balance: 0 });
     expect(getTopUpMinimum(wallet, [])).toBe(0);
   });
+
+  it('returns 0 when balance already exceeds package target', () => {
+    const wallet = makeWallet({ balance: 600, minLessonsPerTopUp: 5 });
+    const booking = makeBooking(); // rate = 60, target = 300, balance already covers
+    expect(getTopUpMinimum(wallet, [booking])).toBe(0);
+  });
 });

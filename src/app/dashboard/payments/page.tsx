@@ -1235,17 +1235,21 @@ export default function PaymentsPage() {
                   <span className="text-gray-700 dark:text-zinc-300">Cash to hit {packageSize} lessons:</span>
                   <span className="text-gray-900 dark:text-zinc-100">RM {minimum.toFixed(0)}</span>
                 </div>
-                <div className="flex justify-between text-xs text-gray-500 dark:text-zinc-400">
-                  <span>Wallet after:</span>
-                  <span>RM {walletAfter.toFixed(0)}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setTopUpAmount(String(minimum))}
-                  className="mt-2 w-full text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  Fill to {packageSize} lessons (RM {minimum.toFixed(0)})
-                </button>
+                {minimum > 0 && (
+                  <>
+                    <div className="flex justify-between text-xs text-gray-500 dark:text-zinc-400">
+                      <span>Wallet after:</span>
+                      <span>RM {walletAfter.toFixed(0)}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setTopUpAmount(String(minimum))}
+                      className="mt-2 w-full text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      Fill to {packageSize} lessons (RM {minimum.toFixed(0)})
+                    </button>
+                  </>
+                )}
               </div>
             );
           })()}
