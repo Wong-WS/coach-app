@@ -711,7 +711,7 @@ export default function DashboardPage() {
       hasEditRosterChange();
   };
 
-  const handleEditSave = async (mode: 'this' | 'future') => {
+  const handleEditSave = async (mode?: 'this' | 'future') => {
     if (!coach || !db || !editBooking) return;
     if (!hasEditChanges()) {
       showToast('No changes to save', 'error');
@@ -735,7 +735,23 @@ export default function DashboardPage() {
         if (w) studentWalletsOut[id] = w;
       }
 
-      if (mode === 'this') {
+      const isOneTime = !!(editBooking.startDate && editBooking.endDate && editBooking.startDate === editBooking.endDate);
+
+      if (isOneTime) {
+        await updateDoc(doc(firestore, 'coaches', coach.id, 'bookings', editBooking.id), {
+          className: editClassName.trim(),
+          locationId: editLocationId,
+          locationName: newLocationName,
+          startTime: editStartTime,
+          endTime: editEndTime,
+          notes: editNote,
+          studentIds: editStudentIds,
+          studentPrices: studentPricesOut,
+          studentWallets: studentWalletsOut,
+          updatedAt: serverTimestamp(),
+        });
+        showToast('Updated', 'success');
+      } else if (mode === 'this') {
         const exRef = doc(collection(firestore, 'coaches', coach.id, 'classExceptions'));
         await setDoc(exRef, {
           bookingId: editBooking.id,
@@ -1625,8 +1641,16 @@ export default function DashboardPage() {
                 Cancel
               </Button>
               <Button
-                onClick={() => setShowEditSaveOptions(true)}
+                onClick={() => {
+                  const isOneTime = !!(editBooking?.startDate && editBooking?.endDate && editBooking.startDate === editBooking.endDate);
+                  if (isOneTime) {
+                    handleEditSave();
+                  } else {
+                    setShowEditSaveOptions(true);
+                  }
+                }}
                 disabled={!hasEditChanges() || editStudentIds.length === 0}
+                loading={editSaving}
               >
                 Save
               </Button>
