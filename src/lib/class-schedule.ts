@@ -87,6 +87,21 @@ export function isRescheduledToDate(
   );
 }
 
+// Returns the per-date override (if any) that backs a booking's display on `date`.
+// When present, the card on this date is a one-off divergence from the series and
+// should be treated as a single lesson for edit/cancel purposes.
+export function getBackingException(
+  bookingId: string,
+  date: string,
+  exceptions: ClassException[]
+): ClassException | null {
+  return (
+    exceptions.find(
+      (e) => e.bookingId === bookingId && e.type === 'rescheduled' && e.newDate === date
+    ) ?? null
+  );
+}
+
 export interface CancelledClass {
   booking: Booking;
   exceptionId: string;

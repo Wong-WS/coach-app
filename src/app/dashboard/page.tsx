@@ -12,7 +12,7 @@ import { formatTimeDisplay } from '@/lib/time-format';
 import { findOrCreateStudent } from '@/lib/students';
 import { resolveWallet } from '@/lib/wallets';
 import { computeCancelFuture } from '@/lib/cancel-scope';
-import { getClassesForDate, isRescheduledToDate, getCancelledClassesForDate, getDayOfWeekForDate, getBookingTotal, isGroupBooking } from '@/lib/class-schedule';
+import { getClassesForDate, getBackingException, getCancelledClassesForDate, getDayOfWeekForDate, getBookingTotal, isGroupBooking } from '@/lib/class-schedule';
 import { formatDateFull, formatDateShort, parseDateString } from '@/lib/date-format';
 
 function getDateString(date: Date): string {
@@ -51,6 +51,7 @@ export default function DashboardPage() {
   const [cancelScopeBooking, setCancelScopeBooking] = useState<Booking | null>(null);
   const [cancelScope, setCancelScope] = useState<'this' | 'future'>('this');
   const [oneTimeCancelBooking, setOneTimeCancelBooking] = useState<Booking | null>(null);
+  const [oneTimeCancelExceptionId, setOneTimeCancelExceptionId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [undoingCancel, setUndoingCancel] = useState<string | null>(null);
   const [markDoneBooking, setMarkDoneBooking] = useState<Booking | null>(null);
@@ -142,6 +143,7 @@ export default function DashboardPage() {
 
   // Edit booking modal state
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
+  const [editBackingExceptionId, setEditBackingExceptionId] = useState<string | null>(null);
   const [editClassName, setEditClassName] = useState('');
   const [editLocationId, setEditLocationId] = useState('');
   const [editDate, setEditDate] = useState('');
@@ -526,6 +528,7 @@ export default function DashboardPage() {
   const handleCancelScoped = async (
     booking: Booking,
     scope: 'this' | 'future',
+    backingExceptionId: string | null = null,
   ) => {
     if (!coach || !db) return;
     setCancelling(booking.id);
@@ -535,7 +538,14 @@ export default function DashboardPage() {
 
       const isOneTime = !!(booking.startDate && booking.endDate && booking.startDate === booking.endDate);
 
-      if (isOneTime) {
+      if (backingExceptionId) {
+        // Exception-backed single instance: convert the reschedule into a
+        // cancellation so the class disappears from this date and the original
+        // series date is marked cancelled for audit.
+        batch.update(doc(firestore, 'coaches', coach.id, 'classExceptions', backingExceptionId), {
+          type: 'cancelled',
+        });
+      } else if (isOneTime) {
         // One-time bookings are hard-deleted along with any orphaned exceptions.
         batch.delete(doc(firestore, 'coaches', coach.id, 'bookings', booking.id));
         const exQuery = query(
@@ -582,11 +592,18 @@ export default function DashboardPage() {
 
       await batch.commit();
       showToast(
-        isOneTime ? 'Lesson deleted' : scope === 'this' ? 'Class cancelled for this date' : 'Recurring series ended',
+        backingExceptionId
+          ? 'Lesson cancelled'
+          : isOneTime
+            ? 'Lesson deleted'
+            : scope === 'this'
+              ? 'Class cancelled for this date'
+              : 'Recurring series ended',
         'success',
       );
       setCancelScopeBooking(null);
       setOneTimeCancelBooking(null);
+      setOneTimeCancelExceptionId(null);
     } catch (error) {
       console.error('Error cancelling class:', error);
       showToast('Failed to cancel class', 'error');
@@ -612,6 +629,7 @@ export default function DashboardPage() {
 
   const openEditBooking = (booking: Booking) => {
     setEditBooking(booking);
+    setEditBackingExceptionId(getBackingException(booking.id, selectedDateStr, classExceptions)?.id ?? null);
     setEditClassName(booking.className || '');
     setEditLocationId(booking.locationId);
     setEditDate(selectedDateStr);
@@ -719,6 +737,22 @@ export default function DashboardPage() {
         }
         await updateDoc(doc(firestore, 'coaches', coach.id, 'bookings', editBooking.id), update);
         showToast('Updated', 'success');
+      } else if (editBackingExceptionId) {
+        // Already a per-date override for this instance — update it in place
+        // rather than creating a second exception doc.
+        await updateDoc(doc(firestore, 'coaches', coach.id, 'classExceptions', editBackingExceptionId), {
+          newDate: effectiveDate,
+          newStartTime: editStartTime,
+          newEndTime: editEndTime,
+          newLocationId: editLocationId,
+          newLocationName: newLocationName,
+          newNote: editNote,
+          newClassName: editClassName.trim(),
+          newStudentIds: editStudentIds,
+          newStudentPrices: studentPricesOut,
+          newStudentWallets: studentWalletsOut,
+        });
+        showToast('Updated for this date', 'success');
       } else if (mode === 'this') {
         const exRef = doc(collection(firestore, 'coaches', coach.id, 'classExceptions'));
         await setDoc(exRef, {
@@ -799,6 +833,7 @@ export default function DashboardPage() {
         showToast('Future events updated', 'success');
       }
       setEditBooking(null);
+      setEditBackingExceptionId(null);
       setShowEditSaveOptions(false);
     } catch (error) {
       console.error('Error editing booking:', error);
@@ -962,7 +997,9 @@ export default function DashboardPage() {
           <div className="divide-y divide-gray-100 dark:divide-[#333333]">
             {dayClasses.map((booking) => {
               const isDone = doneBookingIds.has(booking.id);
-              const isRescheduled = isRescheduledToDate(booking.id, selectedDateStr, classExceptions);
+              const backingException = getBackingException(booking.id, selectedDateStr, classExceptions);
+              const isExceptionBacked = backingException !== null;
+              const isOneTimeDisplay = isExceptionBacked || !!(booking.startDate && booking.startDate === booking.endDate);
               const total = getBookingTotal(booking);
 
               return (
@@ -989,7 +1026,7 @@ export default function DashboardPage() {
                   <div className={`flex-1 min-w-0 ${isDone ? 'opacity-50' : ''}`}>
                     <div className="flex items-center gap-2 flex-wrap">
                       <div className="flex items-center gap-1.5">
-                        {!(booking.startDate && booking.startDate === booking.endDate) && (
+                        {!isOneTimeDisplay && (
                           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0">
                             <path fillRule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H4.598a.75.75 0 00-.75.75v3.634a.75.75 0 001.5 0v-2.033l.312.311a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm-9.624-2.848a5.5 5.5 0 019.201-2.466l.312.311H12.768a.75.75 0 000 1.5h3.634a.75.75 0 00.75-.75V3.537a.75.75 0 00-1.5 0v2.033l-.312-.311A7 7 0 003.628 8.397a.75.75 0 001.449.39z" clipRule="evenodd" />
                           </svg>
@@ -1003,7 +1040,7 @@ export default function DashboardPage() {
                           Done
                         </span>
                       )}
-                      {isRescheduled && (
+                      {isExceptionBacked && (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
                           Rescheduled
                         </span>
@@ -1100,13 +1137,12 @@ export default function DashboardPage() {
                             >
                               Duplicate
                             </button>
-                            {!isDone && (() => {
-                              const isOneTime = !!(booking.startDate && booking.endDate && booking.startDate === booking.endDate);
-                              return (
+                            {!isDone && (
                                 <button
                                   onClick={() => {
-                                    if (isOneTime) {
+                                    if (isOneTimeDisplay) {
                                       setOneTimeCancelBooking(booking);
+                                      setOneTimeCancelExceptionId(backingException?.id ?? null);
                                     } else {
                                       setCancelScopeBooking(booking);
                                       setCancelScope('this');
@@ -1117,11 +1153,10 @@ export default function DashboardPage() {
                                   className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-[#333] disabled:opacity-50"
                                 >
                                   {cancelling === booking.id
-                                    ? (isOneTime ? 'Deleting...' : 'Cancelling...')
-                                    : (isOneTime ? 'Delete' : 'Cancel')}
+                                    ? (isOneTimeDisplay ? 'Deleting...' : 'Cancelling...')
+                                    : (isOneTimeDisplay ? 'Delete' : 'Cancel')}
                                 </button>
-                              );
-                            })()}
+                            )}
                           </div>
                         </>
                       )}
@@ -1351,8 +1386,8 @@ export default function DashboardPage() {
       {/* One-time delete confirm modal */}
       <Modal
         isOpen={!!oneTimeCancelBooking}
-        onClose={() => setOneTimeCancelBooking(null)}
-        title="Delete this lesson?"
+        onClose={() => { setOneTimeCancelBooking(null); setOneTimeCancelExceptionId(null); }}
+        title={oneTimeCancelExceptionId ? 'Cancel this lesson?' : 'Delete this lesson?'}
       >
         {oneTimeCancelBooking && (
           <div className="space-y-4">
@@ -1360,18 +1395,22 @@ export default function DashboardPage() {
               {oneTimeCancelBooking.className} — {formatDateShort(parseDateString(selectedDateStr))}
             </p>
             <p className="text-sm text-gray-600 dark:text-zinc-400">
-              This lesson will be permanently deleted.
+              {oneTimeCancelExceptionId
+                ? 'This lesson will be cancelled. Other dates in the series are unaffected.'
+                : 'This lesson will be permanently deleted.'}
             </p>
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="secondary" onClick={() => setOneTimeCancelBooking(null)}>
+              <Button variant="secondary" onClick={() => { setOneTimeCancelBooking(null); setOneTimeCancelExceptionId(null); }}>
                 Back
               </Button>
               <Button
                 variant="danger"
                 disabled={cancelling === oneTimeCancelBooking.id}
-                onClick={() => handleCancelScoped(oneTimeCancelBooking, 'this')}
+                onClick={() => handleCancelScoped(oneTimeCancelBooking, 'this', oneTimeCancelExceptionId)}
               >
-                {cancelling === oneTimeCancelBooking.id ? 'Deleting...' : 'Delete lesson'}
+                {cancelling === oneTimeCancelBooking.id
+                  ? (oneTimeCancelExceptionId ? 'Cancelling...' : 'Deleting...')
+                  : (oneTimeCancelExceptionId ? 'Cancel lesson' : 'Delete lesson')}
               </Button>
             </div>
           </div>
@@ -1381,7 +1420,7 @@ export default function DashboardPage() {
       {/* Edit Booking modal */}
       <Modal
         isOpen={editBooking !== null}
-        onClose={() => { setEditBooking(null); setShowEditSaveOptions(false); }}
+        onClose={() => { setEditBooking(null); setEditBackingExceptionId(null); setShowEditSaveOptions(false); }}
         title="Edit Class"
       >
         {editBooking && !showEditSaveOptions && (
@@ -1569,13 +1608,13 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex gap-2 justify-end">
-              <Button variant="secondary" onClick={() => setEditBooking(null)}>
+              <Button variant="secondary" onClick={() => { setEditBooking(null); setEditBackingExceptionId(null); }}>
                 Cancel
               </Button>
               <Button
                 onClick={() => {
                   const isOneTime = !!(editBooking?.startDate && editBooking?.endDate && editBooking.startDate === editBooking.endDate);
-                  if (isOneTime) {
+                  if (isOneTime || editBackingExceptionId) {
                     handleEditSave();
                   } else {
                     setShowEditSaveOptions(true);
