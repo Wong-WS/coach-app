@@ -76,6 +76,34 @@ function WalletDetail({
   );
   const [addingStudent, setAddingStudent] = useState(false);
 
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(wallet.name);
+  const [savingName, setSavingName] = useState(false);
+
+  const handleSaveName = async () => {
+    if (!db) return;
+    const name = renameValue.trim();
+    if (!name || name === wallet.name) {
+      setRenaming(false);
+      setRenameValue(wallet.name);
+      return;
+    }
+    setSavingName(true);
+    try {
+      const firestore = db as Firestore;
+      await updateDoc(doc(firestore, 'coaches', coachId, 'wallets', wallet.id), {
+        name,
+        updatedAt: serverTimestamp(),
+      });
+      showToast('Wallet renamed', 'success');
+      setRenaming(false);
+    } catch {
+      showToast('Failed to rename wallet', 'error');
+    } finally {
+      setSavingName(false);
+    }
+  };
+
   const handleAddStudent = async (studentId: string) => {
     if (!db) return;
     setAddingStudent(true);
@@ -217,8 +245,43 @@ function WalletDetail({
         )}
       </div>
 
-      {/* Delete */}
-      <div className="pt-4 border-t border-gray-100 dark:border-[#333333]">
+      {/* Rename + Delete */}
+      <div className="pt-4 border-t border-gray-100 dark:border-[#333333] space-y-2">
+        {renaming ? (
+          <div className="space-y-2">
+            <Input
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              placeholder="Wallet name"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <Button
+                onClick={handleSaveName}
+                loading={savingName}
+                disabled={!renameValue.trim() || savingName}
+                className="flex-1"
+              >
+                Save
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => { setRenaming(false); setRenameValue(wallet.name); }}
+                disabled={savingName}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => { setRenameValue(wallet.name); setRenaming(true); }}
+            className="w-full py-2 text-sm font-medium text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#2a2a2a] rounded-lg transition-colors"
+          >
+            Rename Wallet
+          </button>
+        )}
         <button
           onClick={onDelete}
           className="w-full py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
