@@ -1118,10 +1118,14 @@ export default function DashboardPage() {
                                 for (const sid of booking.studentIds) {
                                   const s = students.find((st) => st.id === sid);
                                   if (!s) continue;
+                                  const walletId = booking.studentWallets?.[s.id];
+                                  const walletStillExists = !!walletId && wallets.some((w) => w.id === walletId);
                                   dupRows.push({
                                     studentId: s.id, displayName: s.clientName,
                                     phone: s.clientPhone || '', isNew: false,
-                                    walletOption: 'none', existingWalletId: '', newWalletName: '',
+                                    walletOption: walletStillExists ? 'existing' : 'none',
+                                    existingWalletId: walletStillExists ? walletId! : '',
+                                    newWalletName: '',
                                     price: booking.studentPrices[s.id] ?? 0,
                                   });
                                 }
@@ -1269,33 +1273,6 @@ export default function DashboardPage() {
                         RM {group.reduce((sum, l) => sum + l.price, 0)}
                       </p>
                     )}
-                    <button
-                      onClick={() => {
-                        const loc = locations.find((l) => l.name === group[0].locationName);
-                        const firstLog = group[0];
-                        resetLessonForm();
-                        setLessonRepeatWeekly(false);
-                        setLessonDate(selectedDateStr);
-                        setLessonLocationId(loc?.id || locations[0]?.id || '');
-                        setLessonStartTime(firstLog.startTime || '09:00');
-                        setLessonEndTime(firstLog.endTime || '10:00');
-                        setLessonNote(firstLog.note || '');
-                        setStudentRows(group.map(l => ({
-                          studentId: l.studentId || '', displayName: l.studentName,
-                          phone: '', isNew: false,
-                          walletOption: 'none' as const, existingWalletId: '', newWalletName: '',
-                          price: l.price,
-                        })));
-                        setStudentSearches(group.map(() => ''));
-                        setShowAddLesson(true);
-                      }}
-                      className="p-1.5 text-gray-400 hover:text-blue-500 dark:text-zinc-500 dark:hover:text-blue-400 transition-colors"
-                      title="Duplicate ad-hoc class"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                    </button>
                     <button
                       onClick={() => handleDeleteAdHocGroup(group, i)}
                       disabled={deletingAdHocGroup === i}
