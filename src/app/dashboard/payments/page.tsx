@@ -73,6 +73,11 @@ function WalletDetail({
   showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }) {
   const [txnLimit, setTxnLimit] = useState(20);
+  const [packageDraft, setPackageDraft] = useState<string>(String(wallet.minLessonsPerTopUp ?? 5));
+
+  useEffect(() => {
+    setPackageDraft(String(wallet.minLessonsPerTopUp ?? 5));
+  }, [wallet.id, wallet.minLessonsPerTopUp]);
   const { transactions } = useWalletTransactions(coachId, wallet.id, txnLimit);
   const linkedStudents = students.filter((s) => wallet.studentIds.includes(s.id));
   const unlinkedStudents = students.filter(
@@ -194,11 +199,17 @@ function WalletDetail({
           <input
             type="number"
             min="1"
-            value={wallet.minLessonsPerTopUp ?? 5}
-            onChange={async (e) => {
+            value={packageDraft}
+            onChange={(e) => setPackageDraft(e.target.value)}
+            onBlur={async () => {
               if (!db) return;
-              const n = parseInt(e.target.value, 10);
-              if (isNaN(n) || n < 1) return;
+              const n = parseInt(packageDraft, 10);
+              const current = wallet.minLessonsPerTopUp ?? 5;
+              if (isNaN(n) || n < 1) {
+                setPackageDraft(String(current));
+                return;
+              }
+              if (n === current) return;
               try {
                 await updateDoc(
                   doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
@@ -206,6 +217,7 @@ function WalletDetail({
                 );
               } catch {
                 showToast('Failed to update package size', 'error');
+                setPackageDraft(String(current));
               }
             }}
             className="w-16 px-2 py-1 border border-gray-300 dark:border-zinc-500 rounded text-sm bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
