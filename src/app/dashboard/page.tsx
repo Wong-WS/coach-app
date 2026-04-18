@@ -1324,19 +1324,18 @@ export default function DashboardPage() {
             />
 
             <div className="grid grid-cols-2 gap-3">
-              <Input
+              <TimePicker
                 id="rescheduleStartTime"
                 label="Start Time"
-                type="time"
                 value={rescheduleStartTime}
-                onChange={(e) => setRescheduleStartTime(e.target.value)}
+                onChange={setRescheduleStartTime}
               />
-              <Input
+              <TimePicker
                 id="rescheduleEndTime"
                 label="End Time"
-                type="time"
                 value={rescheduleEndTime}
-                onChange={(e) => setRescheduleEndTime(e.target.value)}
+                onChange={setRescheduleEndTime}
+                contextHalfDay={Number(rescheduleStartTime.split(':')[0]) >= 12 ? 'PM' : 'AM'}
               />
             </div>
 
@@ -1482,25 +1481,23 @@ export default function DashboardPage() {
             />
 
             <div className="grid grid-cols-2 gap-3">
-              <Input
+              <TimePicker
                 id="editStartTime"
                 label="Start Time"
-                type="time"
                 value={editStartTime}
-                onChange={(e) => {
-                  const newStart = e.target.value;
+                onChange={(newStart) => {
                   if (editStartTime && editEndTime) {
                     setEditEndTime(shiftEndTime(editStartTime, editEndTime, newStart));
                   }
                   setEditStartTime(newStart);
                 }}
               />
-              <Input
+              <TimePicker
                 id="editEndTime"
                 label="End Time"
-                type="time"
                 value={editEndTime}
-                onChange={(e) => setEditEndTime(e.target.value)}
+                onChange={setEditEndTime}
+                contextHalfDay={Number(editStartTime.split(':')[0]) >= 12 ? 'PM' : 'AM'}
               />
             </div>
 
