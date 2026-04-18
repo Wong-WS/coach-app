@@ -238,6 +238,177 @@ function TimePickerDesktop({
   );
 }
 
-function TimePickerMobile(props: Omit<TimePickerProps, 'contextHalfDay'>) {
-  return <TimePickerDesktop {...props} contextHalfDay={undefined} />;
+function TimePickerMobile({
+  value,
+  onChange,
+  id,
+  label,
+  ariaLabel,
+  step = 5,
+  disabled,
+}: Omit<TimePickerProps, 'contextHalfDay'>) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="w-full">
+      {label && (
+        <label htmlFor={id} className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
+          {label}
+        </label>
+      )}
+      <button
+        id={id}
+        type="button"
+        onClick={() => !disabled && setOpen(true)}
+        aria-label={ariaLabel ?? label}
+        disabled={disabled}
+        className="w-full text-left rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm font-mono text-gray-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+      >
+        {formatTimeDisplay(value)}
+      </button>
+      {open && (
+        <WheelSheet
+          value={value}
+          onConfirm={(v) => { onChange(v); setOpen(false); }}
+          onCancel={() => setOpen(false)}
+          label={label ?? ariaLabel ?? 'Select time'}
+          step={step}
+        />
+      )}
+    </div>
+  );
+}
+
+interface WheelSheetProps {
+  value: string;
+  onConfirm: (value: string) => void;
+  onCancel: () => void;
+  label: string;
+  step: number;
+}
+
+function WheelSheet({ value, onConfirm, onCancel, label, step }: WheelSheetProps) {
+  const [h24, mRaw] = value.split(':').map(Number);
+  const initialPeriod: 'AM' | 'PM' = h24 >= 12 ? 'PM' : 'AM';
+  const initialHour12 = ((h24 + 11) % 12) + 1;
+
+  const [hour12, setHour12] = useState(initialHour12);
+  const [minute, setMinute] = useState(Math.round(mRaw / step) * step % 60);
+  const [period, setPeriod] = useState<'AM' | 'PM'>(initialPeriod);
+
+  const hours = useMemo(() => Array.from({ length: 12 }, (_, i) => i + 1), []);
+  const minutes = useMemo(() => {
+    const arr: number[] = [];
+    for (let m = 0; m < 60; m += step) arr.push(m);
+    return arr;
+  }, [step]);
+  const periods: Array<'AM' | 'PM'> = ['AM', 'PM'];
+
+  function handleConfirm() {
+    let h = hour12 % 12;
+    if (period === 'PM') h += 12;
+    const hh = String(h).padStart(2, '0');
+    const mm = String(minute).padStart(2, '0');
+    onConfirm(`${hh}:${mm}`);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end bg-black/50 backdrop-blur-sm"
+      onClick={onCancel}
+      role="dialog"
+      aria-label={label}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full rounded-t-2xl bg-white dark:bg-zinc-900 pb-[env(safe-area-inset-bottom)]"
+        style={{ maxHeight: '60vh' }}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-zinc-800">
+          <button type="button" onClick={onCancel} className="text-sm text-gray-600 dark:text-zinc-400">Cancel</button>
+          <div className="text-sm font-medium text-gray-900 dark:text-zinc-100">{label}</div>
+          <button type="button" onClick={handleConfirm} className="text-sm font-semibold text-blue-600 dark:text-blue-400">Done</button>
+        </div>
+        <div className="flex justify-center gap-4 py-4 relative">
+          <div className="pointer-events-none absolute left-4 right-4 top-1/2 -translate-y-1/2 h-9 border-y border-blue-500/40" />
+          <WheelColumn
+            items={hours.map(String)}
+            selected={String(hour12)}
+            onSelect={(v) => setHour12(Number(v))}
+          />
+          <WheelColumn
+            items={minutes.map((m) => String(m).padStart(2, '0'))}
+            selected={String(minute).padStart(2, '0')}
+            onSelect={(v) => setMinute(Number(v))}
+          />
+          <WheelColumn
+            items={periods}
+            selected={period}
+            onSelect={(v) => setPeriod(v as 'AM' | 'PM')}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface WheelColumnProps {
+  items: string[];
+  selected: string;
+  onSelect: (value: string) => void;
+}
+
+function WheelColumn({ items, selected, onSelect }: WheelColumnProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const ROW_H = 36;
+  const PADDING = 72;
+
+  useEffect(() => {
+    const idx = items.indexOf(selected);
+    if (idx >= 0 && containerRef.current) {
+      containerRef.current.scrollTop = idx * ROW_H;
+    }
+  }, [selected, items]);
+
+  function onScrollEnd() {
+    if (!containerRef.current) return;
+    const idx = Math.round(containerRef.current.scrollTop / ROW_H);
+    const clamped = Math.max(0, Math.min(items.length - 1, idx));
+    const next = items[clamped];
+    if (next !== selected) onSelect(next);
+    containerRef.current.scrollTo({ top: clamped * ROW_H, behavior: 'smooth' });
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      onScroll={() => {
+        const el = containerRef.current as HTMLDivElement & { __snapT?: number } | null;
+        if (!el) return;
+        if (el.__snapT) clearTimeout(el.__snapT);
+        el.__snapT = window.setTimeout(onScrollEnd, 80);
+      }}
+      className="w-20 overflow-y-scroll snap-y snap-mandatory no-scrollbar"
+      style={{
+        height: ROW_H * 5,
+        scrollbarWidth: 'none',
+        WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 30%, black 70%, transparent)',
+        maskImage: 'linear-gradient(to bottom, transparent, black 30%, black 70%, transparent)',
+      }}
+    >
+      <div style={{ height: PADDING }} />
+      {items.map((item) => (
+        <div
+          key={item}
+          className={`snap-center flex items-center justify-center text-base font-mono ${
+            item === selected ? 'text-gray-900 dark:text-white font-semibold' : 'text-gray-400 dark:text-zinc-500'
+          }`}
+          style={{ height: ROW_H }}
+        >
+          {item}
+        </div>
+      ))}
+      <div style={{ height: PADDING }} />
+    </div>
+  );
 }
