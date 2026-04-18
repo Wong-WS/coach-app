@@ -1,31 +1,26 @@
 import type { Booking, Wallet } from '@/types';
 
 /**
- * Sum of studentPrices paid out of `wallet` for a single occurrence of `booking`.
- * Only students in this booking who explicitly use this wallet count.
- */
-function occurrenceCost(wallet: Wallet, booking: Booking): number {
-  let sum = 0;
-  for (const studentId of booking.studentIds) {
-    if (booking.studentWallets?.[studentId] === wallet.id) {
-      sum += booking.studentPrices?.[studentId] ?? 0;
-    }
-  }
-  return sum;
-}
-
-/**
- * Worst-case cost for this wallet on any single class day,
- * across all active bookings that reference it.
- * Returns 0 if no bookings reference the wallet.
+ * One "lesson-round" cost for this wallet: for each student using this wallet
+ * across all bookings, take the max price they pay in any of their bookings,
+ * then sum those per-student maxes. Multiplying by N gives "5 lessons per kid",
+ * independent of class frequency — a multi-booking wallet doesn't get
+ * discounted, and a high-frequency wallet doesn't get inflated.
  */
 export function getNextLessonCost(wallet: Wallet, bookings: Booking[]): number {
-  let max = 0;
+  const studentMax: Record<string, number> = {};
   for (const b of bookings) {
-    const cost = occurrenceCost(wallet, b);
-    if (cost > max) max = cost;
+    for (const studentId of b.studentIds) {
+      if (b.studentWallets?.[studentId] !== wallet.id) continue;
+      const price = b.studentPrices?.[studentId] ?? 0;
+      if (price > (studentMax[studentId] ?? 0)) {
+        studentMax[studentId] = price;
+      }
+    }
   }
-  return max;
+  let total = 0;
+  for (const sid in studentMax) total += studentMax[sid];
+  return total;
 }
 
 /**
