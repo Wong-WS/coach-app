@@ -33,13 +33,23 @@ function makeException(overrides: Partial<ClassException> = {}): ClassException 
 }
 
 describe('computeCancelFuture', () => {
-  it('sets endDate to the day before when cutoff is after the booking start', () => {
+  it('caps endDate at the previous weekly occurrence', () => {
+    // Monday booking, cutoff 2026-04-20 (Monday) → previous Monday 2026-04-13
     const booking = makeBooking({ startDate: '2026-01-05' });
     const result = computeCancelFuture(booking, [], '2026-04-20');
-    expect(result).toEqual({ action: 'endDate', newEndDate: '2026-04-19', exceptionIdsToDelete: [] });
+    expect(result).toEqual({ action: 'endDate', newEndDate: '2026-04-13', exceptionIdsToDelete: [] });
   });
 
-  it('deletes the booking when the cutoff equals the booking start', () => {
+  it('leaves startDate === endDate when only the first occurrence remains', () => {
+    // Monday booking starting 2026-04-13; user cancels on the 2nd Monday (2026-04-20)
+    // → only the 2026-04-13 class should remain, making it a one-time booking.
+    const booking = makeBooking({ startDate: '2026-04-13' });
+    const result = computeCancelFuture(booking, [], '2026-04-20');
+    if (result.action !== 'endDate') throw new Error(`expected endDate, got ${result.action}`);
+    expect(result.newEndDate).toBe('2026-04-13');
+  });
+
+  it('deletes the booking when cancelling on the series-start occurrence', () => {
     const booking = makeBooking({ startDate: '2026-04-20' });
     const result = computeCancelFuture(booking, [], '2026-04-20');
     expect(result.action).toBe('delete');
@@ -61,7 +71,7 @@ describe('computeCancelFuture', () => {
     ];
     const result = computeCancelFuture(booking, exceptions, '2026-04-20');
     if (result.action !== 'endDate') throw new Error(`expected endDate, got ${result.action}`);
-    expect(result.newEndDate).toBe('2026-04-19');
+    expect(result.newEndDate).toBe('2026-04-13');
     expect(new Set(result.exceptionIdsToDelete)).toEqual(new Set(['cutoff', 'future']));
   });
 
@@ -80,13 +90,14 @@ describe('computeCancelFuture', () => {
   it('treats a booking with no startDate as open-ended and updates endDate', () => {
     const booking = makeBooking({ startDate: undefined });
     const result = computeCancelFuture(booking, [], '2026-04-20');
-    expect(result).toEqual({ action: 'endDate', newEndDate: '2026-04-19', exceptionIdsToDelete: [] });
+    expect(result).toEqual({ action: 'endDate', newEndDate: '2026-04-13', exceptionIdsToDelete: [] });
   });
 
-  it('handles month-boundary dates correctly', () => {
+  it('walks back across month boundaries to find the previous occurrence', () => {
+    // Monday booking, cutoff 2026-05-04 (Monday) → previous Monday is 2026-04-27
     const booking = makeBooking({ startDate: '2026-01-05' });
-    const result = computeCancelFuture(booking, [], '2026-05-01');
+    const result = computeCancelFuture(booking, [], '2026-05-04');
     if (result.action !== 'endDate') throw new Error(`expected endDate, got ${result.action}`);
-    expect(result.newEndDate).toBe('2026-04-30');
+    expect(result.newEndDate).toBe('2026-04-27');
   });
 });
