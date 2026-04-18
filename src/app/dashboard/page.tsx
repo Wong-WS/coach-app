@@ -63,7 +63,8 @@ export default function DashboardPage() {
     attended: boolean;
     price: number;
   }>>([]);
-  const [deletingAdHocGroup, setDeletingAdHocGroup] = useState<number | null>(null);
+  const [doneDeleteBooking, setDoneDeleteBooking] = useState<Booking | null>(null);
+  const [deletingDoneLesson, setDeletingDoneLesson] = useState<string | null>(null);
 
   // Unified Add Lesson form state
   const [showAddLesson, setShowAddLesson] = useState(false);
@@ -176,22 +177,6 @@ export default function DashboardPage() {
   const doneBookingIds = useMemo(() => {
     return new Set(lessonLogs.map((l) => l.bookingId));
   }, [lessonLogs]);
-
-  // Ad-hoc lesson logs (no bookingId) for display
-  const adHocLogs = useMemo(() => {
-    return lessonLogs.filter((l) => !l.bookingId);
-  }, [lessonLogs]);
-
-  // Group ad-hoc logs by time+location for display as cards
-  const adHocGroups = useMemo(() => {
-    const groups: Record<string, typeof adHocLogs> = {};
-    for (const log of adHocLogs) {
-      const key = `${log.startTime}-${log.endTime}-${log.locationName}`;
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(log);
-    }
-    return Object.values(groups);
-  }, [adHocLogs]);
 
   // Build selectable student list for Add Class (all students individually)
   const selectableStudentList = useMemo(() => {
@@ -844,60 +829,63 @@ export default function DashboardPage() {
   };
 
 
-  const handleDeleteAdHocGroup = async (group: typeof adHocLogs, groupIndex: number) => {
+  const handleDeleteDoneLesson = async (booking: Booking) => {
     if (!coach || !db) return;
-    setDeletingAdHocGroup(groupIndex);
+    setDeletingDoneLesson(booking.id);
     try {
       const firestore = db as Firestore;
-      const batch = writeBatch(firestore);
+      const logs = lessonLogs.filter(
+        (l) => l.bookingId === booking.id && l.date === selectedDateStr,
+      );
+      if (logs.length === 0) {
+        showToast('No lesson log found', 'error');
+        return;
+      }
 
-      for (const log of group) {
-        // Delete the lesson log
+      const batch = writeBatch(firestore);
+      const prettyDate = formatDateShort(parseDateString(selectedDateStr));
+
+      for (const log of logs) {
         batch.delete(doc(firestore, 'coaches', coach.id, 'lessonLogs', log.id));
 
-        // Find and reverse any wallet transaction for this lesson
+        // Find the charge txn by lessonLogId across all wallets — this handles
+        // the case where the booking's wallet attachment has since changed.
         for (const walletDoc of wallets) {
           const txnQuery = query(
             collection(firestore, 'coaches', coach.id, 'wallets', walletDoc.id, 'transactions'),
-            where('lessonLogId', '==', log.id)
+            where('lessonLogId', '==', log.id),
           );
           const txnSnap = await getDocs(txnQuery);
-          if (!txnSnap.empty) {
-            const originalTxn = txnSnap.docs[0].data();
-            const refundAmount = Math.abs(originalTxn.amount);
-            const newBalance = walletDoc.balance + refundAmount;
-            await addDoc(collection(firestore, 'coaches', coach.id, 'wallets', walletDoc.id, 'transactions'), {
-              type: 'refund',
-              amount: refundAmount,
-              balanceAfter: newBalance,
-              description: `Reversed: ${originalTxn.description}`,
-              studentId: originalTxn.studentId,
-              date: getDateString(new Date()),
-              createdAt: serverTimestamp(),
-            });
-            await updateDoc(doc(firestore, 'coaches', coach.id, 'wallets', walletDoc.id), {
-              balance: increment(refundAmount),
-              updatedAt: serverTimestamp(),
-            });
-            break;
-          }
-        }
-
-        // Update student timestamp only
-        if (students.find((s) => s.id === log.studentId)) {
-          batch.update(doc(firestore, 'coaches', coach.id, 'students', log.studentId), {
+          if (txnSnap.empty) continue;
+          const originalTxn = txnSnap.docs[0].data();
+          const refundAmount = Math.abs(originalTxn.amount);
+          const newBalance = walletDoc.balance + refundAmount;
+          const refundRef = doc(collection(firestore, 'coaches', coach.id, 'wallets', walletDoc.id, 'transactions'));
+          batch.set(refundRef, {
+            type: 'refund',
+            amount: refundAmount,
+            balanceAfter: newBalance,
+            description: `Lesson deleted: ${booking.className || 'lesson'} on ${prettyDate}`,
+            studentId: originalTxn.studentId,
+            date: selectedDateStr,
+            createdAt: serverTimestamp(),
+          });
+          batch.update(doc(firestore, 'coaches', coach.id, 'wallets', walletDoc.id), {
+            balance: increment(refundAmount),
             updatedAt: serverTimestamp(),
           });
+          break;
         }
       }
 
       await batch.commit();
-      showToast('Ad-hoc class deleted', 'success');
+      showToast('Lesson deleted and wallet refunded', 'success');
+      setDoneDeleteBooking(null);
     } catch (error) {
-      console.error('Error deleting ad-hoc class:', error);
-      showToast('Failed to delete class', 'error');
+      console.error('Error deleting done lesson:', error);
+      showToast('Failed to delete lesson', 'error');
     } finally {
-      setDeletingAdHocGroup(null);
+      setDeletingDoneLesson(null);
     }
   };
 
@@ -1098,12 +1086,14 @@ export default function DashboardPage() {
                               )}
                             </button>
                             )}
-                            <button
-                              onClick={() => openEditBooking(booking)}
-                              className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#333]"
-                            >
-                              Edit
-                            </button>
+                            {!isDone && (
+                              <button
+                                onClick={() => openEditBooking(booking)}
+                                className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#333]"
+                              >
+                                Edit
+                              </button>
+                            )}
                             <button
                               onClick={() => {
                                 resetLessonForm();
@@ -1141,7 +1131,7 @@ export default function DashboardPage() {
                             >
                               Duplicate
                             </button>
-                            {!isDone && (
+                            {!isDone ? (
                                 <button
                                   onClick={() => {
                                     if (isOneTimeDisplay) {
@@ -1159,6 +1149,16 @@ export default function DashboardPage() {
                                   {cancelling === booking.id
                                     ? (isOneTimeDisplay ? 'Deleting...' : 'Cancelling...')
                                     : (isOneTimeDisplay ? 'Delete' : 'Cancel')}
+                                </button>
+                            ) : (
+                                <button
+                                  onClick={() => {
+                                    setDoneDeleteBooking(booking);
+                                    setMenuOpen(null);
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-[#333]"
+                                >
+                                  Delete
                                 </button>
                             )}
                           </div>
@@ -1229,74 +1229,66 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Ad-hoc classes */}
-      {adHocGroups.length > 0 && (
-        <div>
-          <p className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wider mb-2">
-            Ad-hoc Classes
-          </p>
-          <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333]">
-            <div className="divide-y divide-gray-100 dark:divide-[#333333]">
-              {adHocGroups.map((group, i) => (
-                <div key={i} className="flex items-center gap-3 p-4 sm:p-5 opacity-50">
-                  <div className="flex-shrink-0">
-                    <div className="w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                      <svg className="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
+      {/* Delete done lesson modal */}
+      <Modal
+        isOpen={!!doneDeleteBooking}
+        onClose={() => setDoneDeleteBooking(null)}
+        title="Delete this lesson?"
+      >
+        {doneDeleteBooking && (() => {
+          const logs = lessonLogs.filter(
+            (l) => l.bookingId === doneDeleteBooking.id && l.date === selectedDateStr,
+          );
+          const refunds = logs.map((l) => {
+            const w = resolveWallet(doneDeleteBooking, l.studentId, wallets);
+            return { studentName: l.studentName, price: l.price, walletName: w?.name ?? null };
+          });
+          const busy = deletingDoneLesson === doneDeleteBooking.id;
+          return (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600 dark:text-zinc-400">
+                {doneDeleteBooking.className} — {formatDateShort(parseDateString(selectedDateStr))}
+              </p>
+              <p className="text-sm text-gray-700 dark:text-zinc-300">
+                This removes the lesson from the student&apos;s history and refunds the wallet charge.
+              </p>
+              {refunds.length > 0 && (
+                <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3 space-y-1">
+                  {refunds.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700 dark:text-zinc-300">
+                        {r.walletName ? r.walletName : r.studentName}
+                      </span>
+                      <span className="font-medium text-green-600 dark:text-green-400">
+                        + RM {r.price}
+                      </span>
                     </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-gray-900 dark:text-zinc-100">
-                        {group[0].startTime && group[0].endTime
-                          ? `${formatTimeDisplay(group[0].startTime)} – ${formatTimeDisplay(group[0].endTime)}`
-                          : 'No time set'}
-                      </span>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
-                        Done
-                      </span>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
-                        Ad-hoc
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-600 dark:text-zinc-400 mt-0.5">
-                      {group.map((l) => l.studentName).join(', ')}
-                    </p>
-                    <p className="text-xs text-gray-400 dark:text-zinc-500 truncate">
-                      {group[0].locationName}{group[0].note ? <span className="text-amber-500 dark:text-amber-400"> · {group[0].note}</span> : null}
-                    </p>
-                  </div>
-                  <div className="text-right flex-shrink-0 flex items-center gap-2">
-                    {group.reduce((sum, l) => sum + l.price, 0) > 0 && (
-                      <p className="text-sm font-medium text-green-600 dark:text-green-400">
-                        RM {group.reduce((sum, l) => sum + l.price, 0)}
-                      </p>
-                    )}
-                    <button
-                      onClick={() => handleDeleteAdHocGroup(group, i)}
-                      disabled={deletingAdHocGroup === i}
-                      className="p-1.5 text-gray-400 hover:text-red-500 dark:text-zinc-500 dark:hover:text-red-400 transition-colors"
-                      title="Delete ad-hoc class"
-                    >
-                      {deletingAdHocGroup === i ? (
-                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                      ) : (
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              )}
+              <div className="flex gap-3 pt-2">
+                <Button
+                  variant="danger"
+                  onClick={() => handleDeleteDoneLesson(doneDeleteBooking)}
+                  loading={busy}
+                  disabled={busy}
+                  className="flex-1"
+                >
+                  Delete lesson
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => setDoneDeleteBooking(null)}
+                  disabled={busy}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          );
+        })()}
+      </Modal>
 
       {/* Cancel scope modal (recurring) */}
       <Modal
