@@ -57,6 +57,7 @@ function WalletDetail({
   onTopUp,
   onAdjust,
   onDelete,
+  onToggleArchive,
   showToast,
 }: {
   coachId: string;
@@ -66,6 +67,7 @@ function WalletDetail({
   onTopUp: () => void;
   onAdjust: () => void;
   onDelete: () => void;
+  onToggleArchive: () => void;
   showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }) {
   const [txnLimit, setTxnLimit] = useState(20);
@@ -161,6 +163,59 @@ function WalletDetail({
         <Button variant="ghost" onClick={onAdjust} className="flex-1">
           Adjustment
         </Button>
+      </div>
+
+      {/* Wallet settings row */}
+      <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-gray-100 dark:border-[#333333]">
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-zinc-300">
+          <input
+            type="checkbox"
+            checked={wallet.payPerLesson ?? false}
+            onChange={async (e) => {
+              if (!db) return;
+              await updateDoc(
+                doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
+                { payPerLesson: e.target.checked, updatedAt: serverTimestamp() }
+              );
+            }}
+            className="rounded"
+          />
+          Pay per lesson
+        </label>
+
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-zinc-300">
+          Package size:
+          <input
+            type="number"
+            min="1"
+            value={wallet.minLessonsPerTopUp ?? 5}
+            onChange={async (e) => {
+              if (!db) return;
+              const n = parseInt(e.target.value, 10);
+              if (isNaN(n) || n < 1) return;
+              await updateDoc(
+                doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
+                { minLessonsPerTopUp: n, updatedAt: serverTimestamp() }
+              );
+            }}
+            className="w-16 px-2 py-1 border border-gray-300 dark:border-zinc-500 rounded text-sm bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
+          />
+          lessons
+        </label>
+
+        <button
+          onClick={async () => {
+            if (!db) return;
+            await updateDoc(
+              doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
+              { archived: !(wallet.archived ?? false), updatedAt: serverTimestamp() }
+            );
+            onToggleArchive();
+          }}
+          className="ml-auto text-sm text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-100 underline"
+        >
+          {wallet.archived ? 'Unarchive' : 'Archive'}
+        </button>
       </div>
 
       {/* Linked students */}
@@ -983,6 +1038,7 @@ export default function PaymentsPage() {
             onTopUp={() => setShowTopUpModal(true)}
             onAdjust={() => setShowAdjustModal(true)}
             onDelete={() => setShowDeleteModal(true)}
+            onToggleArchive={() => setSelectedWallet(null)}
             showToast={showToast}
           />
         )}
