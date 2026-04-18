@@ -173,10 +173,14 @@ function WalletDetail({
             checked={wallet.payPerLesson ?? false}
             onChange={async (e) => {
               if (!db) return;
-              await updateDoc(
-                doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
-                { payPerLesson: e.target.checked, updatedAt: serverTimestamp() }
-              );
+              try {
+                await updateDoc(
+                  doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
+                  { payPerLesson: e.target.checked, updatedAt: serverTimestamp() }
+                );
+              } catch {
+                showToast('Failed to update', 'error');
+              }
             }}
             className="rounded"
           />
@@ -193,10 +197,14 @@ function WalletDetail({
               if (!db) return;
               const n = parseInt(e.target.value, 10);
               if (isNaN(n) || n < 1) return;
-              await updateDoc(
-                doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
-                { minLessonsPerTopUp: n, updatedAt: serverTimestamp() }
-              );
+              try {
+                await updateDoc(
+                  doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
+                  { minLessonsPerTopUp: n, updatedAt: serverTimestamp() }
+                );
+              } catch {
+                showToast('Failed to update package size', 'error');
+              }
             }}
             className="w-16 px-2 py-1 border border-gray-300 dark:border-zinc-500 rounded text-sm bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
           />
@@ -206,11 +214,15 @@ function WalletDetail({
         <button
           onClick={async () => {
             if (!db) return;
-            await updateDoc(
-              doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
-              { archived: !(wallet.archived ?? false), updatedAt: serverTimestamp() }
-            );
-            onToggleArchive();
+            try {
+              await updateDoc(
+                doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
+                { archived: !(wallet.archived ?? false), updatedAt: serverTimestamp() }
+              );
+              onToggleArchive();
+            } catch {
+              showToast('Failed to update', 'error');
+            }
           }}
           className="ml-auto text-sm text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-100 underline"
         >
