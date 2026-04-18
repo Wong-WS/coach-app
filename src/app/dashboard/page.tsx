@@ -14,6 +14,8 @@ import { resolveWallet } from '@/lib/wallets';
 import { computeCancelFuture } from '@/lib/cancel-scope';
 import { getClassesForDate, getBackingException, getCancelledClassesForDate, getDayOfWeekForDate, getBookingTotal, isGroupBooking } from '@/lib/class-schedule';
 import { formatDateFull, formatDateShort, parseDateString } from '@/lib/date-format';
+import Link from 'next/link';
+import { isLowBalance } from '@/lib/wallet-alerts';
 
 function getDateString(date: Date): string {
   const yyyy = date.getFullYear();
@@ -905,8 +907,33 @@ export default function DashboardPage() {
 
   const formattedDate = formatDateFull(selectedDate);
 
+  const lowWallets = useMemo(() => {
+    const today = getDateString(new Date());
+    return wallets.filter((w) => isLowBalance(w, bookings, today));
+  }, [wallets, bookings]);
+
   return (
     <div className="space-y-6">
+      {lowWallets.length > 0 && (
+        <Link
+          href="/dashboard/payments?filter=low"
+          className="flex items-center justify-between gap-3 border-l-4 border-red-500 bg-red-50 dark:bg-red-900/20 rounded-r-lg px-4 py-3 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+        >
+          <div className="min-w-0">
+            <p className="font-medium text-red-800 dark:text-red-300">
+              ⚠ {lowWallets.length} {lowWallets.length === 1 ? 'wallet needs' : 'wallets need'} top-up
+            </p>
+            <p className="text-sm text-red-700 dark:text-red-400 truncate">
+              {lowWallets.slice(0, 3).map((w) => {
+                const sign = w.balance < 0 ? '-' : '';
+                return `${w.name} (${sign}RM ${Math.abs(w.balance).toFixed(0)})`;
+              }).join(' · ')}
+              {lowWallets.length > 3 ? ` · +${lowWallets.length - 3} more` : ''}
+            </p>
+          </div>
+          <span className="shrink-0 text-sm text-red-700 dark:text-red-400 font-medium">View →</span>
+        </Link>
+      )}
       {/* Week navigation */}
       <div>
         <div className="flex items-center justify-between mb-3">
