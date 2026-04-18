@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState, KeyboardEvent, ChangeEvent } from 'react';
 import {
   parseTimeInput,
-  nearbySteppedTimes,
   snapToStep,
   type HalfDay,
 } from '@/lib/time-input';
@@ -77,14 +76,34 @@ function TimePickerDesktop({
   const [highlight, setHighlight] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!editing) setRaw(formatTimeDisplay(value));
   }, [value, editing]);
 
-  const slots = useMemo(() => nearbySteppedTimes(value, step, 7), [value, step]);
+  const slots = useMemo(() => {
+    const arr: string[] = [];
+    for (let m = 0; m < 24 * 60; m += step) {
+      const h = Math.floor(m / 60);
+      const mm = m % 60;
+      arr.push(`${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`);
+    }
+    return arr;
+  }, [step]);
   const snappedValue = useMemo(() => snapToStep(value, step), [value, step]);
   const currentHighlight = highlight ?? snappedValue;
+
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+    const idx = slots.indexOf(currentHighlight);
+    if (idx < 0) return;
+    const el = listRef.current.children[idx] as HTMLElement | undefined;
+    if (!el) return;
+    const container = listRef.current;
+    const target = el.offsetTop - container.clientHeight / 2 + el.clientHeight / 2;
+    container.scrollTop = Math.max(0, target);
+  }, [open, currentHighlight, slots]);
 
   useEffect(() => {
     if (!open) return;
@@ -202,6 +221,7 @@ function TimePickerDesktop({
       )}
       {open && !disabled && (
         <div
+          ref={listRef}
           role="listbox"
           className="absolute z-30 mt-1 w-full max-h-64 overflow-y-auto rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-lg py-1"
         >
