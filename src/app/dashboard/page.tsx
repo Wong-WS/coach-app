@@ -107,11 +107,13 @@ export default function DashboardPage() {
   // Overlap warning
   const [overlapWarning, setOverlapWarning] = useState('');
 
-  const checkOverlap = useCallback((dayOfWeek: string, startTime: string, endTime: string): string => {
+  const checkOverlap = useCallback((dayOfWeek: string, startTime: string, endTime: string, fromDate: string): string => {
     const recurringOnDay = bookings.filter(
       b => b.dayOfWeek === dayOfWeek && b.status === 'confirmed' && !(b.startDate && b.startDate === b.endDate)
     );
     for (const b of recurringOnDay) {
+      // Skip bookings that have already ended before the new lesson starts.
+      if (b.endDate && b.endDate < fromDate) continue;
       if (startTime < b.endTime && endTime > b.startTime) {
         return `This overlaps with ${b.className} (${formatTimeDisplay(b.startTime)}–${formatTimeDisplay(b.endTime)})`;
       }
@@ -131,12 +133,12 @@ export default function DashboardPage() {
 
   // Check for overlaps when repeat-weekly toggle or time fields change
   useEffect(() => {
-    if (!showAddLesson || !lessonRepeatWeekly || !lessonDayOfWeek) {
+    if (!showAddLesson || !lessonRepeatWeekly || !lessonDayOfWeek || !lessonDate) {
       setOverlapWarning('');
       return;
     }
-    setOverlapWarning(checkOverlap(lessonDayOfWeek, lessonStartTime, lessonEndTime));
-  }, [showAddLesson, lessonRepeatWeekly, lessonDayOfWeek, lessonStartTime, lessonEndTime, checkOverlap]);
+    setOverlapWarning(checkOverlap(lessonDayOfWeek, lessonStartTime, lessonEndTime, lessonDate));
+  }, [showAddLesson, lessonRepeatWeekly, lessonDayOfWeek, lessonStartTime, lessonEndTime, lessonDate, checkOverlap]);
 
   // Edit booking modal state
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
