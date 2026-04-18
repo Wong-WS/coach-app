@@ -1119,7 +1119,7 @@ export default function PaymentsPage() {
                       <p className="text-xs text-gray-400 dark:text-zinc-500">&nbsp;</p>
                     )}
 
-                    {nextPayment > 0 && (
+                    {isLow && nextPayment > 0 && (
                       <p className="text-xs text-red-500 dark:text-red-400 font-medium mt-1">
                         Next payment: RM {nextPayment.toFixed(0)}
                       </p>
