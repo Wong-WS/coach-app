@@ -739,32 +739,60 @@ export default function DashboardPage() {
       } else if (mode === 'future') {
         const batch = writeBatch(firestore);
         const oldBookingRef = doc(firestore, 'coaches', coach.id, 'bookings', editBooking.id);
-        const prevDay = new Date(selectedDate);
-        prevDay.setDate(prevDay.getDate() - 1);
-        batch.update(oldBookingRef, {
-          endDate: getDateString(prevDay),
-          updatedAt: serverTimestamp(),
-        });
-        const newBookingRef = doc(collection(firestore, 'coaches', coach.id, 'bookings'));
         const newDayOfWeek = effectiveDate !== selectedDateStr
           ? getDayOfWeekForDate(effectiveDate)
           : editBooking.dayOfWeek;
-        const newData: Record<string, unknown> = {
-          locationId: editLocationId,
-          locationName: newLocationName,
-          dayOfWeek: newDayOfWeek,
-          startTime: editStartTime,
-          endTime: editEndTime,
-          status: 'confirmed',
-          className: editClassName.trim(),
-          notes: editNote,
-          studentIds: editStudentIds,
-          studentPrices: studentPricesOut,
-          studentWallets: studentWalletsOut,
-          startDate: effectiveDate,
-          createdAt: serverTimestamp(),
-        };
-        batch.set(newBookingRef, newData);
+        // The last real occurrence of the old series is selectedDate - 7 days
+        // (weekly recurrence on the same dayOfWeek). Capping endDate there
+        // avoids leaving the old booking with a range that contains no
+        // actual class — so if only one prior occurrence remains, startDate
+        // === endDate and it's correctly treated as a one-time class.
+        const lastOccurrence = new Date(selectedDate);
+        lastOccurrence.setDate(lastOccurrence.getDate() - 7);
+        const lastOccurrenceStr = getDateString(lastOccurrence);
+        const startDateStr = editBooking.startDate;
+        const hasPriorOccurrences = !startDateStr || lastOccurrenceStr >= startDateStr;
+
+        if (hasPriorOccurrences) {
+          batch.update(oldBookingRef, {
+            endDate: lastOccurrenceStr,
+            updatedAt: serverTimestamp(),
+          });
+          const newBookingRef = doc(collection(firestore, 'coaches', coach.id, 'bookings'));
+          const newData: Record<string, unknown> = {
+            locationId: editLocationId,
+            locationName: newLocationName,
+            dayOfWeek: newDayOfWeek,
+            startTime: editStartTime,
+            endTime: editEndTime,
+            status: 'confirmed',
+            className: editClassName.trim(),
+            notes: editNote,
+            studentIds: editStudentIds,
+            studentPrices: studentPricesOut,
+            studentWallets: studentWalletsOut,
+            startDate: effectiveDate,
+            createdAt: serverTimestamp(),
+          };
+          batch.set(newBookingRef, newData);
+        } else {
+          // Editing the very first occurrence — no prior classes to preserve.
+          // Update the existing booking in place to keep bookingId stable.
+          batch.update(oldBookingRef, {
+            locationId: editLocationId,
+            locationName: newLocationName,
+            dayOfWeek: newDayOfWeek,
+            startTime: editStartTime,
+            endTime: editEndTime,
+            className: editClassName.trim(),
+            notes: editNote,
+            studentIds: editStudentIds,
+            studentPrices: studentPricesOut,
+            studentWallets: studentWalletsOut,
+            startDate: effectiveDate,
+            updatedAt: serverTimestamp(),
+          });
+        }
         await batch.commit();
         showToast('Future events updated', 'success');
       }
