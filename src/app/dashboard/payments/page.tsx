@@ -527,6 +527,11 @@ export default function PaymentsPage() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }, []);
 
+  const lowCount = useMemo(
+    () => wallets.filter((w) => !(w.archived ?? false) && isLowBalance(w, bookings, todayStr)).length,
+    [wallets, bookings, todayStr]
+  );
+
   const filteredWallets = useMemo(() => {
     let result = wallets;
     if (!showArchived) {
@@ -984,23 +989,16 @@ export default function PaymentsPage() {
               >
                 Negative
               </button>
-              {(() => {
-                const lowCount = wallets.filter((w) =>
-                  !(w.archived ?? false) && isLowBalance(w, bookings, todayStr)
-                ).length;
-                return (
-                  <button
-                    onClick={() => setWalletDayFilter('low')}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                      walletDayFilter === 'low'
-                        ? 'bg-red-600 text-white'
-                        : 'bg-gray-100 dark:bg-[#1f1f1f] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]'
-                    }`}
-                  >
-                    Running low{lowCount > 0 ? ` (${lowCount})` : ''}
-                  </button>
-                );
-              })()}
+              <button
+                onClick={() => setWalletDayFilter('low')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  walletDayFilter === 'low'
+                    ? 'bg-red-600 text-white'
+                    : 'bg-gray-100 dark:bg-[#1f1f1f] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]'
+                }`}
+              >
+                Running low{lowCount > 0 ? ` (${lowCount})` : ''}
+              </button>
             </div>
             <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-zinc-400">
               <input
@@ -1045,7 +1043,7 @@ export default function PaymentsPage() {
                   >
                     {/* Name + student count */}
                     <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
                         <span className="font-medium text-gray-900 dark:text-zinc-100 truncate">
                           {wallet.name}
                         </span>
