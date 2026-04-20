@@ -4,11 +4,11 @@ import { useState, useEffect, useMemo } from 'react';
 import { collection, doc, addDoc, updateDoc, deleteDoc, getDocs, writeBatch, serverTimestamp, increment, Firestore, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
-import { useWallets, useWalletTransactions, useStudents, useBookings, useLessonLogs } from '@/hooks/useCoachData';
+import { useWallets, useWalletTransactions, useStudents, useBookings, useLessonLogs, useClassExceptions } from '@/hooks/useCoachData';
 import { Button, Input, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { formatTimeDisplay } from '@/lib/time-format';
-import { getBookingTotal } from '@/lib/class-schedule';
+import { getScheduledRevenueForDateRange } from '@/lib/class-schedule';
 import { isLowBalance, getWalletStatus } from '@/lib/wallet-alerts';
 import { useSearchParams } from 'next/navigation';
 import type { Wallet, WalletTransaction, DayOfWeek } from '@/types';
@@ -493,6 +493,7 @@ export default function PaymentsPage() {
 
   // Overview data
   const { bookings } = useBookings(coach?.id, 'confirmed');
+  const { classExceptions } = useClassExceptions(coach?.id);
   const { lessonLogs } = useLessonLogs(coach?.id, undefined, undefined, 1);
 
   // All transactions across wallets (for History tab) — global limit, not per-wallet
@@ -622,9 +623,20 @@ export default function PaymentsPage() {
   // ── Overview calculations ──────────────────────────────────────────────────
 
   const recurringBookings = useMemo(() => bookings.filter((b) => !b.endDate), [bookings]);
+
+  const weekRange = useMemo(() => getWeekRange(), []);
+  const monthRange = useMemo(() => getMonthRange(), []);
+
+  // Projected = every class actually scheduled in the period (recurring +
+  // one-off, respecting exceptions and price overrides). Changes live as you
+  // add/cancel lessons mid-week.
   const weeklyTotal = useMemo(
-    () => recurringBookings.reduce((sum, b) => sum + getBookingTotal(b), 0),
-    [recurringBookings],
+    () => getScheduledRevenueForDateRange(weekRange.start, weekRange.end, bookings, classExceptions),
+    [weekRange, bookings, classExceptions]
+  );
+  const monthlyTotal = useMemo(
+    () => getScheduledRevenueForDateRange(monthRange.start, monthRange.end, bookings, classExceptions),
+    [monthRange, bookings, classExceptions]
   );
 
   const { walletDayMap, activeDays, activeWalletIds } = useMemo(() => {
@@ -698,10 +710,6 @@ export default function PaymentsPage() {
       setWalletDayFilter('all');
     }
   }, [activeDays, walletDayFilter]);
-  const monthlyTotal = useMemo(() => weeklyTotal * (52 / 12), [weeklyTotal]);
-
-  const weekRange = useMemo(() => getWeekRange(), []);
-  const monthRange = useMemo(() => getMonthRange(), []);
 
   const weekActual = useMemo(() => {
     return lessonLogs

@@ -77,6 +77,38 @@ export function getClassesForDate(
   return classes.sort((a, b) => a.startTime.localeCompare(b.startTime));
 }
 
+/**
+ * Sum of `getBookingTotal` for every class scheduled between `start` and `end`
+ * (both inclusive, YYYY-MM-DD). Uses `getClassesForDate` per day, so this
+ * respects:
+ *   - day-of-week + startDate/endDate filters (incl. one-off bookings where
+ *     startDate === endDate)
+ *   - cancellation exceptions (removed)
+ *   - reschedule exceptions (counted on newDate, removed from originalDate)
+ *   - price overrides on rescheduled exceptions (newStudentPrices)
+ */
+export function getScheduledRevenueForDateRange(
+  start: string,
+  end: string,
+  bookings: Booking[],
+  exceptions: ClassException[]
+): number {
+  const [sy, sm, sd] = start.split('-').map(Number);
+  const [ey, em, ed] = end.split('-').map(Number);
+  const startDate = new Date(sy, sm - 1, sd);
+  const endDate = new Date(ey, em - 1, ed);
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  let total = 0;
+  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    for (const c of getClassesForDate(dateStr, bookings, exceptions)) {
+      total += getBookingTotal(c);
+    }
+  }
+  return total;
+}
+
 export function isRescheduledToDate(
   bookingId: string,
   date: string,
