@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CoachApp - Scheduling for Coaches",
-  description: "Simple scheduling and availability management for coaches",
+  title: "CoachSimplify — Run your coaching business, not your spreadsheet",
+  description: "Scheduling, wallets, and student tracking for independent coaches. 14-day free trial, no credit card required.",
 };
 
 export default function RootLayout({
