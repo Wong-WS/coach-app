@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "CoachSimplify — Run your coaching business, not your spreadsheet",
-  description: "Scheduling, wallets, and student tracking for independent coaches. 14-day free trial, no credit card required.",
+  description: "Scheduling, wallets, and student tracking for independent coaches. 7-day free trial.",
 };
 
 export default function RootLayout({

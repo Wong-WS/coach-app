@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { RedirectIfSignedIn } from '@/lib/auth-redirect';
+import { PricingSection } from './_components/PricingSection';
 
 export default function Home() {
   return (
@@ -71,22 +72,17 @@ export default function Home() {
             without the WhatsApp chaos. Made for coaches who&apos;d rather be on the
             court.
           </p>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <div className="mt-8 flex items-center justify-center">
             <Link
               href="/signup"
               className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-900/20 transition-colors hover:bg-slate-800"
             >
-              Start 14-day free trial
+              Try it for free
             </Link>
-            <a
-              href="#features"
-              className="rounded-xl border border-white/40 bg-white/50 px-6 py-3 text-sm font-semibold text-slate-700 backdrop-blur-md transition-colors hover:bg-white/70"
-            >
-              See how it works
-            </a>
           </div>
-          <p className="mt-4 text-xs text-slate-500">
-            No credit card required · Cancel anytime
+          <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-slate-500">
+            <ShieldIcon />
+            RM 0.00 due today · Cancel anytime
           </p>
 
           {/* Glass dashboard preview */}
@@ -205,56 +201,7 @@ export default function Home() {
         </section>
 
         {/* Pricing */}
-        <section id="pricing" className="mx-auto max-w-6xl scroll-mt-16 px-6 py-20">
-          <div className="text-center">
-            <h2 className="text-3xl font-semibold tracking-tight md:text-4xl">
-              Simple pricing. Try it free for 14 days.
-            </h2>
-            <p className="mx-auto mt-4 max-w-xl text-slate-600">
-              Pay monthly, cancel anytime. Every plan includes scheduling, wallets,
-              student tracking, and unlimited lessons.
-            </p>
-          </div>
-          <div className="mt-12 grid grid-cols-1 gap-5 md:grid-cols-3">
-            <PricingCard
-              name="Starter"
-              price="29"
-              tagline="For coaches just getting organised."
-              features={[
-                'Up to 15 students',
-                'Unlimited bookings & classes',
-                'Wallet billing & top-ups',
-                'Linked parents & siblings',
-              ]}
-              cta="Start free trial"
-            />
-            <PricingCard
-              name="Pro"
-              price="69"
-              tagline="For growing coaching businesses."
-              features={[
-                'Up to 50 students',
-                'Everything in Starter',
-                'Priority email support',
-                'Early access to new features',
-              ]}
-              cta="Start free trial"
-              highlight
-            />
-            <PricingCard
-              name="Business"
-              price="149"
-              tagline="For full-time coaches & small academies."
-              features={[
-                'Unlimited students',
-                'Everything in Pro',
-                'Custom branding (coming soon)',
-                'Dedicated onboarding',
-              ]}
-              cta="Start free trial"
-            />
-          </div>
-        </section>
+        <PricingSection />
 
         {/* FAQ */}
         <section id="faq" className="mx-auto max-w-3xl scroll-mt-16 px-6 py-20">
@@ -264,16 +211,8 @@ export default function Home() {
           <div className="mt-10 space-y-3">
             {[
               {
-                q: 'Do I need a credit card to start the trial?',
-                a: 'No. You get 14 days to try everything for free. We only ask for payment details after the trial, and only if you decide to continue.',
-              },
-              {
-                q: 'What happens after the trial ends?',
-                a: 'Your account stays on a limited free tier unless you upgrade. Nothing is deleted and your students keep working.',
-              },
-              {
-                q: 'How do parents pay?',
-                a: 'You share a private link with each parent. They see their wallet balance, top-up history, and upcoming classes. You accept bank transfer, FPX, or cash — we just track the balance.',
+                q: 'Will I be charged during the free trial?',
+                a: 'No. You enter your card to start the trial, but RM 0.00 is due today. You get all 7 days free — and if you cancel before the trial ends, you won\u2019t be charged a cent.',
               },
               {
                 q: 'Can I cancel anytime?',
@@ -307,7 +246,7 @@ export default function Home() {
               Your weekly admin, gone by Sunday night.
             </h3>
             <p className="mx-auto mt-3 max-w-md text-blue-100">
-              14-day free trial. No credit card. Set up in under 10 minutes.
+              7-day free trial. RM 0.00 due today. Set up in under 10 minutes.
             </p>
             <Link
               href="/signup"
@@ -346,65 +285,6 @@ function Stat({ label, value, trend }: { label: string; value: string; trend: st
   );
 }
 
-function PricingCard({
-  name,
-  price,
-  tagline,
-  features,
-  cta,
-  highlight,
-}: {
-  name: string;
-  price: string;
-  tagline: string;
-  features: string[];
-  cta: string;
-  highlight?: boolean;
-}) {
-  return (
-    <div
-      className={`relative rounded-3xl border backdrop-blur-xl ${
-        highlight
-          ? 'border-blue-500/40 bg-white/70 shadow-2xl shadow-blue-900/10'
-          : 'border-white/30 bg-white/50'
-      } p-7`}
-    >
-      {highlight && (
-        <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 px-3 py-1 text-xs font-semibold text-white shadow-lg shadow-blue-900/20">
-          Most popular
-        </span>
-      )}
-      <h3 className="text-lg font-semibold">{name}</h3>
-      <p className="mt-1 text-sm text-slate-600">{tagline}</p>
-      <div className="mt-5 flex items-baseline gap-1">
-        <span className="text-sm font-medium text-slate-500">RM</span>
-        <span className="text-4xl font-semibold tracking-tight">{price}</span>
-        <span className="text-sm text-slate-500">/ month</span>
-      </div>
-      <Link
-        href="/signup"
-        className={`mt-5 inline-flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors ${
-          highlight
-            ? 'bg-slate-900 text-white hover:bg-slate-800'
-            : 'border border-white/40 bg-white/60 text-slate-800 hover:bg-white/80'
-        }`}
-      >
-        {cta}
-      </Link>
-      <ul className="mt-6 space-y-2.5">
-        {features.map((f) => (
-          <li key={f} className="flex items-start gap-2 text-sm text-slate-700">
-            <span className="mt-0.5 shrink-0 text-emerald-600">
-              <CheckSmallIcon />
-            </span>
-            <span>{f}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 function CalendarIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -432,18 +312,18 @@ function CheckIcon() {
   );
 }
 
-function CheckSmallIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M20 6L9 17l-5-5" />
-    </svg>
-  );
-}
-
 function PlusIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function ShieldIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
     </svg>
   );
 }
