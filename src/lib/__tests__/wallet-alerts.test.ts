@@ -4,8 +4,22 @@ import {
   hasActiveBooking,
   isLowBalance,
   getTopUpMinimum,
+  getEffectiveBalance,
 } from '@/lib/wallet-alerts';
-import type { Booking, Wallet } from '@/types';
+import type { Booking, Wallet, WalletTransaction } from '@/types';
+
+function makeTxn(overrides: Partial<WalletTransaction> = {}): WalletTransaction {
+  return {
+    id: 't1',
+    type: 'charge',
+    amount: -60,
+    balanceAfter: 0,
+    description: '',
+    date: '2026-04-18',
+    createdAt: new Date(),
+    ...overrides,
+  };
+}
 
 function makeWallet(overrides: Partial<Wallet> = {}): Wallet {
   return {
@@ -174,10 +188,28 @@ describe('getTopUpMinimum', () => {
     expect(getTopUpMinimum(wallet, [booking])).toBe(1000); // 240*5 - 200
   });
 
-  it('adds negative balance back onto the ask', () => {
+  it('clamps negative balance to 0 when no transactions are provided', () => {
     const wallet = makeWallet({ balance: -40 });
     const booking = makeBooking();
-    expect(getTopUpMinimum(wallet, [booking])).toBe(340); // 60*5 - (-40) = 300 + 40
+    expect(getTopUpMinimum(wallet, [booking])).toBe(300); // 60*5 - max(0, -40) = 300 - 0
+  });
+
+  it('uses most recent non-negative balanceAfter for the ask when balance is negative', () => {
+    const wallet = makeWallet({ balance: -100 });
+    const booking = makeBooking();
+    const txns: WalletTransaction[] = [
+      makeTxn({ id: 't3', balanceAfter: -100 }),
+      makeTxn({ id: 't2', balanceAfter: -40 }),
+      makeTxn({ id: 't1', balanceAfter: 20 }),
+    ];
+    expect(getTopUpMinimum(wallet, [booking], txns)).toBe(280); // 60*5 - 20
+  });
+
+  it('ignores transactions when current balance is non-negative', () => {
+    const wallet = makeWallet({ balance: 20 });
+    const booking = makeBooking();
+    const txns: WalletTransaction[] = [makeTxn({ balanceAfter: 500 })];
+    expect(getTopUpMinimum(wallet, [booking], txns)).toBe(280); // 60*5 - 20
   });
 
   it('returns 0 for pay-per-lesson wallets', () => {
@@ -195,5 +227,47 @@ describe('getTopUpMinimum', () => {
     const wallet = makeWallet({ balance: 600, minLessonsPerTopUp: 5 });
     const booking = makeBooking(); // rate = 60, target = 300, balance already covers
     expect(getTopUpMinimum(wallet, [booking])).toBe(0);
+  });
+});
+
+describe('getEffectiveBalance', () => {
+  it('returns current balance when non-negative', () => {
+    const wallet = makeWallet({ balance: 50 });
+    expect(getEffectiveBalance(wallet)).toBe(50);
+    expect(getEffectiveBalance(wallet, [])).toBe(50);
+  });
+
+  it('returns 0 when balance is negative and no transactions are provided', () => {
+    const wallet = makeWallet({ balance: -40 });
+    expect(getEffectiveBalance(wallet)).toBe(0);
+  });
+
+  it('returns 0 when no transaction has a non-negative balanceAfter', () => {
+    const wallet = makeWallet({ balance: -100 });
+    const txns: WalletTransaction[] = [
+      makeTxn({ balanceAfter: -40 }),
+      makeTxn({ balanceAfter: -100 }),
+    ];
+    expect(getEffectiveBalance(wallet, txns)).toBe(0);
+  });
+
+  it('walks newest-first and returns the first non-negative balanceAfter', () => {
+    const wallet = makeWallet({ balance: -100 });
+    const txns: WalletTransaction[] = [
+      makeTxn({ id: 't3', balanceAfter: -100 }),
+      makeTxn({ id: 't2', balanceAfter: -40 }),
+      makeTxn({ id: 't1', balanceAfter: 20 }),
+    ];
+    expect(getEffectiveBalance(wallet, txns)).toBe(20);
+  });
+
+  it('treats balanceAfter of exactly 0 as non-negative', () => {
+    const wallet = makeWallet({ balance: -60 });
+    const txns: WalletTransaction[] = [
+      makeTxn({ balanceAfter: -60 }),
+      makeTxn({ balanceAfter: 0 }),
+      makeTxn({ balanceAfter: 120 }),
+    ];
+    expect(getEffectiveBalance(wallet, txns)).toBe(0);
   });
 });

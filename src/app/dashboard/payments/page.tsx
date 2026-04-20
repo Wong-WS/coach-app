@@ -81,6 +81,95 @@ function PackageSizeInput({
   );
 }
 
+// ─── WalletListCard ──────────────────────────────────────────────────────────
+//
+// One card in the wallets grid. Owns its own `useWalletTransactions` hook so
+// the "Next payment" ask can walk transactions to recover the pre-debt balance
+// snapshot (only when balance is negative — otherwise the hook is a no-op).
+
+function WalletListCard({
+  coachId,
+  wallet,
+  bookings,
+  todayStr,
+  linkedStudents,
+  onClick,
+}: {
+  coachId: string;
+  wallet: Wallet;
+  bookings: import('@/types').Booking[];
+  todayStr: string;
+  linkedStudents: { id: string; clientName: string }[];
+  onClick: () => void;
+}) {
+  const needsTxns = wallet.balance < 0;
+  const { transactions } = useWalletTransactions(coachId, needsTxns ? wallet.id : undefined, 20);
+  const { isLow, topUpMinimum: nextPayment } = getWalletStatus(wallet, bookings, todayStr, transactions);
+
+  return (
+    <button
+      onClick={onClick}
+      className="text-left w-full bg-white dark:bg-[#1f1f1f] border border-gray-200 dark:border-[#333333] rounded-xl p-4 hover:border-blue-400 dark:hover:border-blue-500 transition-colors"
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+          <span className="font-medium text-gray-900 dark:text-zinc-100 truncate">
+            {wallet.name}
+          </span>
+          {isLow && (
+            <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 font-medium">
+              Running low
+            </span>
+          )}
+          {(wallet.payPerLesson ?? false) && (
+            <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-zinc-800 dark:text-zinc-400 font-medium">
+              Pay per lesson
+            </span>
+          )}
+          {(wallet.archived ?? false) && (
+            <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-zinc-500 font-medium">
+              Archived
+            </span>
+          )}
+        </div>
+        {linkedStudents.length > 0 && (
+          <span className="ml-2 flex-shrink-0 text-xs bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-zinc-400 px-2 py-0.5 rounded-full">
+            {linkedStudents.length} {linkedStudents.length === 1 ? 'student' : 'students'}
+          </span>
+        )}
+      </div>
+
+      <p
+        className={`text-2xl font-bold mb-1 ${
+          wallet.balance >= 0
+            ? 'text-green-600 dark:text-green-400'
+            : 'text-red-600 dark:text-red-400'
+        }`}
+      >
+        {wallet.balance < 0 ? '-' : ''}RM {Math.abs(wallet.balance).toFixed(0)}
+      </p>
+
+      {wallet.balance < 0 ? (
+        <p className="text-xs text-red-500 dark:text-red-400">Owes you</p>
+      ) : (
+        <p className="text-xs text-gray-400 dark:text-zinc-500">&nbsp;</p>
+      )}
+
+      {isLow && nextPayment > 0 && (
+        <p className="text-xs text-red-500 dark:text-red-400 font-medium mt-1">
+          Next payment: RM {nextPayment.toFixed(0)}
+        </p>
+      )}
+
+      {linkedStudents.length > 0 && (
+        <p className="text-xs text-gray-400 dark:text-zinc-500 mt-2 truncate">
+          {linkedStudents.map((s) => s.clientName).join(', ')}
+        </p>
+      )}
+    </button>
+  );
+}
+
 // ─── WalletDetail ────────────────────────────────────────────────────────────
 
 function WalletDetail({
@@ -476,6 +565,15 @@ export default function PaymentsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-sync only when the wallets list changes; including selectedWallet loops
   }, [wallets]);
+
+  // Transactions for the top-up modal — only loaded when the selected wallet is
+  // negative, so getWalletStatus can walk back to the pre-debt balance snapshot.
+  const selectedWalletNegative = !!selectedWallet && selectedWallet.balance < 0;
+  const { transactions: selectedWalletTransactions } = useWalletTransactions(
+    coach?.id,
+    selectedWalletNegative ? selectedWallet!.id : undefined,
+    20
+  );
 
   // Create wallet modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -1064,74 +1162,16 @@ export default function PaymentsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredWallets.map((wallet) => {
                 const linkedStudents = students.filter((s) => wallet.studentIds.includes(s.id));
-                const { isLow, topUpMinimum: nextPayment } = getWalletStatus(wallet, bookings, todayStr);
-
                 return (
-                  <button
+                  <WalletListCard
                     key={wallet.id}
+                    coachId={coach!.id}
+                    wallet={wallet}
+                    bookings={bookings}
+                    todayStr={todayStr}
+                    linkedStudents={linkedStudents}
                     onClick={() => setSelectedWallet(wallet)}
-                    className="text-left w-full bg-white dark:bg-[#1f1f1f] border border-gray-200 dark:border-[#333333] rounded-xl p-4 hover:border-blue-400 dark:hover:border-blue-500 transition-colors"
-                  >
-                    {/* Name + student count */}
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
-                        <span className="font-medium text-gray-900 dark:text-zinc-100 truncate">
-                          {wallet.name}
-                        </span>
-                        {isLow && (
-                          <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 font-medium">
-                            Running low
-                          </span>
-                        )}
-                        {(wallet.payPerLesson ?? false) && (
-                          <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-zinc-800 dark:text-zinc-400 font-medium">
-                            Pay per lesson
-                          </span>
-                        )}
-                        {(wallet.archived ?? false) && (
-                          <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-zinc-500 font-medium">
-                            Archived
-                          </span>
-                        )}
-                      </div>
-                      {linkedStudents.length > 0 && (
-                        <span className="ml-2 flex-shrink-0 text-xs bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-zinc-400 px-2 py-0.5 rounded-full">
-                          {linkedStudents.length} {linkedStudents.length === 1 ? 'student' : 'students'}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Balance */}
-                    <p
-                      className={`text-2xl font-bold mb-1 ${
-                        wallet.balance >= 0
-                          ? 'text-green-600 dark:text-green-400'
-                          : 'text-red-600 dark:text-red-400'
-                      }`}
-                    >
-                      {wallet.balance < 0 ? '-' : ''}RM {Math.abs(wallet.balance).toFixed(0)}
-                    </p>
-
-                    {/* Owes label */}
-                    {wallet.balance < 0 ? (
-                      <p className="text-xs text-red-500 dark:text-red-400">Owes you</p>
-                    ) : (
-                      <p className="text-xs text-gray-400 dark:text-zinc-500">&nbsp;</p>
-                    )}
-
-                    {isLow && nextPayment > 0 && (
-                      <p className="text-xs text-red-500 dark:text-red-400 font-medium mt-1">
-                        Next payment: RM {nextPayment.toFixed(0)}
-                      </p>
-                    )}
-
-                    {/* Linked student names */}
-                    {linkedStudents.length > 0 && (
-                      <p className="text-xs text-gray-400 dark:text-zinc-500 mt-2 truncate">
-                        {linkedStudents.map((s) => s.clientName).join(', ')}
-                      </p>
-                    )}
-                  </button>
+                  />
                 );
               })}
             </div>
@@ -1246,7 +1286,12 @@ export default function PaymentsPage() {
       >
         <div className="space-y-4">
           {selectedWallet && !(selectedWallet.payPerLesson ?? false) && (() => {
-            const { rate, topUpMinimum: minimum } = getWalletStatus(selectedWallet, bookings, todayStr);
+            const { rate, topUpMinimum: minimum } = getWalletStatus(
+              selectedWallet,
+              bookings,
+              todayStr,
+              selectedWalletTransactions
+            );
             const packageSize = selectedWallet.minLessonsPerTopUp ?? 5;
             const walletAfter = selectedWallet.balance + minimum;
             if (rate === 0) return null;
