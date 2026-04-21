@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   collection,
   doc,
@@ -52,6 +52,10 @@ import {
   IconChevL,
   IconChevR,
   IconArrowUp,
+  IconMore,
+  IconEdit,
+  IconCopy,
+  IconTrash,
 } from '@/components/paper';
 
 const SHORT_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -77,7 +81,7 @@ function weekStartMon(d: Date): Date {
 
 function fmtTimeShort(t: string): string {
   const [hh, mm] = t.split(':').map(Number);
-  const period = hh >= 12 ? 'pm' : 'am';
+  const period = hh >= 12 ? 'p' : 'a';
   const h12 = hh % 12 || 12;
   if (mm === 0) return `${h12}${period}`;
   return `${h12}:${String(mm).padStart(2, '0')}${period}`;
@@ -325,6 +329,38 @@ export default function DashboardPage() {
     }
   };
 
+  const handleDuplicate = async (c: Booking) => {
+    if (!coach || !db) return;
+    try {
+      const firestore = db as Firestore;
+      const payload: Record<string, unknown> = {
+        locationId: c.locationId,
+        locationName: c.locationName,
+        dayOfWeek: c.dayOfWeek,
+        startTime: c.startTime,
+        endTime: c.endTime,
+        status: 'confirmed',
+        className: c.className ? `${c.className} (copy)` : '',
+        notes: c.notes ?? '',
+        studentIds: c.studentIds,
+        studentPrices: c.studentPrices,
+        studentWallets: c.studentWallets,
+        createdAt: serverTimestamp(),
+      };
+      if (c.startDate) payload.startDate = c.startDate;
+      if (c.endDate) payload.endDate = c.endDate;
+      await addDoc(collection(firestore, 'coaches', coach.id, 'bookings'), payload);
+      showToast('Class duplicated', 'success');
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to duplicate', 'error');
+    }
+  };
+
+  const handleEditStub = () => {
+    showToast('Edit coming soon — use Schedule page for now', 'info');
+  };
+
   // Add-lesson modal
   const [showAdd, setShowAdd] = useState(false);
 
@@ -389,6 +425,8 @@ export default function DashboardPage() {
                   onMarkDone={() => openMarkDone(c)}
                   onCancel={() => handleCancelClass(c)}
                   onUndo={() => handleUndoMarkDone(c)}
+                  onEdit={handleEditStub}
+                  onDuplicate={() => handleDuplicate(c)}
                   compact={false}
                 />
               ))}
@@ -474,6 +512,8 @@ export default function DashboardPage() {
               onMarkDone={() => openMarkDone(c)}
               onCancel={() => handleCancelClass(c)}
               onUndo={() => handleUndoMarkDone(c)}
+              onEdit={handleEditStub}
+              onDuplicate={() => handleDuplicate(c)}
               compact
             />
           ))}
@@ -706,6 +746,82 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
   );
 }
 
+function ClassActionsMenu({
+  onMarkDone,
+  onEdit,
+  onDuplicate,
+  onCancel,
+}: {
+  onMarkDone: () => void;
+  onEdit: () => void;
+  onDuplicate: () => void;
+  onCancel: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const items: {
+    label: string;
+    icon: React.ReactNode;
+    onClick: () => void;
+    danger?: boolean;
+  }[] = [
+    { label: 'Mark done', icon: <IconCheck size={14} />, onClick: onMarkDone },
+    { label: 'Edit', icon: <IconEdit size={14} />, onClick: onEdit },
+    { label: 'Duplicate', icon: <IconCopy size={14} />, onClick: onDuplicate },
+    { label: 'Cancel lesson', icon: <IconTrash size={14} />, onClick: onCancel, danger: true },
+  ];
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-label="Class actions"
+        onClick={() => setOpen((o) => !o)}
+        className="p-1 rounded-md"
+        style={{ color: 'var(--ink-3)' }}
+      >
+        <IconMore size={16} />
+      </button>
+      {open && (
+        <div
+          className="absolute right-0 top-full mt-1 z-20 min-w-[170px] rounded-[10px] border py-1"
+          style={{
+            background: 'var(--panel)',
+            borderColor: 'var(--line)',
+            boxShadow: 'var(--shadow-lg)',
+          }}
+        >
+          {items.map((it) => (
+            <button
+              key={it.label}
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                it.onClick();
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-left"
+              style={{ color: it.danger ? 'var(--bad)' : 'var(--ink-2)' }}
+            >
+              {it.icon}
+              {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ClassCard({
   cls,
   students,
@@ -717,6 +833,8 @@ function ClassCard({
   onMarkDone,
   onCancel,
   onUndo,
+  onEdit,
+  onDuplicate,
   compact,
 }: {
   cls: Booking;
@@ -729,6 +847,8 @@ function ClassCard({
   onMarkDone: () => void;
   onCancel: () => void;
   onUndo: () => void;
+  onEdit: () => void;
+  onDuplicate: () => void;
   compact: boolean;
 }) {
   const isGroup = isGroupBooking(cls);
@@ -822,14 +942,9 @@ function ClassCard({
         {!compact && (
           <div className="flex gap-2 mt-1.5">
             {!isDone ? (
-              <>
-                <Btn size="sm" variant="primary" onClick={onMarkDone}>
-                  <IconCheck size={13} /> Mark done
-                </Btn>
-                <Btn size="sm" variant="outline" onClick={onCancel}>
-                  Cancel
-                </Btn>
-              </>
+              <Btn size="sm" variant="primary" onClick={onMarkDone}>
+                <IconCheck size={13} /> Mark done
+              </Btn>
             ) : (
               <Btn size="sm" variant="ghost" onClick={onUndo}>
                 <IconUndo size={13} /> Undo
@@ -861,6 +976,13 @@ function ClassCard({
               <IconUndo size={12} />
             </Btn>
           )
+        ) : !isDone ? (
+          <ClassActionsMenu
+            onMarkDone={onMarkDone}
+            onEdit={onEdit}
+            onDuplicate={onDuplicate}
+            onCancel={onCancel}
+          />
         ) : null}
       </div>
     </div>

@@ -121,6 +121,12 @@ export const IconEdit = (p: IconProps) => (
 export const IconTrash = (p: IconProps) => (
   <Icon {...p}><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M6 6l1 14a2 2 0 002 2h6a2 2 0 002-2l1-14" /></Icon>
 );
+export const IconCopy = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="8" y="8" width="13" height="13" rx="2" />
+    <path d="M16 8V5a2 2 0 00-2-2H5a2 2 0 00-2 2v9a2 2 0 002 2h3" />
+  </Icon>
+);
 export const IconArrowUp = (p: IconProps) => (
   <Icon {...p}><path d="M12 19V5M5 12l7-7 7 7" /></Icon>
 );
