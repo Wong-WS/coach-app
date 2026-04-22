@@ -1307,24 +1307,20 @@ function ClassCard({
         >
           RM {Math.round(total)}
         </div>
-        {compact ? (
-          !isDone ? (
-            <Btn size="sm" variant="primary" onClick={onMarkDone}>
-              <IconCheck size={12} /> Done
-            </Btn>
-          ) : (
+        {isDone ? (
+          compact ? (
             <Btn size="sm" variant="ghost" onClick={onUndo}>
               <IconUndo size={12} />
             </Btn>
-          )
-        ) : !isDone ? (
+          ) : null
+        ) : (
           <ClassActionsMenu
             onMarkDone={onMarkDone}
             onEdit={onEdit}
             onDuplicate={onDuplicate}
             onCancel={onCancel}
           />
-        ) : null}
+        )}
       </div>
     </div>
   );
@@ -2326,12 +2322,14 @@ function AddLessonModal({
 
         <div>
           <SectionLabel>When</SectionLabel>
-          <div className="grid gap-2" style={{ gridTemplateColumns: '1.3fr 1fr 1fr' }}>
+          <div
+            className="grid gap-2 grid-cols-2 sm:grid-cols-[1.3fr_1fr_1fr]"
+          >
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className={`${paperInputClass} mono tnum`}
+              className={`${paperInputClass} mono tnum col-span-2 sm:col-span-1 min-w-0`}
               style={paperInputStyle}
             />
             <input
@@ -2339,7 +2337,7 @@ function AddLessonModal({
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
               step={300}
-              className={`${paperInputClass} mono tnum`}
+              className={`${paperInputClass} mono tnum min-w-0`}
               style={paperInputStyle}
             />
             <input
@@ -2347,7 +2345,7 @@ function AddLessonModal({
               value={endTime}
               onChange={(e) => setEndTime(e.target.value)}
               step={300}
-              className={`${paperInputClass} mono tnum`}
+              className={`${paperInputClass} mono tnum min-w-0`}
               style={paperInputStyle}
             />
           </div>
