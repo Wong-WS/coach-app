@@ -27,7 +27,7 @@ import {
   useLocations,
 } from '@/hooks/useCoachData';
 import { useToast } from '@/components/ui/Toast';
-import type { Booking, Student, Wallet, DayOfWeek, Location } from '@/types';
+import type { Booking, Student, Wallet, Location } from '@/types';
 import {
   getClassesForDate,
   getBookingTotal,
@@ -36,6 +36,7 @@ import {
   getDayOfWeekForDate,
 } from '@/lib/class-schedule';
 import { resolveWallet } from '@/lib/wallets';
+import { findOrCreateStudent } from '@/lib/students';
 import { isLowBalance } from '@/lib/wallet-alerts';
 import { formatTimeDisplay } from '@/lib/time-format';
 import { formatDateFull, formatDateShort, parseDateString } from '@/lib/date-format';
@@ -2082,6 +2083,30 @@ function MarkDoneModal({
 
 // ────────────────────────────────────────────────────────────────────────────
 
+type StudentRowState = {
+  mode: 'existing' | 'new';
+  studentId: string;
+  newName: string;
+  newPhone: string;
+  walletOption: 'none' | 'existing' | 'create';
+  existingWalletId: string; // can be wallet id or `pending:<row-index>`
+  newWalletName: string;
+  price: number;
+};
+
+function makeEmptyRow(defaultStudentId = ''): StudentRowState {
+  return {
+    mode: 'existing',
+    studentId: defaultStudentId,
+    newName: '',
+    newPhone: '',
+    walletOption: 'none',
+    existingWalletId: '',
+    newWalletName: '',
+    price: 120,
+  };
+}
+
 function AddLessonModal({
   open,
   onClose,
@@ -2096,68 +2121,185 @@ function AddLessonModal({
   coachId: string | undefined;
   students: Student[];
   wallets: Wallet[];
-  locations: { id: string; name: string }[];
+  locations: Location[];
   defaultDate: string;
 }) {
   const { showToast } = useToast();
-  const [studentId, setStudentId] = useState('');
   const [className, setClassName] = useState('');
   const [date, setDate] = useState(defaultDate);
   const [startTime, setStartTime] = useState('16:00');
   const [endTime, setEndTime] = useState('17:00');
-  const [price, setPrice] = useState(120);
-  const [locationId, setLocationId] = useState('');
   const [repeat, setRepeat] = useState(false);
+  const [locationId, setLocationId] = useState('');
+  const [newLocationName, setNewLocationName] = useState('');
+  const [rows, setRows] = useState<StudentRowState[]>([makeEmptyRow()]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) {
-      setDate(defaultDate);
-      setClassName('');
-      setStudentId(students[0]?.id || '');
-      setLocationId(locations[0]?.id || '');
-      setStartTime('16:00');
-      setEndTime('17:00');
-      setPrice(120);
-      setRepeat(false);
-    }
-  }, [open, defaultDate, students, locations]);
+    if (!open) return;
+    setClassName('');
+    setDate(defaultDate);
+    setStartTime('16:00');
+    setEndTime('17:00');
+    setRepeat(false);
+    setLocationId(locations[0]?.id || '');
+    setNewLocationName('');
+    setRows([makeEmptyRow(students[0]?.id || '')]);
+  }, [open, defaultDate, locations, students]);
 
-  const dayOfWeek: DayOfWeek | '' = date ? getDayOfWeekForDate(date) : '';
-  const locName = locations.find((l) => l.id === locationId)?.name || '';
-  const wallet = wallets.find((w) => w.studentIds.includes(studentId));
+  const updateRow = (i: number, patch: Partial<StudentRowState>) =>
+    setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const addRow = () =>
+    setRows((rs) => [...rs, makeEmptyRow(students[0]?.id || '')]);
+  const removeRow = (i: number) =>
+    setRows((rs) => rs.filter((_, idx) => idx !== i));
+
+  const total = rows.reduce((s, r) => s + (Number(r.price) || 0), 0);
+  const creatingLocation = locationId === '__new';
 
   const handleSave = async () => {
     if (!coachId || !db) return;
-    if (!studentId) {
-      showToast('Pick a student', 'error');
+    if (rows.length === 0) return;
+
+    // Validate rows
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (r.mode === 'existing' && !r.studentId) {
+        showToast(`Student ${i + 1}: pick a student`, 'error');
+        return;
+      }
+      if (r.mode === 'new' && !r.newName.trim()) {
+        showToast(`Student ${i + 1}: enter a name`, 'error');
+        return;
+      }
+      if (r.walletOption === 'existing' && !r.existingWalletId) {
+        showToast(`Student ${i + 1}: pick a wallet`, 'error');
+        return;
+      }
+      if (r.walletOption === 'create' && !r.newWalletName.trim()) {
+        showToast(`Student ${i + 1}: name the new wallet`, 'error');
+        return;
+      }
+    }
+
+    if (creatingLocation && !newLocationName.trim()) {
+      showToast('Enter a name for the new location', 'error');
       return;
     }
+    if (!creatingLocation && !locationId) {
+      showToast('Pick a location', 'error');
+      return;
+    }
+
+    const dayOfWeek = getDayOfWeekForDate(date);
     if (!dayOfWeek) return;
+
     setSaving(true);
     try {
       const firestore = db as Firestore;
-      const data = {
-        locationId,
-        locationName: locName,
+
+      // 1. Resolve location.
+      let finalLocationId = locationId;
+      let finalLocationName = locations.find((l) => l.id === locationId)?.name || '';
+      if (creatingLocation) {
+        const newLoc = await addDoc(
+          collection(firestore, 'coaches', coachId, 'locations'),
+          {
+            name: newLocationName.trim(),
+            address: '',
+            notes: '',
+            createdAt: serverTimestamp(),
+          },
+        );
+        finalLocationId = newLoc.id;
+        finalLocationName = newLocationName.trim();
+      }
+
+      // 2. Resolve each row's studentId (create-new as needed).
+      const resolvedStudentIds: string[] = [];
+      for (const r of rows) {
+        if (r.mode === 'existing') {
+          resolvedStudentIds.push(r.studentId);
+        } else {
+          const sid = await findOrCreateStudent(
+            firestore,
+            coachId,
+            r.newName.trim(),
+            r.newPhone.trim(),
+          );
+          resolvedStudentIds.push(sid);
+        }
+      }
+
+      // 3. Plan wallets: for each row that creates a wallet, aggregate the
+      //    studentIds of every row pointing at it via `pending:<index>`.
+      const pendingWalletIds: Record<number, string> = {};
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        if (r.walletOption !== 'create') continue;
+        const sharedStudentIds = [resolvedStudentIds[i]];
+        for (let j = i + 1; j < rows.length; j++) {
+          const other = rows[j];
+          if (
+            other.walletOption === 'existing' &&
+            other.existingWalletId === `pending:${i}`
+          ) {
+            sharedStudentIds.push(resolvedStudentIds[j]);
+          }
+        }
+        const walletRef = await addDoc(
+          collection(firestore, 'coaches', coachId, 'wallets'),
+          {
+            name: r.newWalletName.trim(),
+            balance: 0,
+            studentIds: sharedStudentIds,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+        );
+        pendingWalletIds[i] = walletRef.id;
+      }
+
+      // 4. Build studentPrices + studentWallets keyed by resolved student id.
+      const studentPrices: Record<string, number> = {};
+      const studentWallets: Record<string, string> = {};
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        const sid = resolvedStudentIds[i];
+        studentPrices[sid] = Number(r.price) || 0;
+        if (r.walletOption === 'existing') {
+          if (r.existingWalletId.startsWith('pending:')) {
+            const refIdx = parseInt(r.existingWalletId.split(':')[1], 10);
+            const resolved = pendingWalletIds[refIdx];
+            if (resolved) studentWallets[sid] = resolved;
+          } else {
+            studentWallets[sid] = r.existingWalletId;
+          }
+        } else if (r.walletOption === 'create') {
+          const resolved = pendingWalletIds[i];
+          if (resolved) studentWallets[sid] = resolved;
+        }
+      }
+
+      // 5. Write booking.
+      const payload: Record<string, unknown> = {
+        locationId: finalLocationId,
+        locationName: finalLocationName,
         dayOfWeek,
         startTime,
         endTime,
-        status: 'confirmed' as const,
+        status: 'confirmed',
         className: className.trim(),
         notes: '',
-        studentIds: [studentId],
-        studentPrices: { [studentId]: price },
-        studentWallets: wallet ? { [studentId]: wallet.id } : {},
+        studentIds: resolvedStudentIds,
+        studentPrices,
+        studentWallets,
         startDate: date,
-        endDate: repeat ? undefined : date,
         createdAt: serverTimestamp(),
       };
-      const clean: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(data)) {
-        if (v !== undefined) clean[k] = v;
-      }
-      await addDoc(collection(firestore, 'coaches', coachId, 'bookings'), clean);
+      if (!repeat) payload.endDate = date;
+      await addDoc(collection(firestore, 'coaches', coachId, 'bookings'), payload);
+
       showToast(repeat ? 'Recurring lesson added' : 'Lesson added', 'success');
       onClose();
     } catch (e) {
@@ -2168,124 +2310,371 @@ function AddLessonModal({
     }
   };
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%',
-    padding: '8px 10px',
-    border: '1px solid var(--line-2)',
-    borderRadius: 8,
-    background: 'var(--panel)',
-    color: 'var(--ink)',
-    fontSize: 13,
-    outline: 'none',
-  };
-
   return (
-    <PaperModal open={open} onClose={onClose} title="Add lesson" width={480}>
-      <div className="flex flex-col gap-3.5">
-        <Field label="Class name">
+    <PaperModal open={open} onClose={onClose} title="Add lesson" width={560}>
+      <div className="flex flex-col gap-4">
+        <div>
+          <FieldLabel>Class name</FieldLabel>
           <input
             value={className}
             onChange={(e) => setClassName(e.target.value)}
             placeholder="e.g. Aarav private"
-            style={inputStyle}
+            className={paperInputClass}
+            style={paperInputStyle}
           />
-        </Field>
-        <Field label="Student">
-          <select
-            value={studentId}
-            onChange={(e) => setStudentId(e.target.value)}
-            style={inputStyle}
+        </div>
+
+        <div>
+          <SectionLabel>When</SectionLabel>
+          <div className="grid gap-2" style={{ gridTemplateColumns: '1.3fr 1fr 1fr' }}>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className={`${paperInputClass} mono tnum`}
+              style={paperInputStyle}
+            />
+            <input
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              step={300}
+              className={`${paperInputClass} mono tnum`}
+              style={paperInputStyle}
+            />
+            <input
+              type="time"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+              step={300}
+              className={`${paperInputClass} mono tnum`}
+              style={paperInputStyle}
+            />
+          </div>
+          <label
+            className="flex items-center gap-2 text-[12.5px] mt-2 cursor-pointer"
+            style={{ color: 'var(--ink-2)' }}
           >
-            <option value="">Select student</option>
-            {students.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.clientName}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Location">
+            <input
+              type="checkbox"
+              checked={repeat}
+              onChange={(e) => setRepeat(e.target.checked)}
+            />
+            Repeat weekly on this day
+          </label>
+        </div>
+
+        <div>
+          <SectionLabel>Where</SectionLabel>
           <select
             value={locationId}
             onChange={(e) => setLocationId(e.target.value)}
-            style={inputStyle}
+            className={paperInputClass}
+            style={paperInputStyle}
           >
-            <option value="">Select location</option>
             {locations.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.name}
               </option>
             ))}
+            <option value="__new">+ Add new location…</option>
           </select>
-        </Field>
-        <div className="grid grid-cols-3 gap-2.5">
-          <Field label="Date">
+          {creatingLocation && (
             <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              style={inputStyle}
+              autoFocus
+              value={newLocationName}
+              onChange={(e) => setNewLocationName(e.target.value)}
+              placeholder="New location name (e.g. Subang Tennis Centre)"
+              className={`${paperInputClass} mt-2`}
+              style={paperInputStyle}
             />
-          </Field>
-          <Field label="Start">
-            <input
-              type="time"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              style={inputStyle}
-            />
-          </Field>
-          <Field label="End">
-            <input
-              type="time"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-              style={inputStyle}
-            />
-          </Field>
+          )}
         </div>
-        <Field label="Price (RM)">
-          <input
-            type="number"
-            value={price}
-            onChange={(e) => setPrice(Number(e.target.value))}
-            style={inputStyle}
-          />
-        </Field>
-        <label
-          className="flex items-center gap-2 text-[13px] cursor-pointer"
-          style={{ color: 'var(--ink-2)' }}
+
+        <div>
+          <SectionLabel>Students</SectionLabel>
+          <div className="flex flex-col gap-2.5">
+            {rows.map((r, i) => (
+              <StudentRow
+                key={i}
+                row={r}
+                index={i}
+                count={rows.length}
+                students={students}
+                wallets={wallets}
+                rows={rows}
+                onChange={(patch) => updateRow(i, patch)}
+                onRemove={() => removeRow(i)}
+              />
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={addRow}
+            className="w-full mt-2.5 text-[12.5px] font-medium"
+            style={{
+              padding: '8px 12px',
+              border: '1px dashed var(--line-2)',
+              borderRadius: 8,
+              background: 'transparent',
+              color: 'var(--ink-2)',
+            }}
+          >
+            + Add another student
+          </button>
+        </div>
+
+        <div
+          className="flex items-center justify-between rounded-[10px] border"
+          style={{
+            padding: '10px 12px',
+            background: 'var(--bg)',
+            borderColor: 'var(--line)',
+          }}
         >
-          <input
-            type="checkbox"
-            checked={repeat}
-            onChange={(e) => setRepeat(e.target.checked)}
-          />{' '}
-          Repeat weekly on this day
-        </label>
-        <div className="flex gap-2 mt-1">
-          <Btn variant="ghost" full onClick={onClose} disabled={saving}>
-            Cancel
-          </Btn>
-          <Btn variant="primary" full onClick={handleSave} disabled={saving}>
-            <IconCheck size={14} /> Add lesson
-          </Btn>
+          <div
+            className="text-[12px] font-medium"
+            style={{ color: 'var(--ink-3)' }}
+          >
+            Total per lesson
+          </div>
+          <div
+            className="mono tnum text-[18px] font-semibold"
+            style={{ color: 'var(--ink)' }}
+          >
+            RM {total}
+          </div>
         </div>
+      </div>
+
+      <div className="flex gap-2 mt-3.5">
+        <Btn variant="ghost" full onClick={onClose} disabled={saving}>
+          Cancel
+        </Btn>
+        <Btn variant="primary" full onClick={handleSave} disabled={saving}>
+          <IconCheck size={14} /> {saving ? 'Saving…' : 'Add lesson'}
+        </Btn>
       </div>
     </PaperModal>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div>
-      <div
-        className="text-[11px] font-semibold uppercase mb-1.5"
-        style={{ color: 'var(--ink-3)', letterSpacing: '0.05em' }}
-      >
-        {label}
-      </div>
+    <div
+      className="text-[11px] font-semibold uppercase mb-2"
+      style={{ color: 'var(--ink-3)', letterSpacing: '0.05em' }}
+    >
       {children}
+    </div>
+  );
+}
+
+function StudentRow({
+  row,
+  index,
+  count,
+  students,
+  wallets,
+  rows,
+  onChange,
+  onRemove,
+}: {
+  row: StudentRowState;
+  index: number;
+  count: number;
+  students: Student[];
+  wallets: Wallet[];
+  rows: StudentRowState[];
+  onChange: (patch: Partial<StudentRowState>) => void;
+  onRemove: () => void;
+}) {
+  const pendingAbove = rows
+    .slice(0, index)
+    .map((r, i) => ({ r, i }))
+    .filter(({ r }) => r.walletOption === 'create' && r.newWalletName.trim());
+
+  return (
+    <div
+      className="rounded-[10px] border relative"
+      style={{
+        padding: 12,
+        background: 'var(--panel)',
+        borderColor: 'var(--line)',
+      }}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div
+          className="text-[11px] font-semibold uppercase"
+          style={{ color: 'var(--ink-3)', letterSpacing: '0.04em' }}
+        >
+          Student {index + 1}
+        </div>
+        {count > 1 && (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label="Remove student"
+            className="p-0.5"
+            style={{ color: 'var(--ink-3)' }}
+          >
+            <IconClose size={13} />
+          </button>
+        )}
+      </div>
+
+      {/* Mode toggle */}
+      <div
+        className="flex gap-1 rounded-[8px] border mb-2.5"
+        style={{
+          padding: 3,
+          background: 'var(--bg)',
+          borderColor: 'var(--line)',
+        }}
+      >
+        {(
+          [
+            { k: 'existing', label: 'Existing student' },
+            { k: 'new', label: 'New student' },
+          ] as const
+        ).map((o) => (
+          <button
+            key={o.k}
+            type="button"
+            onClick={() => onChange({ mode: o.k })}
+            className="flex-1 rounded-[6px] text-[12px] font-medium"
+            style={{
+              padding: '6px 10px',
+              background: row.mode === o.k ? 'var(--panel)' : 'transparent',
+              color: row.mode === o.k ? 'var(--ink)' : 'var(--ink-3)',
+              boxShadow: row.mode === o.k ? 'var(--shadow-sm)' : 'none',
+            }}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+
+      {row.mode === 'existing' ? (
+        <select
+          value={row.studentId}
+          onChange={(e) => onChange({ studentId: e.target.value })}
+          className={paperInputClass}
+          style={paperInputStyle}
+        >
+          <option value="">Select student…</option>
+          {students.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.clientName}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            placeholder="Name"
+            value={row.newName}
+            onChange={(e) => onChange({ newName: e.target.value })}
+            className={paperInputClass}
+            style={paperInputStyle}
+          />
+          <input
+            placeholder="Phone"
+            value={row.newPhone}
+            onChange={(e) => onChange({ newPhone: e.target.value })}
+            className={`${paperInputClass} mono`}
+            style={paperInputStyle}
+          />
+        </div>
+      )}
+
+      {/* Wallet */}
+      <div className="mt-2.5">
+        <div
+          className="text-[11px] font-medium mb-1.5"
+          style={{ color: 'var(--ink-3)' }}
+        >
+          Wallet
+        </div>
+        <div className="flex gap-1 flex-wrap">
+          {(
+            [
+              { k: 'none', label: 'No wallet' },
+              { k: 'existing', label: 'Existing' },
+              { k: 'create', label: 'Create new' },
+            ] as const
+          ).map((o) => (
+            <button
+              key={o.k}
+              type="button"
+              onClick={() => onChange({ walletOption: o.k })}
+              className="text-[11.5px] font-medium"
+              style={{
+                padding: '5px 10px',
+                borderRadius: 999,
+                border: `1px solid ${row.walletOption === o.k ? 'var(--ink)' : 'var(--line-2)'}`,
+                background: row.walletOption === o.k ? 'var(--ink)' : 'var(--panel)',
+                color: row.walletOption === o.k ? 'var(--bg)' : 'var(--ink-2)',
+              }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        {row.walletOption === 'existing' && (
+          <select
+            value={row.existingWalletId}
+            onChange={(e) => onChange({ existingWalletId: e.target.value })}
+            className={`${paperInputClass} mt-2`}
+            style={paperInputStyle}
+          >
+            <option value="">Select wallet…</option>
+            {wallets
+              .filter((w) => !w.archived)
+              .map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name} — RM {w.balance.toFixed(0)}
+                </option>
+              ))}
+            {pendingAbove.map(({ r, i }) => (
+              <option key={`p-${i}`} value={`pending:${i}`}>
+                (New) {r.newWalletName} — shared with student {i + 1}
+              </option>
+            ))}
+          </select>
+        )}
+        {row.walletOption === 'create' && (
+          <input
+            placeholder="Wallet name (e.g. Suresh family)"
+            value={row.newWalletName}
+            onChange={(e) => onChange({ newWalletName: e.target.value })}
+            className={`${paperInputClass} mt-2`}
+            style={paperInputStyle}
+          />
+        )}
+      </div>
+
+      {/* Price */}
+      <div
+        className="mt-2.5 grid items-center gap-2"
+        style={{ gridTemplateColumns: '1fr auto' }}
+      >
+        <div className="text-[12px]" style={{ color: 'var(--ink-2)' }}>
+          Price for this student
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[12px]" style={{ color: 'var(--ink-3)' }}>
+            RM
+          </span>
+          <input
+            type="number"
+            value={row.price}
+            onChange={(e) => onChange({ price: Number(e.target.value) })}
+            className={`${paperInputClass} mono tnum text-right`}
+            style={{ ...paperInputStyle, width: 90 }}
+          />
+        </div>
+      </div>
     </div>
   );
 }
