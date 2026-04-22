@@ -87,6 +87,7 @@ export interface Wallet {
   balance: number;
   studentIds: string[];
   archived?: boolean;           // default false. hides from default list, disables alerts.
+  tabMode?: boolean;            // default false. student pays after each lesson; wallet sits near zero, skip Low alerts.
   createdAt: Date;
   updatedAt: Date;
 }

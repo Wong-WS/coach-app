@@ -256,6 +256,7 @@ export function useWallets(coachId: string | undefined) {
         balance: d.data().balance ?? 0,
         studentIds: d.data().studentIds ?? [],
         archived: d.data().archived ?? false,
+        tabMode: d.data().tabMode ?? false,
         createdAt: d.data().createdAt?.toDate() || new Date(),
         updatedAt: d.data().updatedAt?.toDate() || new Date(),
       }));

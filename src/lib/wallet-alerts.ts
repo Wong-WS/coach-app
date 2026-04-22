@@ -43,9 +43,13 @@ export function hasActiveBooking(wallet: Wallet, bookings: Booking[], today: str
 /**
  * Low = balance covers fewer than 2 upcoming lessons. Coach gets a warning
  * before the wallet runs dry.
+ *
+ * Skipped for tab-mode wallets: they sit near zero by design (student pays
+ * after each lesson), so a "low" alert would fire constantly.
  */
 export function isLowBalance(wallet: Wallet, bookings: Booking[], today: string): boolean {
   if (wallet.archived) return false;
+  if (wallet.tabMode) return false;
   if (!hasActiveBooking(wallet, bookings, today)) return false;
   return wallet.balance < getNextLessonCost(wallet, bookings) * 2;
 }
@@ -62,6 +66,9 @@ export function getWalletStatus(
     return { rate: 0, isLow: false };
   }
   const rate = getNextLessonCost(wallet, bookings);
+  if (wallet.tabMode) {
+    return { rate, isLow: false };
+  }
   const active = hasActiveBooking(wallet, bookings, today);
   const isLow = active && wallet.balance < rate * 2;
   return { rate, isLow };

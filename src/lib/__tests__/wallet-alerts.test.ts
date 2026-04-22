@@ -3,6 +3,7 @@ import {
   getNextLessonCost,
   hasActiveBooking,
   isLowBalance,
+  getWalletStatus,
 } from '@/lib/wallet-alerts';
 import type { Booking, Wallet } from '@/types';
 
@@ -149,5 +150,39 @@ describe('isLowBalance', () => {
   it('does not fire for orphan wallet (no bookings at all)', () => {
     const wallet = makeWallet({ balance: -100 });
     expect(isLowBalance(wallet, [], today)).toBe(false);
+  });
+
+  it('does not fire for tab-mode wallets, even at zero or negative', () => {
+    const zero = makeWallet({ balance: 0, tabMode: true });
+    expect(isLowBalance(zero, [booking], today)).toBe(false);
+    const negative = makeWallet({ balance: -100, tabMode: true });
+    expect(isLowBalance(negative, [booking], today)).toBe(false);
+  });
+});
+
+describe('getWalletStatus', () => {
+  const today = '2026-04-18';
+  const booking = makeBooking();
+
+  it('reports isLow = false for tab-mode wallets regardless of balance', () => {
+    const wallet = makeWallet({ balance: 0, tabMode: true });
+    expect(getWalletStatus(wallet, [booking], today).isLow).toBe(false);
+  });
+
+  it('still computes rate for tab-mode wallets (for top-up presets)', () => {
+    const wallet = makeWallet({ balance: 0, tabMode: true });
+    expect(getWalletStatus(wallet, [booking], today).rate).toBe(60);
+  });
+
+  it('reports isLow = true for prepaid wallets at zero with active booking', () => {
+    const wallet = makeWallet({ balance: 0 });
+    expect(getWalletStatus(wallet, [booking], today).isLow).toBe(true);
+  });
+
+  it('returns zero rate for archived wallets', () => {
+    const wallet = makeWallet({ balance: 0, archived: true });
+    const status = getWalletStatus(wallet, [booking], today);
+    expect(status.rate).toBe(0);
+    expect(status.isLow).toBe(false);
   });
 });

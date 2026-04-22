@@ -144,18 +144,6 @@ function WalletCard({
 }) {
   const { rate, isLow } = getWalletStatus(wallet, bookings, todayStr);
 
-  // Bar anchors to rate × 2 (the low-balance threshold): full bar = 2+ lessons
-  // of coverage, half = 1 lesson, empty = below next lesson cost.
-  const safeZone = rate * 2;
-  const displayBalance = Math.max(0, wallet.balance);
-  const barPct = safeZone > 0 ? Math.max(0, Math.min(100, (displayBalance / safeZone) * 100)) : 0;
-  const barColor =
-    rate > 0 && wallet.balance < rate
-      ? 'var(--bad)'
-      : rate > 0 && wallet.balance < rate * 2
-        ? 'var(--warn)'
-        : 'var(--good)';
-
   const balanceColor =
     wallet.balance < 0 ? 'var(--bad)' : isLow ? 'var(--warn)' : 'var(--ink)';
 
@@ -169,9 +157,11 @@ function WalletCard({
   const footer =
     wallet.balance < 0
       ? 'Owes you'
-      : rate <= 0
-        ? 'No lessons scheduled'
-        : '';
+      : wallet.tabMode
+        ? 'Tab mode'
+        : rate <= 0
+          ? 'No lessons scheduled'
+          : '';
 
   return (
     <button
@@ -220,24 +210,6 @@ function WalletCard({
           {wallet.balance >= 0 && isLow && <Chip tone="bad">Low</Chip>}
         </div>
       </div>
-
-      {rate > 0 && (
-        <div className="mt-3">
-          <div
-            className="rounded-full overflow-hidden"
-            style={{ height: 4, background: 'var(--line)' }}
-          >
-            <div
-              style={{
-                height: '100%',
-                width: `${barPct}%`,
-                background: barColor,
-                transition: 'width 0.2s',
-              }}
-            />
-          </div>
-        </div>
-      )}
     </button>
   );
 }
@@ -249,8 +221,6 @@ function WalletDetailBody({
   wallet,
   students,
   wallets,
-  bookings,
-  todayStr,
   onTopUp,
   onAdjust,
   onDelete,
@@ -261,8 +231,6 @@ function WalletDetailBody({
   wallet: Wallet;
   students: { id: string; clientName: string }[];
   wallets: Wallet[];
-  bookings: import('@/types').Booking[];
-  todayStr: string;
   onTopUp: () => void;
   onAdjust: () => void;
   onDelete: () => void;
@@ -280,17 +248,6 @@ function WalletDetailBody({
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(wallet.name);
   const [savingName, setSavingName] = useState(false);
-
-  const { rate } = getWalletStatus(wallet, bookings, todayStr);
-  const safeZone = rate * 2;
-  const displayBalance = Math.max(0, wallet.balance);
-  const barPct = safeZone > 0 ? Math.max(0, Math.min(100, (displayBalance / safeZone) * 100)) : 0;
-  const barColor =
-    rate > 0 && wallet.balance < rate
-      ? 'var(--bad)'
-      : rate > 0 && wallet.balance < rate * 2
-        ? 'var(--warn)'
-        : 'var(--good)';
 
   const handleSaveName = async () => {
     if (!db) return;
@@ -369,21 +326,12 @@ function WalletDetailBody({
         >
           {wallet.balance < 0 ? '−' : ''}RM {Math.abs(wallet.balance).toFixed(0)}
         </div>
-        {rate > 0 && (
-          <div className="mt-3">
-            <div
-              className="rounded-full overflow-hidden"
-              style={{ height: 4, background: 'var(--line)' }}
-            >
-              <div
-                style={{
-                  height: '100%',
-                  width: `${barPct}%`,
-                  background: barColor,
-                  transition: 'width 0.2s',
-                }}
-              />
-            </div>
+        {wallet.tabMode && (
+          <div
+            className="text-[11px] mt-1.5"
+            style={{ color: 'var(--ink-3)' }}
+          >
+            Tab mode — pays after each lesson
           </div>
         )}
       </div>
@@ -531,6 +479,30 @@ function WalletDetailBody({
             Rename wallet
           </Btn>
         )}
+        <button
+          onClick={async () => {
+            if (!db) return;
+            try {
+              await updateDoc(
+                doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
+                {
+                  tabMode: !(wallet.tabMode ?? false),
+                  updatedAt: serverTimestamp(),
+                },
+              );
+              showToast(
+                wallet.tabMode ? 'Tab mode off' : 'Tab mode on',
+                'success',
+              );
+            } catch {
+              showToast('Failed to update', 'error');
+            }
+          }}
+          className="text-[12.5px] font-medium py-2 rounded-[8px]"
+          style={{ color: 'var(--ink-3)' }}
+        >
+          {wallet.tabMode ? 'Turn off tab mode' : 'Turn on tab mode'}
+        </button>
         <button
           onClick={async () => {
             if (!db) return;
@@ -1402,8 +1374,6 @@ export default function PaymentsPage() {
             wallet={selectedWallet}
             students={students}
             wallets={wallets}
-            bookings={bookings}
-            todayStr={todayStr}
             onTopUp={() => setShowTopUpModal(true)}
             onAdjust={() => setShowAdjustModal(true)}
             onDelete={() => setShowDeleteModal(true)}
