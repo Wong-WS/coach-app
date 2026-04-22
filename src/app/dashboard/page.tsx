@@ -2668,8 +2668,10 @@ function StudentRow({
           </span>
           <input
             type="number"
-            value={row.price}
-            onChange={(e) => onChange({ price: Number(e.target.value) })}
+            inputMode="numeric"
+            value={row.price === 0 ? '' : row.price}
+            placeholder="0"
+            onChange={(e) => onChange({ price: e.target.value === '' ? 0 : Number(e.target.value) })}
             className={`${paperInputClass} mono tnum text-right`}
             style={{ ...paperInputStyle, width: 90 }}
           />
