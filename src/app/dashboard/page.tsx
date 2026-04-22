@@ -166,6 +166,7 @@ export default function DashboardPage() {
   // Mark-done modal state
   const [markDoneBooking, setMarkDoneBooking] = useState<Booking | null>(null);
   const [markDoneAmounts, setMarkDoneAmounts] = useState<Record<string, number>>({});
+  const [markDoneAttending, setMarkDoneAttending] = useState<string[]>([]);
   const [markingDone, setMarkingDone] = useState(false);
 
   const openMarkDone = (c: Booking) => {
@@ -173,24 +174,28 @@ export default function DashboardPage() {
     const init: Record<string, number> = {};
     for (const sid of c.studentIds) init[sid] = c.studentPrices[sid] ?? 0;
     setMarkDoneAmounts(init);
+    setMarkDoneAttending([...c.studentIds]);
   };
 
   const closeMarkDone = () => {
     setMarkDoneBooking(null);
     setMarkDoneAmounts({});
+    setMarkDoneAttending([]);
   };
 
   const handleConfirmMarkDone = async () => {
     const booking = markDoneBooking;
     if (!coach || !db || !booking) return;
+    if (markDoneAttending.length === 0) return;
     setMarkingDone(true);
+    const attendingIds = markDoneAttending;
     closeMarkDone();
     showToast(`Marked ${booking.className || 'class'} done`, 'success');
     try {
       const firestore = db as Firestore;
       const batch = writeBatch(firestore);
 
-      for (const studentId of booking.studentIds) {
+      for (const studentId of attendingIds) {
         const price = markDoneAmounts[studentId] ?? booking.studentPrices[studentId] ?? 0;
         const studentName = students.find((s) => s.id === studentId)?.clientName ?? '';
 
@@ -769,6 +774,13 @@ export default function DashboardPage() {
         booking={markDoneBooking}
         amounts={markDoneAmounts}
         onAmountsChange={setMarkDoneAmounts}
+        attending={markDoneAttending}
+        onRemoveAttendee={(sid) =>
+          setMarkDoneAttending((prev) => prev.filter((x) => x !== sid))
+        }
+        onRestoreAttendee={(sid) =>
+          setMarkDoneAttending((prev) => (prev.includes(sid) ? prev : [...prev, sid]))
+        }
         students={students}
         wallets={wallets}
         busy={markingDone}
@@ -1883,6 +1895,9 @@ function MarkDoneModal({
   booking,
   amounts,
   onAmountsChange,
+  attending,
+  onRemoveAttendee,
+  onRestoreAttendee,
   students,
   wallets,
   busy,
@@ -1893,6 +1908,9 @@ function MarkDoneModal({
   booking: Booking | null;
   amounts: Record<string, number>;
   onAmountsChange: (a: Record<string, number>) => void;
+  attending: string[];
+  onRemoveAttendee: (sid: string) => void;
+  onRestoreAttendee: (sid: string) => void;
   students: Student[];
   wallets: Wallet[];
   busy: boolean;
@@ -1900,7 +1918,12 @@ function MarkDoneModal({
   onConfirm: () => void;
 }) {
   if (!booking) return null;
-  const total = Object.values(amounts).reduce((s, v) => s + (Number(v) || 0), 0);
+  const attendingSet = new Set(attending);
+  const total = booking.studentIds.reduce((s, sid) => {
+    if (!attendingSet.has(sid)) return s;
+    return s + (Number(amounts[sid]) || 0);
+  }, 0);
+  const canConfirm = attending.length > 0;
 
   return (
     <PaperModal open={open} onClose={onClose} title="Mark class as done" width={480}>
@@ -1916,58 +1939,103 @@ function MarkDoneModal({
           {booking.locationName}
         </div>
       </div>
-      <div
-        className="text-[11px] font-semibold uppercase mb-2"
-        style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
-      >
-        Attendees & charges
+      <div className="flex items-center justify-between mb-2">
+        <div
+          className="text-[11px] font-semibold uppercase"
+          style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
+        >
+          Attendees & charges
+        </div>
+        {booking.studentIds.length > 1 && (
+          <div className="text-[11.5px]" style={{ color: 'var(--ink-4)' }}>
+            {attending.length}/{booking.studentIds.length} attending
+          </div>
+        )}
       </div>
       {booking.studentIds.map((sid) => {
         const s = students.find((x) => x.id === sid);
         const w = resolveWallet(booking, sid, wallets);
+        const isAttending = attendingSet.has(sid);
+        const canRemove = booking.studentIds.length > 1;
         return (
           <div
             key={sid}
             className="flex items-center gap-2.5 py-2.5 border-t"
-            style={{ borderColor: 'var(--line)' }}
+            style={{
+              borderColor: 'var(--line)',
+              opacity: isAttending ? 1 : 0.5,
+            }}
           >
             <Avatar name={s?.clientName || ''} size={30} />
             <div className="flex-1 min-w-0">
               <div
                 className="text-[13px] font-medium truncate"
-                style={{ color: 'var(--ink)' }}
+                style={{
+                  color: 'var(--ink)',
+                  textDecoration: isAttending ? 'none' : 'line-through',
+                }}
               >
                 {s?.clientName}
               </div>
-              {w && (
-                <div className="text-[11px] mono tnum" style={{ color: 'var(--ink-3)' }}>
-                  Wallet: RM {Math.round(w.balance)}
+              {isAttending ? (
+                w && (
+                  <div className="text-[11px] mono tnum" style={{ color: 'var(--ink-3)' }}>
+                    Wallet: RM {Math.round(w.balance)}
+                  </div>
+                )
+              ) : (
+                <div className="text-[11px]" style={{ color: 'var(--ink-4)' }}>
+                  Skipped — no charge
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="mono text-[12px]" style={{ color: 'var(--ink-3)' }}>
-                RM
-              </span>
-              <input
-                type="number"
-                value={amounts[sid] ?? 0}
-                onChange={(e) =>
-                  onAmountsChange({ ...amounts, [sid]: Number(e.target.value) })
-                }
-                className="mono text-right"
-                style={{
-                  width: 72,
-                  padding: '6px 8px',
-                  border: '1px solid var(--line-2)',
-                  borderRadius: 8,
-                  background: 'var(--panel)',
-                  color: 'var(--ink)',
-                  fontSize: 13,
-                  outline: 'none',
-                }}
-              />
-            </div>
+            {isAttending ? (
+              <>
+                <div className="flex items-center gap-1.5">
+                  <span className="mono text-[12px]" style={{ color: 'var(--ink-3)' }}>
+                    RM
+                  </span>
+                  <input
+                    type="number"
+                    value={amounts[sid] ?? 0}
+                    onChange={(e) =>
+                      onAmountsChange({ ...amounts, [sid]: Number(e.target.value) })
+                    }
+                    className="mono text-right"
+                    style={{
+                      width: 72,
+                      padding: '6px 8px',
+                      border: '1px solid var(--line-2)',
+                      borderRadius: 8,
+                      background: 'var(--panel)',
+                      color: 'var(--ink)',
+                      fontSize: 13,
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+                {canRemove && (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveAttendee(sid)}
+                    aria-label="Remove attendee"
+                    className="p-1 rounded-md"
+                    style={{ color: 'var(--ink-4)' }}
+                  >
+                    <IconClose size={14} />
+                  </button>
+                )}
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onRestoreAttendee(sid)}
+                className="text-[12px] font-medium"
+                style={{ color: 'var(--accent)' }}
+              >
+                Undo
+              </button>
+            )}
           </div>
         );
       })}
@@ -1989,7 +2057,7 @@ function MarkDoneModal({
         <Btn variant="ghost" full onClick={onClose} disabled={busy}>
           Cancel
         </Btn>
-        <Btn variant="primary" full onClick={onConfirm} disabled={busy}>
+        <Btn variant="primary" full onClick={onConfirm} disabled={busy || !canConfirm}>
           <IconCheck size={14} /> Confirm
         </Btn>
       </div>
