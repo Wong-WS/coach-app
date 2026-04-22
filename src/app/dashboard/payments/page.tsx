@@ -519,28 +519,6 @@ function WalletDetailBody({
           />
           lessons
         </label>
-
-        <button
-          onClick={async () => {
-            if (!db) return;
-            try {
-              await updateDoc(
-                doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
-                {
-                  archived: !(wallet.archived ?? false),
-                  updatedAt: serverTimestamp(),
-                },
-              );
-              onClose();
-            } catch {
-              showToast('Failed to update', 'error');
-            }
-          }}
-          className="ml-auto text-[12.5px] underline"
-          style={{ color: 'var(--ink-3)' }}
-        >
-          {wallet.archived ? 'Unarchive' : 'Archive'}
-        </button>
       </div>
 
       {/* Linked students */}
@@ -676,6 +654,27 @@ function WalletDetailBody({
             Rename wallet
           </Btn>
         )}
+        <button
+          onClick={async () => {
+            if (!db) return;
+            try {
+              await updateDoc(
+                doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
+                {
+                  archived: !(wallet.archived ?? false),
+                  updatedAt: serverTimestamp(),
+                },
+              );
+              onClose();
+            } catch {
+              showToast('Failed to update', 'error');
+            }
+          }}
+          className="text-[12.5px] font-medium py-2 rounded-[8px]"
+          style={{ color: 'var(--ink-3)' }}
+        >
+          {wallet.archived ? 'Unarchive wallet' : 'Archive wallet'}
+        </button>
         <button
           onClick={onDelete}
           className="text-[12.5px] font-medium py-2 rounded-[8px]"
