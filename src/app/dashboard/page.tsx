@@ -2094,16 +2094,16 @@ type StudentRowState = {
   price: number;
 };
 
-function makeEmptyRow(defaultStudentId = ''): StudentRowState {
+function makeEmptyRow(): StudentRowState {
   return {
-    mode: 'existing',
-    studentId: defaultStudentId,
+    mode: 'new',
+    studentId: '',
     newName: '',
     newPhone: '',
-    walletOption: 'none',
+    walletOption: 'create',
     existingWalletId: '',
     newWalletName: '',
-    price: 120,
+    price: 0,
   };
 }
 
@@ -2142,15 +2142,15 @@ function AddLessonModal({
     setStartTime('16:00');
     setEndTime('17:00');
     setRepeat(false);
-    setLocationId(locations[0]?.id || '');
+    setLocationId('__new');
     setNewLocationName('');
-    setRows([makeEmptyRow(students[0]?.id || '')]);
-  }, [open, defaultDate, locations, students]);
+    setRows([makeEmptyRow()]);
+  }, [open, defaultDate]);
 
   const updateRow = (i: number, patch: Partial<StudentRowState>) =>
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const addRow = () =>
-    setRows((rs) => [...rs, makeEmptyRow(students[0]?.id || '')]);
+    setRows((rs) => [...rs, makeEmptyRow()]);
   const removeRow = (i: number) =>
     setRows((rs) => rs.filter((_, idx) => idx !== i));
 
