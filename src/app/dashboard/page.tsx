@@ -37,7 +37,7 @@ import {
 } from '@/lib/class-schedule';
 import { resolveWallet } from '@/lib/wallets';
 import { findOrCreateStudent } from '@/lib/students';
-import { isLowBalance, getNextLessonCost } from '@/lib/wallet-alerts';
+import { isLowBalance } from '@/lib/wallet-alerts';
 import { formatTimeDisplay } from '@/lib/time-format';
 import { formatDateFull, formatDateShort, parseDateString } from '@/lib/date-format';
 import {
@@ -688,7 +688,7 @@ export default function DashboardPage() {
               value={`RM ${Math.round(todayRevenue)}`}
               sub={`of RM ${Math.round(expectedRevenue)} expected`}
             />
-            <LowWalletsCard wallets={lowWallets} bookings={bookings} />
+            <LowWalletsCard wallets={lowWallets} />
             <QuickActionsCard
               onAdd={() => setShowAdd(true)}
             />
@@ -1437,14 +1437,11 @@ function CancelledList({
   );
 }
 
-function LowWalletsCard({ wallets, bookings }: { wallets: Wallet[]; bookings: Booking[] }) {
+function LowWalletsCard({ wallets }: { wallets: Wallet[] }) {
   const describe = (w: Wallet) => {
-    if (w.balance < 0) return 'Owes you';
-    const rate = getNextLessonCost(w, bookings);
-    if (rate <= 0) return 'Needs top-up';
-    const left = Math.floor(w.balance / rate);
-    if (left === 0) return 'Needs top-up';
-    return left === 1 ? '1 lesson left' : `${left} lessons left`;
+    if (w.balance < 0) return `Owes RM ${Math.abs(w.balance).toFixed(0)}`;
+    if (w.balance === 0) return 'Needs top-up';
+    return `RM ${w.balance.toFixed(0)}`;
   };
 
   return (

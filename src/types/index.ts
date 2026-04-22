@@ -86,9 +86,7 @@ export interface Wallet {
   name: string;
   balance: number;
   studentIds: string[];
-  payPerLesson?: boolean;       // default false. disables alerts + top-up minimums.
   archived?: boolean;           // default false. hides from default list, disables alerts.
-  minLessonsPerTopUp?: number;  // default 5. how many lessons one top-up should cover.
   createdAt: Date;
   updatedAt: Date;
 }

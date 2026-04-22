@@ -51,6 +51,7 @@ export function PaperModal({ open, onClose, title, width = 440, children }: Pape
 
   useEffect(() => {
     if (!open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDragY(0);
       setIsDragging(false);
       dragRef.current = null;

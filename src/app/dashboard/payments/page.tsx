@@ -29,11 +29,7 @@ import {
 } from '@/hooks/useCoachData';
 import { useToast } from '@/components/ui/Toast';
 import { getScheduledRevenueForDateRange } from '@/lib/class-schedule';
-import {
-  isLowBalance,
-  getWalletStatus,
-  getEffectiveBalance,
-} from '@/lib/wallet-alerts';
+import { isLowBalance, getWalletStatus } from '@/lib/wallet-alerts';
 import { useSearchParams } from 'next/navigation';
 import {
   Btn,
@@ -80,47 +76,6 @@ function getMonthRange(): { start: string; end: string } {
 
 function formatRM(amount: number): string {
   return `RM ${Math.round(amount).toLocaleString('en-MY')}`;
-}
-
-// Keyed by wallet.id at the call site so the draft resets naturally on switch.
-function PackageSizeInput({
-  initial,
-  onCommit,
-}: {
-  initial: number;
-  onCommit: (value: number) => Promise<void> | void;
-}) {
-  const [draft, setDraft] = useState(String(initial));
-  return (
-    <input
-      type="number"
-      min="1"
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={async () => {
-        const n = parseInt(draft, 10);
-        if (isNaN(n) || n < 1) {
-          setDraft(String(initial));
-          return;
-        }
-        if (n === initial) return;
-        try {
-          await onCommit(n);
-        } catch {
-          setDraft(String(initial));
-        }
-      }}
-      className="w-14 px-2 py-1 rounded-[8px] border text-[13px] outline-none focus:border-[color:var(--accent)]"
-      style={{
-        background: 'var(--bg)',
-        borderColor: 'var(--line-2)',
-        color: 'var(--ink)',
-        boxSizing: 'border-box',
-        WebkitAppearance: 'none',
-        appearance: 'none',
-      }}
-    />
-  );
 }
 
 // ─── Stat card ───────────────────────────────────────────────────────────────
@@ -173,7 +128,6 @@ function Stat({
 // ─── Wallet card ─────────────────────────────────────────────────────────────
 
 function WalletCard({
-  coachId,
   wallet,
   bookings,
   todayStr,
@@ -181,7 +135,6 @@ function WalletCard({
   selected,
   onClick,
 }: {
-  coachId: string;
   wallet: Wallet;
   bookings: import('@/types').Booking[];
   todayStr: string;
@@ -189,16 +142,13 @@ function WalletCard({
   selected: boolean;
   onClick: () => void;
 }) {
-  // Only walk transactions for low/negative wallets to recover pre-debt snapshot.
-  const needsTxns = wallet.balance < 0;
-  const { transactions } = useWalletTransactions(coachId, needsTxns ? wallet.id : undefined, 20);
-  const { rate, isLow } = getWalletStatus(wallet, bookings, todayStr, transactions);
-  const packageSize = wallet.minLessonsPerTopUp ?? 5;
-  const effective = getEffectiveBalance(wallet, transactions);
-  const target = rate * packageSize;
+  const { rate, isLow } = getWalletStatus(wallet, bookings, todayStr);
 
-  const lessonsLeft = rate > 0 && wallet.balance > 0 ? Math.floor(wallet.balance / rate) : 0;
-  const barPct = target > 0 ? Math.max(0, Math.min(100, (effective / target) * 100)) : 0;
+  // Bar anchors to rate × 2 (the low-balance threshold): full bar = 2+ lessons
+  // of coverage, half = 1 lesson, empty = below next lesson cost.
+  const safeZone = rate * 2;
+  const displayBalance = Math.max(0, wallet.balance);
+  const barPct = safeZone > 0 ? Math.max(0, Math.min(100, (displayBalance / safeZone) * 100)) : 0;
   const barColor =
     rate > 0 && wallet.balance < rate
       ? 'var(--bad)'
@@ -219,13 +169,9 @@ function WalletCard({
   const footer =
     wallet.balance < 0
       ? 'Owes you'
-      : wallet.payPerLesson
-        ? 'Pay per lesson'
-        : rate <= 0
-          ? 'No lessons scheduled'
-          : lessonsLeft === 1
-            ? '1 lesson left'
-            : `~${lessonsLeft} lessons left`;
+      : rate <= 0
+        ? 'No lessons scheduled'
+        : '';
 
   return (
     <button
@@ -251,7 +197,6 @@ function WalletCard({
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          {wallet.payPerLesson && <Chip tone="soft">PPL</Chip>}
           {wallet.archived && <Chip tone="soft">Archived</Chip>}
         </div>
       </div>
@@ -264,9 +209,11 @@ function WalletCard({
           >
             {wallet.balance < 0 ? '−' : ''}RM {Math.abs(wallet.balance).toFixed(0)}
           </div>
-          <div className="text-[11px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
-            {footer}
-          </div>
+          {footer && (
+            <div className="text-[11px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
+              {footer}
+            </div>
+          )}
         </div>
         <div className="shrink-0 flex items-center gap-1.5">
           {wallet.balance < 0 && <Chip tone="bad">Owing</Chip>}
@@ -274,7 +221,7 @@ function WalletCard({
         </div>
       </div>
 
-      {!wallet.payPerLesson && target > 0 && (
+      {rate > 0 && (
         <div className="mt-3">
           <div
             className="rounded-full overflow-hidden"
@@ -334,12 +281,10 @@ function WalletDetailBody({
   const [renameValue, setRenameValue] = useState(wallet.name);
   const [savingName, setSavingName] = useState(false);
 
-  const { rate } = getWalletStatus(wallet, bookings, todayStr, transactions);
-  const packageSize = wallet.minLessonsPerTopUp ?? 5;
-  const effective = getEffectiveBalance(wallet, transactions);
-  const target = rate * packageSize;
-  const lessonsLeft = rate > 0 && wallet.balance > 0 ? Math.floor(wallet.balance / rate) : 0;
-  const barPct = target > 0 ? Math.max(0, Math.min(100, (effective / target) * 100)) : 0;
+  const { rate } = getWalletStatus(wallet, bookings, todayStr);
+  const safeZone = rate * 2;
+  const displayBalance = Math.max(0, wallet.balance);
+  const barPct = safeZone > 0 ? Math.max(0, Math.min(100, (displayBalance / safeZone) * 100)) : 0;
   const barColor =
     rate > 0 && wallet.balance < rate
       ? 'var(--bad)'
@@ -424,7 +369,7 @@ function WalletDetailBody({
         >
           {wallet.balance < 0 ? '−' : ''}RM {Math.abs(wallet.balance).toFixed(0)}
         </div>
-        {!wallet.payPerLesson && target > 0 && (
+        {rate > 0 && (
           <div className="mt-3">
             <div
               className="rounded-full overflow-hidden"
@@ -439,21 +384,6 @@ function WalletDetailBody({
                 }}
               />
             </div>
-            <div
-              className="flex items-center justify-between mt-2 text-[11.5px]"
-              style={{ color: 'var(--ink-3)' }}
-            >
-              <span>
-                {wallet.balance < 0
-                  ? 'Owes you'
-                  : lessonsLeft === 1
-                    ? '1 lesson left'
-                    : `~${lessonsLeft} lessons left`}
-              </span>
-              <span className="mono tnum">
-                {rate > 0 ? `${packageSize}-lesson target · RM ${target.toFixed(0)}` : ''}
-              </span>
-            </div>
           </div>
         )}
       </div>
@@ -466,59 +396,6 @@ function WalletDetailBody({
         <Btn variant="outline" onClick={onAdjust}>
           Adjust
         </Btn>
-      </div>
-
-      {/* Settings row */}
-      <div
-        className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-3 border-t"
-        style={{ borderColor: 'var(--line)' }}
-      >
-        <label
-          className="flex items-center gap-2 text-[13px]"
-          style={{ color: 'var(--ink-2)' }}
-        >
-          <input
-            type="checkbox"
-            checked={wallet.payPerLesson ?? false}
-            onChange={async (e) => {
-              if (!db) return;
-              try {
-                await updateDoc(
-                  doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
-                  { payPerLesson: e.target.checked, updatedAt: serverTimestamp() },
-                );
-              } catch {
-                showToast('Failed to update', 'error');
-              }
-            }}
-            className="rounded"
-          />
-          Pay per lesson
-        </label>
-
-        <label
-          className="flex items-center gap-2 text-[13px]"
-          style={{ color: 'var(--ink-2)' }}
-        >
-          Package size:
-          <PackageSizeInput
-            key={wallet.id}
-            initial={wallet.minLessonsPerTopUp ?? 5}
-            onCommit={async (n) => {
-              if (!db) return;
-              try {
-                await updateDoc(
-                  doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
-                  { minLessonsPerTopUp: n, updatedAt: serverTimestamp() },
-                );
-              } catch (err) {
-                showToast('Failed to update package size', 'error');
-                throw err;
-              }
-            }}
-          />
-          lessons
-        </label>
       </div>
 
       {/* Linked students */}
@@ -987,14 +864,6 @@ export default function PaymentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wallets]);
 
-  // Transactions for the top-up modal — only when selected wallet is negative.
-  const selectedWalletNegative = !!selectedWallet && selectedWallet.balance < 0;
-  const { transactions: selectedWalletTransactions } = useWalletTransactions(
-    coach?.id,
-    selectedWalletNegative ? selectedWallet!.id : undefined,
-    20,
-  );
-
   // Modals.
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newWalletName, setNewWalletName] = useState('');
@@ -1154,15 +1023,10 @@ export default function PaymentsPage() {
   // Top-up presets (require a rate > 0).
   const topUpPresets = useMemo(() => {
     if (!selectedWallet) return null;
-    const { rate } = getWalletStatus(
-      selectedWallet,
-      bookings,
-      todayStr,
-      selectedWalletTransactions,
-    );
+    const { rate } = getWalletStatus(selectedWallet, bookings, todayStr);
     if (rate <= 0) return null;
     return [rate, rate * 5, rate * 10];
-  }, [selectedWallet, bookings, todayStr, selectedWalletTransactions]);
+  }, [selectedWallet, bookings, todayStr]);
 
   const unassignedStudents = students.filter(
     (s) => !wallets.some((w) => w.studentIds.includes(s.id)),
@@ -1501,7 +1365,6 @@ export default function PaymentsPage() {
                 return (
                   <WalletCard
                     key={wallet.id}
-                    coachId={coach.id}
                     wallet={wallet}
                     bookings={bookings}
                     todayStr={todayStr}
