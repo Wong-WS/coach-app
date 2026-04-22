@@ -142,6 +142,14 @@ export const IconBell = (p: IconProps) => (
 export const IconSparkle = (p: IconProps) => (
   <Icon {...p}><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z" /></Icon>
 );
+export const IconRepeat = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M17 2l4 4-4 4" />
+    <path d="M3 11v-1a4 4 0 014-4h14" />
+    <path d="M7 22l-4-4 4-4" />
+    <path d="M21 13v1a4 4 0 01-4 4H3" />
+  </Icon>
+);
 export const IconLogOut = (p: IconProps) => (
   <Icon {...p}>
     <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />

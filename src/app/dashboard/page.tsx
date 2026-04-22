@@ -60,6 +60,7 @@ import {
   IconTrash,
   IconClose,
   IconSearch,
+  IconRepeat,
 } from '@/components/paper';
 
 const SHORT_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -1202,6 +1203,7 @@ function ClassCard({
     .filter((w): w is Wallet => !!w);
   const anyLow = walletsFor.some((w) => isLowBalance(w, bookings, todayStr));
   const duration = minutesBetween(cls.startTime, cls.endTime);
+  const isRecurring = !cls.startDate || !cls.endDate || cls.startDate !== cls.endDate;
 
   return (
     <div
@@ -1250,6 +1252,20 @@ function ClassCard({
       {/* Main */}
       <div className="flex-1 min-w-0 flex flex-col gap-1.5">
         <div className="flex items-center gap-2 flex-wrap">
+          {isRecurring && (
+            <span
+              className="inline-flex items-center justify-center rounded-md"
+              style={{
+                color: 'var(--accent)',
+                background: 'var(--accent-soft)',
+                padding: '2px 4px',
+              }}
+              title="Recurring weekly"
+              aria-label="Recurring weekly"
+            >
+              <IconRepeat size={12} sw={2} />
+            </span>
+          )}
           <div
             className="text-[14.5px] font-semibold"
             style={{ color: 'var(--ink)', letterSpacing: '-0.2px' }}
