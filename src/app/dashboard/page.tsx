@@ -37,7 +37,7 @@ import {
 } from '@/lib/class-schedule';
 import { resolveWallet } from '@/lib/wallets';
 import { findOrCreateStudent } from '@/lib/students';
-import { isLowBalance } from '@/lib/wallet-alerts';
+import { isLowBalance, getNextLessonCost } from '@/lib/wallet-alerts';
 import { formatTimeDisplay } from '@/lib/time-format';
 import { formatDateFull, formatDateShort, parseDateString } from '@/lib/date-format';
 import {
@@ -626,6 +626,7 @@ export default function DashboardPage() {
           todayStr={todayStr}
           classesPerDay={classesPerDay}
           onPick={setSelectedDate}
+          onWeekShift={(delta) => setSelectedDate(addDays(selectedDate, delta))}
         />
 
         <div className="grid grid-cols-[1fr_300px] gap-5 items-start">
@@ -687,7 +688,7 @@ export default function DashboardPage() {
               value={`RM ${Math.round(todayRevenue)}`}
               sub={`of RM ${Math.round(expectedRevenue)} expected`}
             />
-            <LowWalletsCard wallets={lowWallets} />
+            <LowWalletsCard wallets={lowWallets} bookings={bookings} />
             <QuickActionsCard
               onAdd={() => setShowAdd(true)}
             />
@@ -715,6 +716,7 @@ export default function DashboardPage() {
           todayStr={todayStr}
           classesPerDay={classesPerDay}
           onPick={setSelectedDate}
+          onWeekShift={(delta) => setSelectedDate(addDays(selectedDate, delta))}
           compact
         />
 
@@ -969,12 +971,27 @@ function DesktopHero({
   );
 }
 
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function fmtWeekRange(weekDays: Date[]): string {
+  if (weekDays.length === 0) return '';
+  const start = weekDays[0];
+  const end = weekDays[weekDays.length - 1];
+  const startLbl = `${MONTH_ABBR[start.getMonth()]} ${start.getDate()}`;
+  const endLbl =
+    start.getMonth() === end.getMonth()
+      ? `${end.getDate()}`
+      : `${MONTH_ABBR[end.getMonth()]} ${end.getDate()}`;
+  return `${startLbl} – ${endLbl}`;
+}
+
 function WeekStrip({
   weekDays,
   selectedDateStr,
   todayStr,
   classesPerDay,
   onPick,
+  onWeekShift,
   compact = false,
 }: {
   weekDays: Date[];
@@ -982,11 +999,43 @@ function WeekStrip({
   todayStr: string;
   classesPerDay: Map<string, number>;
   onPick: (d: Date) => void;
+  onWeekShift?: (delta: number) => void;
   compact?: boolean;
 }) {
   return (
+    <div className="mb-5">
+      {onWeekShift && (
+        <div className="flex items-center justify-between mb-2">
+          <div
+            className="text-[12px] font-medium tnum"
+            style={{ color: 'var(--ink-2)' }}
+          >
+            {fmtWeekRange(weekDays)}
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              aria-label="Previous week"
+              onClick={() => onWeekShift(-7)}
+              className="p-1 rounded-md border"
+              style={{ borderColor: 'var(--line)', color: 'var(--ink-2)' }}
+            >
+              <IconChevL size={14} />
+            </button>
+            <button
+              type="button"
+              aria-label="Next week"
+              onClick={() => onWeekShift(7)}
+              className="p-1 rounded-md border"
+              style={{ borderColor: 'var(--line)', color: 'var(--ink-2)' }}
+            >
+              <IconChevR size={14} />
+            </button>
+          </div>
+        </div>
+      )}
     <div
-      className="grid grid-cols-7 mb-5"
+      className="grid grid-cols-7"
       style={{ gap: compact ? 4 : 8 }}
     >
       {weekDays.map((d, i) => {
@@ -1040,6 +1089,7 @@ function WeekStrip({
           </button>
         );
       })}
+    </div>
     </div>
   );
 }
@@ -1387,7 +1437,15 @@ function CancelledList({
   );
 }
 
-function LowWalletsCard({ wallets }: { wallets: Wallet[] }) {
+function LowWalletsCard({ wallets, bookings }: { wallets: Wallet[]; bookings: Booking[] }) {
+  const describe = (w: Wallet) => {
+    if (w.balance < 0) return 'Owes you';
+    const rate = getNextLessonCost(w, bookings);
+    if (rate <= 0) return 'Needs top-up';
+    const left = Math.floor(w.balance / rate);
+    return left === 1 ? '1 lesson left' : `${left} lessons left`;
+  };
+
   return (
     <div
       className="rounded-[14px] border p-4"
@@ -1416,7 +1474,7 @@ function LowWalletsCard({ wallets }: { wallets: Wallet[] }) {
                   {w.name}
                 </div>
                 <div className="text-[11.5px]" style={{ color: 'var(--ink-3)' }}>
-                  {w.balance < 0 ? 'Owes you' : 'Needs top-up'}
+                  {describe(w)}
                 </div>
               </div>
               <BalancePill balance={w.balance} compact />
