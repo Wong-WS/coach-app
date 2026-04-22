@@ -12,6 +12,8 @@ import {
   getDocs,
   query,
   where,
+  updateDoc,
+  setDoc,
   Firestore,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -25,7 +27,7 @@ import {
   useLocations,
 } from '@/hooks/useCoachData';
 import { useToast } from '@/components/ui/Toast';
-import type { Booking, Student, Wallet, DayOfWeek } from '@/types';
+import type { Booking, Student, Wallet, DayOfWeek, Location } from '@/types';
 import {
   getClassesForDate,
   getBookingTotal,
@@ -37,7 +39,7 @@ import {
 import { resolveWallet } from '@/lib/wallets';
 import { isLowBalance } from '@/lib/wallet-alerts';
 import { formatTimeDisplay } from '@/lib/time-format';
-import { formatDateFull, formatDateShort } from '@/lib/date-format';
+import { formatDateFull, formatDateShort, parseDateString } from '@/lib/date-format';
 import {
   Btn,
   Chip,
@@ -56,6 +58,8 @@ import {
   IconEdit,
   IconCopy,
   IconTrash,
+  IconClose,
+  IconSearch,
 } from '@/components/paper';
 
 const SHORT_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -357,9 +361,229 @@ export default function DashboardPage() {
     }
   };
 
-  const handleEditStub = () => {
-    showToast('Edit coming soon — use Schedule page for now', 'info');
+  // Edit-class modal state
+  const [editBooking, setEditBooking] = useState<Booking | null>(null);
+  const [editBackingExceptionId, setEditBackingExceptionId] = useState<string | null>(null);
+  const [editClassName, setEditClassName] = useState('');
+  const [editLocationId, setEditLocationId] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editStartTime, setEditStartTime] = useState('');
+  const [editEndTime, setEditEndTime] = useState('');
+  const [editNote, setEditNote] = useState('');
+  const [editStudentIds, setEditStudentIds] = useState<string[]>([]);
+  const [editStudentPrices, setEditStudentPrices] = useState<Record<string, number>>({});
+  const [editStudentWallets, setEditStudentWallets] = useState<Record<string, string>>({});
+  const [editAddStudentOpen, setEditAddStudentOpen] = useState(false);
+  const [editAddStudentSearch, setEditAddStudentSearch] = useState('');
+  const [showEditSaveOptions, setShowEditSaveOptions] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+
+  const openEditBooking = (booking: Booking) => {
+    setEditBooking(booking);
+    setEditBackingExceptionId(getBackingException(booking.id, selectedDateStr, classExceptions)?.id ?? null);
+    setEditClassName(booking.className || '');
+    setEditLocationId(booking.locationId);
+    setEditDate(selectedDateStr);
+    setEditStartTime(booking.startTime);
+    setEditEndTime(booking.endTime);
+    setEditNote(booking.notes || '');
+    setEditStudentIds([...booking.studentIds]);
+    setEditStudentPrices({ ...booking.studentPrices });
+    setEditStudentWallets({ ...booking.studentWallets });
+    setEditAddStudentOpen(false);
+    setEditAddStudentSearch('');
+    setShowEditSaveOptions(false);
   };
+
+  const closeEditBooking = () => {
+    setEditBooking(null);
+    setEditBackingExceptionId(null);
+    setShowEditSaveOptions(false);
+  };
+
+  const getLastPriceForStudent = (studentId: string): number => {
+    const sorted = [...bookings].sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+    );
+    for (const b of sorted) {
+      const p = b.studentPrices[studentId];
+      if (p !== undefined && p > 0) return p;
+    }
+    return 0;
+  };
+
+  const hasEditChanges = () => {
+    if (!editBooking) return false;
+    if (editClassName !== (editBooking.className || '')) return true;
+    if (editLocationId !== editBooking.locationId) return true;
+    if (editDate !== selectedDateStr) return true;
+    if (editStartTime !== editBooking.startTime) return true;
+    if (editEndTime !== editBooking.endTime) return true;
+    if (editNote !== (editBooking.notes || '')) return true;
+    const origIds = editBooking.studentIds;
+    if (editStudentIds.length !== origIds.length) return true;
+    for (const id of editStudentIds) if (!origIds.includes(id)) return true;
+    for (const id of editStudentIds) {
+      if ((editBooking.studentPrices[id] ?? 0) !== (editStudentPrices[id] ?? 0)) return true;
+      if ((editBooking.studentWallets[id] ?? '') !== (editStudentWallets[id] ?? '')) return true;
+    }
+    return false;
+  };
+
+  const handleEditSave = async (mode?: 'this' | 'future') => {
+    if (!coach || !db || !editBooking) return;
+    if (!hasEditChanges()) {
+      showToast('No changes to save', 'error');
+      return;
+    }
+    if (!editClassName.trim()) {
+      showToast('Class name is required', 'error');
+      return;
+    }
+    setEditSaving(true);
+    try {
+      const firestore = db as Firestore;
+      const newLocation = locations.find((l) => l.id === editLocationId);
+      const newLocationName = newLocation?.name || editBooking.locationName;
+
+      const studentPricesOut: Record<string, number> = {};
+      for (const id of editStudentIds) studentPricesOut[id] = editStudentPrices[id] ?? 0;
+      const studentWalletsOut: Record<string, string> = {};
+      for (const id of editStudentIds) {
+        const w = editStudentWallets[id];
+        if (w) studentWalletsOut[id] = w;
+      }
+
+      const isOneTime = !!(
+        editBooking.startDate &&
+        editBooking.endDate &&
+        editBooking.startDate === editBooking.endDate
+      );
+      const effectiveDate = editDate || selectedDateStr;
+
+      if (isOneTime) {
+        const update: Record<string, unknown> = {
+          className: editClassName.trim(),
+          locationId: editLocationId,
+          locationName: newLocationName,
+          startTime: editStartTime,
+          endTime: editEndTime,
+          notes: editNote,
+          studentIds: editStudentIds,
+          studentPrices: studentPricesOut,
+          studentWallets: studentWalletsOut,
+          updatedAt: serverTimestamp(),
+        };
+        if (effectiveDate !== selectedDateStr) {
+          update.startDate = effectiveDate;
+          update.endDate = effectiveDate;
+          update.dayOfWeek = getDayOfWeekForDate(effectiveDate);
+        }
+        await updateDoc(doc(firestore, 'coaches', coach.id, 'bookings', editBooking.id), update);
+        showToast('Updated', 'success');
+      } else if (editBackingExceptionId) {
+        await updateDoc(
+          doc(firestore, 'coaches', coach.id, 'classExceptions', editBackingExceptionId),
+          {
+            newDate: effectiveDate,
+            newStartTime: editStartTime,
+            newEndTime: editEndTime,
+            newLocationId: editLocationId,
+            newLocationName: newLocationName,
+            newNote: editNote,
+            newClassName: editClassName.trim(),
+            newStudentIds: editStudentIds,
+            newStudentPrices: studentPricesOut,
+            newStudentWallets: studentWalletsOut,
+          },
+        );
+        showToast('Updated for this date', 'success');
+      } else if (mode === 'this') {
+        const exRef = doc(collection(firestore, 'coaches', coach.id, 'classExceptions'));
+        await setDoc(exRef, {
+          bookingId: editBooking.id,
+          originalDate: selectedDateStr,
+          type: 'rescheduled',
+          newDate: effectiveDate,
+          newStartTime: editStartTime,
+          newEndTime: editEndTime,
+          newLocationId: editLocationId,
+          newLocationName: newLocationName,
+          newNote: editNote,
+          newClassName: editClassName.trim(),
+          newStudentIds: editStudentIds,
+          newStudentPrices: studentPricesOut,
+          newStudentWallets: studentWalletsOut,
+          createdAt: serverTimestamp(),
+        });
+        showToast('Updated for this date', 'success');
+      } else if (mode === 'future') {
+        const batch = writeBatch(firestore);
+        const oldBookingRef = doc(firestore, 'coaches', coach.id, 'bookings', editBooking.id);
+        const newDayOfWeek =
+          effectiveDate !== selectedDateStr
+            ? getDayOfWeekForDate(effectiveDate)
+            : editBooking.dayOfWeek;
+        const lastOccurrence = new Date(selectedDate);
+        lastOccurrence.setDate(lastOccurrence.getDate() - 7);
+        const lastOccurrenceStr = ymd(lastOccurrence);
+        const startDateStr = editBooking.startDate;
+        const hasPriorOccurrences = !startDateStr || lastOccurrenceStr >= startDateStr;
+
+        if (hasPriorOccurrences) {
+          batch.update(oldBookingRef, {
+            endDate: lastOccurrenceStr,
+            updatedAt: serverTimestamp(),
+          });
+          const newBookingRef = doc(collection(firestore, 'coaches', coach.id, 'bookings'));
+          const newData: Record<string, unknown> = {
+            locationId: editLocationId,
+            locationName: newLocationName,
+            dayOfWeek: newDayOfWeek,
+            startTime: editStartTime,
+            endTime: editEndTime,
+            status: 'confirmed',
+            className: editClassName.trim(),
+            notes: editNote,
+            studentIds: editStudentIds,
+            studentPrices: studentPricesOut,
+            studentWallets: studentWalletsOut,
+            startDate: effectiveDate,
+            createdAt: serverTimestamp(),
+          };
+          batch.set(newBookingRef, newData);
+        } else {
+          batch.update(oldBookingRef, {
+            locationId: editLocationId,
+            locationName: newLocationName,
+            dayOfWeek: newDayOfWeek,
+            startTime: editStartTime,
+            endTime: editEndTime,
+            className: editClassName.trim(),
+            notes: editNote,
+            studentIds: editStudentIds,
+            studentPrices: studentPricesOut,
+            studentWallets: studentWalletsOut,
+            startDate: effectiveDate,
+            updatedAt: serverTimestamp(),
+          });
+        }
+        await batch.commit();
+        showToast('Future events updated', 'success');
+      }
+      closeEditBooking();
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to update', 'error');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const editTotalPrice = editStudentIds.reduce(
+    (sum, id) => sum + (editStudentPrices[id] ?? 0),
+    0,
+  );
 
   // Add-lesson modal
   const [showAdd, setShowAdd] = useState(false);
@@ -425,7 +649,7 @@ export default function DashboardPage() {
                   onMarkDone={() => openMarkDone(c)}
                   onCancel={() => handleCancelClass(c)}
                   onUndo={() => handleUndoMarkDone(c)}
-                  onEdit={handleEditStub}
+                  onEdit={() => openEditBooking(c)}
                   onDuplicate={() => handleDuplicate(c)}
                   compact={false}
                 />
@@ -512,7 +736,7 @@ export default function DashboardPage() {
               onMarkDone={() => openMarkDone(c)}
               onCancel={() => handleCancelClass(c)}
               onUndo={() => handleUndoMarkDone(c)}
-              onEdit={handleEditStub}
+              onEdit={() => openEditBooking(c)}
               onDuplicate={() => handleDuplicate(c)}
               compact
             />
@@ -561,8 +785,97 @@ export default function DashboardPage() {
         locations={locations}
         defaultDate={selectedDateStr}
       />
+
+      <EditClassModal
+        open={editBooking !== null}
+        booking={editBooking}
+        backingExceptionId={editBackingExceptionId}
+        selectedDate={selectedDate}
+        selectedDateStr={selectedDateStr}
+        className={editClassName}
+        onClassNameChange={setEditClassName}
+        locationId={editLocationId}
+        onLocationIdChange={setEditLocationId}
+        date={editDate}
+        onDateChange={setEditDate}
+        startTime={editStartTime}
+        onStartTimeChange={(t) => {
+          if (editStartTime && editEndTime) {
+            setEditEndTime(shiftEndTime(editStartTime, editEndTime, t));
+          }
+          setEditStartTime(t);
+        }}
+        endTime={editEndTime}
+        onEndTimeChange={setEditEndTime}
+        note={editNote}
+        onNoteChange={setEditNote}
+        studentIds={editStudentIds}
+        studentPrices={editStudentPrices}
+        studentWallets={editStudentWallets}
+        onRemoveStudent={(sid) => {
+          setEditStudentIds((ids) => ids.filter((i) => i !== sid));
+          setEditStudentPrices((p) => {
+            const next = { ...p };
+            delete next[sid];
+            return next;
+          });
+          setEditStudentWallets((w) => {
+            const next = { ...w };
+            delete next[sid];
+            return next;
+          });
+        }}
+        onStudentPriceChange={(sid, v) =>
+          setEditStudentPrices({ ...editStudentPrices, [sid]: v })
+        }
+        onStudentWalletChange={(sid, v) =>
+          setEditStudentWallets({ ...editStudentWallets, [sid]: v })
+        }
+        addStudentOpen={editAddStudentOpen}
+        onAddStudentOpenChange={setEditAddStudentOpen}
+        addStudentSearch={editAddStudentSearch}
+        onAddStudentSearchChange={setEditAddStudentSearch}
+        onAddStudent={(s) => {
+          const lastPrice = getLastPriceForStudent(s.id);
+          const linkedWallet = wallets.find((w) => w.studentIds.includes(s.id));
+          setEditStudentIds([...editStudentIds, s.id]);
+          setEditStudentPrices({ ...editStudentPrices, [s.id]: lastPrice });
+          setEditStudentWallets({
+            ...editStudentWallets,
+            [s.id]: linkedWallet?.id || '',
+          });
+          setEditAddStudentOpen(false);
+          setEditAddStudentSearch('');
+        }}
+        totalPrice={editTotalPrice}
+        students={students}
+        wallets={wallets}
+        locations={locations}
+        showSaveOptions={showEditSaveOptions}
+        onShowSaveOptions={setShowEditSaveOptions}
+        saving={editSaving}
+        canSave={hasEditChanges() && editStudentIds.length > 0}
+        onSave={handleEditSave}
+        onClose={closeEditBooking}
+      />
     </>
   );
+}
+
+function shiftEndTime(oldStart: string, oldEnd: string, newStart: string): string {
+  const toMin = (t: string) => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
+  const toStr = (min: number) => {
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+  const duration = toMin(oldEnd) - toMin(oldStart);
+  if (duration <= 0) return oldEnd;
+  const maxMin = 23 * 60 + 55;
+  return toStr(Math.min(toMin(newStart) + duration, maxMin));
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1108,6 +1421,458 @@ function QuickActionsCard({ onAdd }: { onAdd: () => void }) {
         </a>
       </div>
     </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <label
+      className="block text-[11.5px] font-semibold uppercase mb-1.5"
+      style={{ color: 'var(--ink-3)', letterSpacing: '0.04em' }}
+    >
+      {children}
+    </label>
+  );
+}
+
+const paperInputClass =
+  'w-full px-3 py-2.5 rounded-[10px] border text-[13.5px] outline-none focus:border-[color:var(--accent)]';
+const paperInputStyle: React.CSSProperties = {
+  background: 'var(--bg)',
+  borderColor: 'var(--line-2)',
+  color: 'var(--ink)',
+};
+
+function EditClassModal({
+  open,
+  booking,
+  backingExceptionId,
+  selectedDate,
+  selectedDateStr,
+  className,
+  onClassNameChange,
+  locationId,
+  onLocationIdChange,
+  date,
+  onDateChange,
+  startTime,
+  onStartTimeChange,
+  endTime,
+  onEndTimeChange,
+  note,
+  onNoteChange,
+  studentIds,
+  studentPrices,
+  studentWallets,
+  onRemoveStudent,
+  onStudentPriceChange,
+  onStudentWalletChange,
+  addStudentOpen,
+  onAddStudentOpenChange,
+  addStudentSearch,
+  onAddStudentSearchChange,
+  onAddStudent,
+  totalPrice,
+  students,
+  wallets,
+  locations,
+  showSaveOptions,
+  onShowSaveOptions,
+  saving,
+  canSave,
+  onSave,
+  onClose,
+}: {
+  open: boolean;
+  booking: Booking | null;
+  backingExceptionId: string | null;
+  selectedDate: Date;
+  selectedDateStr: string;
+  className: string;
+  onClassNameChange: (v: string) => void;
+  locationId: string;
+  onLocationIdChange: (v: string) => void;
+  date: string;
+  onDateChange: (v: string) => void;
+  startTime: string;
+  onStartTimeChange: (v: string) => void;
+  endTime: string;
+  onEndTimeChange: (v: string) => void;
+  note: string;
+  onNoteChange: (v: string) => void;
+  studentIds: string[];
+  studentPrices: Record<string, number>;
+  studentWallets: Record<string, string>;
+  onRemoveStudent: (sid: string) => void;
+  onStudentPriceChange: (sid: string, v: number) => void;
+  onStudentWalletChange: (sid: string, v: string) => void;
+  addStudentOpen: boolean;
+  onAddStudentOpenChange: (v: boolean) => void;
+  addStudentSearch: string;
+  onAddStudentSearchChange: (v: string) => void;
+  onAddStudent: (s: Student) => void;
+  totalPrice: number;
+  students: Student[];
+  wallets: Wallet[];
+  locations: Location[];
+  showSaveOptions: boolean;
+  onShowSaveOptions: (v: boolean) => void;
+  saving: boolean;
+  canSave: boolean;
+  onSave: (mode?: 'this' | 'future') => void;
+  onClose: () => void;
+}) {
+  if (!booking) return null;
+  const isOneTime = !!(
+    booking.startDate &&
+    booking.endDate &&
+    booking.startDate === booking.endDate
+  );
+
+  return (
+    <PaperModal open={open} onClose={onClose} title="Edit class" width={520}>
+      {!showSaveOptions ? (
+        <div className="flex flex-col gap-4">
+          <div
+            className="rounded-[10px] border p-3"
+            style={{ background: 'var(--bg)', borderColor: 'var(--line-2)' }}
+          >
+            <div className="text-[14px] font-semibold" style={{ color: 'var(--ink)' }}>
+              {className || '(unnamed class)'}
+            </div>
+            <div className="text-[12.5px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
+              {formatDateFull(selectedDate)}
+            </div>
+          </div>
+
+          <div>
+            <FieldLabel>Class name</FieldLabel>
+            <input
+              type="text"
+              value={className}
+              onChange={(e) => onClassNameChange(e.target.value)}
+              placeholder="e.g. Tuesday swim squad"
+              className={paperInputClass}
+              style={paperInputStyle}
+            />
+          </div>
+
+          <div>
+            <FieldLabel>Location</FieldLabel>
+            <select
+              value={locationId}
+              onChange={(e) => onLocationIdChange(e.target.value)}
+              className={paperInputClass}
+              style={paperInputStyle}
+            >
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <FieldLabel>Date</FieldLabel>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => onDateChange(e.target.value)}
+              className={`${paperInputClass} mono tnum`}
+              style={paperInputStyle}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <FieldLabel>Start</FieldLabel>
+              <input
+                type="time"
+                value={startTime}
+                onChange={(e) => onStartTimeChange(e.target.value)}
+                step={300}
+                className={`${paperInputClass} mono tnum`}
+                style={paperInputStyle}
+              />
+            </div>
+            <div>
+              <FieldLabel>End</FieldLabel>
+              <input
+                type="time"
+                value={endTime}
+                onChange={(e) => onEndTimeChange(e.target.value)}
+                step={300}
+                className={`${paperInputClass} mono tnum`}
+                style={paperInputStyle}
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div
+                className="text-[11.5px] font-semibold uppercase"
+                style={{ color: 'var(--ink-3)', letterSpacing: '0.04em' }}
+              >
+                Students ({studentIds.length})
+              </div>
+              <div className="mono tnum text-[12.5px]" style={{ color: 'var(--ink-2)' }}>
+                Total RM {totalPrice.toFixed(0)}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {studentIds.map((sid) => {
+                const s = students.find((x) => x.id === sid);
+                return (
+                  <div
+                    key={sid}
+                    className="rounded-[10px] border p-3 flex flex-col gap-2"
+                    style={{ background: 'var(--bg)', borderColor: 'var(--line-2)' }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div
+                          className="text-[13.5px] font-medium truncate"
+                          style={{ color: 'var(--ink)' }}
+                        >
+                          {s?.clientName ?? '(unknown)'}
+                        </div>
+                        {s?.clientPhone && (
+                          <div
+                            className="mono text-[11.5px] truncate"
+                            style={{ color: 'var(--ink-3)' }}
+                          >
+                            {s.clientPhone}
+                          </div>
+                        )}
+                      </div>
+                      {studentIds.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => onRemoveStudent(sid)}
+                          className="text-[11.5px] font-medium"
+                          style={{ color: 'var(--bad)' }}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <FieldLabel>Price</FieldLabel>
+                        <input
+                          type="number"
+                          min={0}
+                          value={String(studentPrices[sid] ?? 0)}
+                          onChange={(e) =>
+                            onStudentPriceChange(sid, parseFloat(e.target.value) || 0)
+                          }
+                          className={`${paperInputClass} mono tnum`}
+                          style={paperInputStyle}
+                        />
+                      </div>
+                      <div>
+                        <FieldLabel>Wallet</FieldLabel>
+                        <select
+                          value={studentWallets[sid] ?? ''}
+                          onChange={(e) => onStudentWalletChange(sid, e.target.value)}
+                          className={paperInputClass}
+                          style={paperInputStyle}
+                        >
+                          <option value="">Auto (student&rsquo;s own)</option>
+                          {wallets.map((w) => (
+                            <option key={w.id} value={w.id}>
+                              {w.name} (RM {w.balance.toFixed(0)})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {addStudentOpen ? (
+                <div
+                  className="rounded-[10px] border p-3 flex flex-col gap-2"
+                  style={{ background: 'var(--panel)', borderColor: 'var(--line-2)' }}
+                >
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={addStudentSearch}
+                      onChange={(e) => onAddStudentSearchChange(e.target.value)}
+                      placeholder="Search name or phone"
+                      className={`${paperInputClass} pl-8`}
+                      style={paperInputStyle}
+                    />
+                    <div
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2"
+                      style={{ color: 'var(--ink-4)' }}
+                    >
+                      <IconSearch size={14} />
+                    </div>
+                  </div>
+                  <div className="max-h-44 overflow-y-auto flex flex-col gap-1 no-scrollbar">
+                    {students
+                      .filter((s) => !studentIds.includes(s.id))
+                      .filter((s) => {
+                        if (!addStudentSearch.trim()) return true;
+                        const q = addStudentSearch.toLowerCase();
+                        return (
+                          s.clientName.toLowerCase().includes(q) ||
+                          s.clientPhone.toLowerCase().includes(q)
+                        );
+                      })
+                      .slice(0, 8)
+                      .map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => onAddStudent(s)}
+                          className="text-left p-2 rounded-md text-[13px]"
+                          style={{ color: 'var(--ink)' }}
+                        >
+                          <div>{s.clientName}</div>
+                          {s.clientPhone && (
+                            <div
+                              className="mono text-[11.5px]"
+                              style={{ color: 'var(--ink-3)' }}
+                            >
+                              {s.clientPhone}
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    {students.filter((s) => !studentIds.includes(s.id)).length === 0 && (
+                      <div
+                        className="text-[12px] p-2"
+                        style={{ color: 'var(--ink-4)' }}
+                      >
+                        No other students to add.
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex justify-end">
+                    <Btn
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        onAddStudentOpenChange(false);
+                        onAddStudentSearchChange('');
+                      }}
+                    >
+                      <IconClose size={12} /> Close
+                    </Btn>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onAddStudentOpenChange(true)}
+                  className="text-[13px] font-medium self-start py-1.5"
+                  style={{ color: 'var(--accent)' }}
+                >
+                  + Add student
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <FieldLabel>Note (optional)</FieldLabel>
+            <input
+              type="text"
+              value={note}
+              onChange={(e) => onNoteChange(e.target.value)}
+              placeholder="e.g. Riwoo only"
+              className={paperInputClass}
+              style={paperInputStyle}
+            />
+          </div>
+
+          <div className="flex gap-2 justify-end pt-2">
+            <Btn variant="ghost" onClick={onClose}>
+              Cancel
+            </Btn>
+            <Btn
+              variant="primary"
+              onClick={() => {
+                if (isOneTime || backingExceptionId) {
+                  onSave();
+                } else {
+                  onShowSaveOptions(true);
+                }
+              }}
+              disabled={!canSave || saving}
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </Btn>
+          </div>
+        </div>
+      ) : (
+        (() => {
+          const editDateObj = date ? parseDateString(date) : selectedDate;
+          const dateChanged = date !== selectedDateStr;
+          const oldDow = booking.dayOfWeek;
+          const newDow = dateChanged ? getDayOfWeekForDate(date) : oldDow;
+          const dowChanged = dateChanged && newDow !== oldDow;
+          const plural = (dow: string) => dow.charAt(0).toUpperCase() + dow.slice(1) + 's';
+          const futureDesc = dowChanged
+            ? `Move all future classes from ${plural(oldDow)} to ${plural(newDow)}, starting ${formatDateShort(editDateObj)}`
+            : dateChanged
+              ? `Apply from ${formatDateShort(editDateObj)} onwards`
+              : `Apply from ${formatDateShort(selectedDate)} onwards`;
+          const thisDesc = dateChanged
+            ? `Move only the ${formatDateShort(selectedDate)} class to ${formatDateShort(editDateObj)}`
+            : `Only change the class on ${formatDateShort(selectedDate)}`;
+          return (
+            <div className="flex flex-col gap-3">
+              <div className="text-[13px]" style={{ color: 'var(--ink-2)' }}>
+                How would you like to apply these changes?
+              </div>
+              <button
+                type="button"
+                onClick={() => onSave('this')}
+                disabled={saving}
+                className="text-left rounded-[10px] border p-3"
+                style={{ background: 'var(--bg)', borderColor: 'var(--line-2)' }}
+              >
+                <div className="text-[13.5px] font-semibold" style={{ color: 'var(--ink)' }}>
+                  This event only
+                </div>
+                <div className="text-[12px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
+                  {thisDesc}
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => onSave('future')}
+                disabled={saving}
+                className="text-left rounded-[10px] border p-3"
+                style={{ background: 'var(--bg)', borderColor: 'var(--line-2)' }}
+              >
+                <div className="text-[13.5px] font-semibold" style={{ color: 'var(--ink)' }}>
+                  This and future events
+                </div>
+                <div className="text-[12px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
+                  {futureDesc}
+                </div>
+              </button>
+              <div className="flex justify-end pt-1">
+                <Btn size="sm" variant="ghost" onClick={() => onShowSaveOptions(false)}>
+                  Back
+                </Btn>
+              </div>
+            </div>
+          );
+        })()
+      )}
+    </PaperModal>
   );
 }
 
