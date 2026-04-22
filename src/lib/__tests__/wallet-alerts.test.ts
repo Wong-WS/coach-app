@@ -137,13 +137,18 @@ describe('isLowBalance', () => {
   const today = '2026-04-18';
   const booking = makeBooking();
 
-  it('fires when balance < next lesson cost and all gating rules pass', () => {
+  it('fires when balance < 2x next lesson cost and all gating rules pass', () => {
     const wallet = makeWallet({ balance: 20 });
     expect(isLowBalance(wallet, [booking], today)).toBe(true);
   });
 
-  it('does not fire when balance >= next lesson cost', () => {
+  it('fires when balance covers exactly 1 lesson (< 2 lessons)', () => {
     const wallet = makeWallet({ balance: 60 });
+    expect(isLowBalance(wallet, [booking], today)).toBe(true);
+  });
+
+  it('does not fire when balance covers 2+ lessons', () => {
+    const wallet = makeWallet({ balance: 120 });
     expect(isLowBalance(wallet, [booking], today)).toBe(false);
   });
 

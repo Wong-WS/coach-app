@@ -44,12 +44,14 @@ export function hasActiveBooking(wallet: Wallet, bookings: Booking[], today: str
 
 /**
  * The single rule the whole feature hangs on.
+ * Low = balance covers fewer than 2 upcoming lessons, so the coach gets
+ * a warning before the wallet is completely dry.
  */
 export function isLowBalance(wallet: Wallet, bookings: Booking[], today: string): boolean {
   if (wallet.payPerLesson) return false;
   if (wallet.archived) return false;
   if (!hasActiveBooking(wallet, bookings, today)) return false;
-  return wallet.balance < getNextLessonCost(wallet, bookings);
+  return wallet.balance < getNextLessonCost(wallet, bookings) * 2;
 }
 
 /**
@@ -112,7 +114,7 @@ export function getWalletStatus(
   }
   const rate = getNextLessonCost(wallet, bookings);
   const active = hasActiveBooking(wallet, bookings, today);
-  const isLow = active && wallet.balance < rate;
+  const isLow = active && wallet.balance < rate * 2;
   const packageSize = wallet.minLessonsPerTopUp ?? 5;
   const effective = getEffectiveBalance(wallet, transactions);
   const topUpMinimum = rate === 0 ? 0 : Math.max(0, rate * packageSize - effective);

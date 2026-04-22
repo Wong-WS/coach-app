@@ -1443,6 +1443,7 @@ function LowWalletsCard({ wallets, bookings }: { wallets: Wallet[]; bookings: Bo
     const rate = getNextLessonCost(w, bookings);
     if (rate <= 0) return 'Needs top-up';
     const left = Math.floor(w.balance / rate);
+    if (left === 0) return 'Needs top-up';
     return left === 1 ? '1 lesson left' : `${left} lessons left`;
   };
 
