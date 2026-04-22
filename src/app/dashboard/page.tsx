@@ -1467,6 +1467,10 @@ const paperInputStyle: React.CSSProperties = {
   background: 'var(--bg)',
   borderColor: 'var(--line-2)',
   color: 'var(--ink)',
+  boxSizing: 'border-box',
+  WebkitAppearance: 'none',
+  appearance: 'none',
+  minWidth: 0,
 };
 
 function EditClassModal({
