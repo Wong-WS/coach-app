@@ -31,7 +31,6 @@ import type { Booking, Student, Wallet, DayOfWeek, Location } from '@/types';
 import {
   getClassesForDate,
   getBookingTotal,
-  isGroupBooking,
   getBackingException,
   getCancelledClassesForDate,
   getDayOfWeekForDate,
@@ -127,6 +126,17 @@ export default function DashboardPage() {
     for (const l of lessonLogs) {
       if (!l.bookingId) continue;
       m.set(l.bookingId, (m.get(l.bookingId) ?? 0) + l.price);
+    }
+    return m;
+  }, [lessonLogs]);
+
+  const doneStudentsByBookingId = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const l of lessonLogs) {
+      if (!l.bookingId || !l.studentId) continue;
+      const arr = m.get(l.bookingId) ?? [];
+      if (!arr.includes(l.studentId)) arr.push(l.studentId);
+      m.set(l.bookingId, arr);
     }
     return m;
   }, [lessonLogs]);
@@ -651,6 +661,7 @@ export default function DashboardPage() {
                   todayStr={todayStr}
                   isDone={doneByBookingId.has(c.id)}
                   doneTotal={doneByBookingId.get(c.id) ?? 0}
+                  attendedIds={doneStudentsByBookingId.get(c.id)}
                   onMarkDone={() => openMarkDone(c)}
                   onCancel={() => handleCancelClass(c)}
                   onUndo={() => handleUndoMarkDone(c)}
@@ -738,6 +749,7 @@ export default function DashboardPage() {
               todayStr={todayStr}
               isDone={doneByBookingId.has(c.id)}
               doneTotal={doneByBookingId.get(c.id) ?? 0}
+              attendedIds={doneStudentsByBookingId.get(c.id)}
               onMarkDone={() => openMarkDone(c)}
               onCancel={() => handleCancelClass(c)}
               onUndo={() => handleUndoMarkDone(c)}
@@ -1155,6 +1167,7 @@ function ClassCard({
   todayStr,
   isDone,
   doneTotal,
+  attendedIds,
   onMarkDone,
   onCancel,
   onUndo,
@@ -1169,6 +1182,7 @@ function ClassCard({
   todayStr: string;
   isDone: boolean;
   doneTotal: number;
+  attendedIds?: string[];
   onMarkDone: () => void;
   onCancel: () => void;
   onUndo: () => void;
@@ -1176,9 +1190,10 @@ function ClassCard({
   onDuplicate: () => void;
   compact: boolean;
 }) {
-  const isGroup = isGroupBooking(cls);
+  const effectiveIds = isDone && attendedIds ? attendedIds : cls.studentIds;
+  const isGroup = effectiveIds.length > 1;
   const total = isDone ? doneTotal : getBookingTotal(cls);
-  const attendees = cls.studentIds
+  const attendees = effectiveIds
     .map((sid) => students.find((s) => s.id === sid))
     .filter((s): s is Student => !!s);
   const walletsFor = cls.studentIds
@@ -1245,7 +1260,7 @@ function ClassCard({
               <IconCheck size={11} /> Done
             </Chip>
           )}
-          {isGroup && <Chip tone="accent">Group · {cls.studentIds.length}</Chip>}
+          {isGroup && <Chip tone="accent">Group · {effectiveIds.length}</Chip>}
           {anyLow && !isDone && <Chip tone="bad">Low wallet</Chip>}
         </div>
         <div
