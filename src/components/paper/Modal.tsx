@@ -23,22 +23,32 @@ export function PaperModal({ open, onClose, title, width = 440, children }: Pape
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 sm:p-6"
+      className="paper-backdrop-in fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6"
       style={{ background: 'rgba(15,14,12,0.45)', backdropFilter: 'blur(3px)' }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="flex w-full flex-col overflow-hidden rounded-t-2xl sm:rounded-[14px] border"
+        className="paper-sheet paper-sheet-in flex flex-col overflow-hidden rounded-t-2xl sm:rounded-[14px] border"
         style={{
           background: 'var(--panel)',
           color: 'var(--ink)',
           borderColor: 'var(--line)',
-          maxWidth: width,
           boxShadow: 'var(--shadow-lg)',
           maxHeight: 'calc(100dvh - 40px)',
+          ['--paper-modal-max' as string]: `${width}px`,
         }}
         onMouseDown={(e) => e.stopPropagation()}
       >
+        {/* Mobile drag handle — visual affordance only (no swipe gesture wired) */}
+        <div
+          className="flex sm:hidden justify-center pt-2 pb-1"
+          aria-hidden="true"
+        >
+          <div
+            className="h-1 w-9 rounded-full"
+            style={{ background: 'var(--line-2)' }}
+          />
+        </div>
         {title && (
           <div
             className="flex items-center justify-between px-5 py-4 border-b"
