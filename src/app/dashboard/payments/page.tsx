@@ -35,7 +35,6 @@ import {
   Btn,
   Chip,
   Avatar,
-  Segmented,
   PaperModal,
   IconPlus,
   IconSearch,
@@ -223,6 +222,7 @@ function WalletDetailBody({
   wallets,
   onTopUp,
   onAdjust,
+  onToggleTabMode,
   onDelete,
   onClose,
   showToast,
@@ -233,6 +233,7 @@ function WalletDetailBody({
   wallets: Wallet[];
   onTopUp: () => void;
   onAdjust: () => void;
+  onToggleTabMode: () => void;
   onDelete: () => void;
   onClose: () => void;
   showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
@@ -479,31 +480,11 @@ function WalletDetailBody({
             Rename wallet
           </Btn>
         )}
-        <button
-          onClick={async () => {
-            if (!db) return;
-            try {
-              await updateDoc(
-                doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
-                {
-                  tabMode: !(wallet.tabMode ?? false),
-                  updatedAt: serverTimestamp(),
-                },
-              );
-              showToast(
-                wallet.tabMode ? 'Tab mode off' : 'Tab mode on',
-                'success',
-              );
-            } catch {
-              showToast('Failed to update', 'error');
-            }
-          }}
-          className="text-[12.5px] font-medium py-2 rounded-[8px]"
-          style={{ color: 'var(--ink-3)' }}
-        >
+        <Btn variant="ghost" onClick={onToggleTabMode}>
           {wallet.tabMode ? 'Turn off tab mode' : 'Turn on tab mode'}
-        </button>
-        <button
+        </Btn>
+        <Btn
+          variant="ghost"
           onClick={async () => {
             if (!db) return;
             try {
@@ -519,14 +500,12 @@ function WalletDetailBody({
               showToast('Failed to update', 'error');
             }
           }}
-          className="text-[12.5px] font-medium py-2 rounded-[8px]"
-          style={{ color: 'var(--ink-3)' }}
         >
           {wallet.archived ? 'Unarchive wallet' : 'Archive wallet'}
-        </button>
+        </Btn>
         <button
           onClick={onDelete}
-          className="text-[12.5px] font-medium py-2 rounded-[8px]"
+          className="text-[13.5px] font-medium py-2 rounded-[8px]"
           style={{ color: 'var(--bad)' }}
         >
           Delete wallet
@@ -582,141 +561,11 @@ function TxnRow({
   );
 }
 
-// ─── History list ────────────────────────────────────────────────────────────
-
-type HistoryFilter = 'all' | 'top-up' | 'charge';
-
-function HistoryList({
-  transactions,
-  wallets,
-  hasMore,
-  onLoadMore,
-}: {
-  transactions: (WalletTransaction & { walletName: string; walletId: string })[];
-  wallets: Wallet[];
-  hasMore: boolean;
-  onLoadMore: () => void;
-}) {
-  const [filter, setFilter] = useState<HistoryFilter>('all');
-
-  const filtered = transactions.filter((t) => filter === 'all' || t.type === filter);
-  const groups = new Map<string, typeof filtered>();
-  for (const t of filtered) {
-    const list = groups.get(t.date) ?? [];
-    list.push(t);
-    groups.set(t.date, list);
-  }
-  const dates = Array.from(groups.keys()).sort((a, b) => b.localeCompare(a));
-
-  return (
-    <div
-      className="rounded-[12px] border p-4 sm:p-5"
-      style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
-    >
-      <div className="mb-3">
-        <Segmented<HistoryFilter>
-          size="sm"
-          options={[
-            { value: 'all', label: 'All' },
-            { value: 'top-up', label: 'Top-ups' },
-            { value: 'charge', label: 'Charges' },
-          ]}
-          value={filter}
-          onChange={setFilter}
-        />
-      </div>
-
-      {filtered.length === 0 ? (
-        <p
-          className="text-center py-8 text-[13px]"
-          style={{ color: 'var(--ink-3)' }}
-        >
-          No transactions to show.
-        </p>
-      ) : (
-        <>
-          {dates.map((date) => (
-            <div key={date} className="mb-3 last:mb-0">
-              <div
-                className="text-[11px] font-semibold uppercase mono mb-1"
-                style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
-              >
-                {date}
-              </div>
-              {groups.get(date)!.map((t) => {
-                const w = wallets.find((w) => w.id === t.walletId);
-                const positive = t.amount > 0;
-                return (
-                  <div
-                    key={t.id}
-                    className="flex items-center gap-3 py-2.5 border-b last:border-0"
-                    style={{ borderColor: 'var(--line)' }}
-                  >
-                    <Avatar name={w?.name || '?'} size={28} />
-                    <div className="flex-1 min-w-0">
-                      <div
-                        className="text-[13px] font-medium truncate"
-                        style={{ color: 'var(--ink)' }}
-                      >
-                        {t.description || t.type}
-                      </div>
-                      <div
-                        className="text-[11.5px] truncate"
-                        style={{ color: 'var(--ink-3)' }}
-                      >
-                        {w?.name || t.walletName}
-                      </div>
-                    </div>
-                    <Chip
-                      tone={
-                        t.type === 'top-up'
-                          ? 'good'
-                          : t.type === 'charge'
-                            ? 'soft'
-                            : t.type === 'refund'
-                              ? 'accent'
-                              : 'warn'
-                      }
-                    >
-                      {t.type}
-                    </Chip>
-                    <div
-                      className="mono tnum text-[13px] font-medium text-right"
-                      style={{
-                        color: positive ? 'var(--good)' : 'var(--ink)',
-                        minWidth: 80,
-                      }}
-                    >
-                      {positive ? '+' : ''}RM {t.amount.toFixed(0)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-          {hasMore && (
-            <button
-              onClick={onLoadMore}
-              className="w-full text-center py-2 text-[13px] font-medium mt-2"
-              style={{ color: 'var(--accent)' }}
-            >
-              Load more
-            </button>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
 // ─── Page ────────────────────────────────────────────────────────────────────
-
-type Tab = 'wallets' | 'history';
 
 export default function PaymentsPage() {
   const { coach } = useAuth();
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState<Tab>('wallets');
 
   const { wallets } = useWallets(coach?.id);
   const { students } = useStudents(coach?.id);
@@ -724,65 +573,9 @@ export default function PaymentsPage() {
   const { classExceptions } = useClassExceptions(coach?.id);
   const { lessonLogs } = useLessonLogs(coach?.id, undefined, undefined, 1);
 
-  // History tab transactions (merged across wallets, top-N per wallet).
-  const HISTORY_PAGE_SIZE = 20;
-  const [historyLimit, setHistoryLimit] = useState(HISTORY_PAGE_SIZE);
-  const [mergedTransactions, setMergedTransactions] = useState<
-    (WalletTransaction & { walletName: string; walletId: string })[]
-  >([]);
-  const [anyWalletAtLimit, setAnyWalletAtLimit] = useState(false);
-
   const walletIds = wallets.map((w) => w.id).join(',');
 
-  useEffect(() => {
-    if (!coach?.id || !db || !walletIds) {
-      setMergedTransactions([]);
-      setAnyWalletAtLimit(false);
-      return;
-    }
-    const firestore = db as Firestore;
-    const unsubs: (() => void)[] = [];
-    const txnsByWallet = new Map<
-      string,
-      (WalletTransaction & { walletName: string; walletId: string })[]
-    >();
-    const atLimitByWallet = new Map<string, boolean>();
-
-    for (const wallet of wallets) {
-      const q = query(
-        collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'),
-        orderBy('createdAt', 'desc'),
-        limit(historyLimit),
-      );
-      const unsub = onSnapshot(q, (snap) => {
-        const items = snap.docs.map((d) => ({
-          id: d.id,
-          type: d.data().type as WalletTransaction['type'],
-          amount: d.data().amount ?? 0,
-          balanceAfter: d.data().balanceAfter ?? 0,
-          description: d.data().description ?? '',
-          studentId: d.data().studentId ?? undefined,
-          lessonLogId: d.data().lessonLogId ?? undefined,
-          date: d.data().date,
-          createdAt: d.data().createdAt?.toDate() || new Date(),
-          walletName: wallet.name,
-          walletId: wallet.id,
-        }));
-        txnsByWallet.set(wallet.id, items);
-        atLimitByWallet.set(wallet.id, snap.docs.length >= historyLimit);
-        const merged = Array.from(txnsByWallet.values()).flat();
-        merged.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-        setMergedTransactions(merged);
-        setAnyWalletAtLimit(Array.from(atLimitByWallet.values()).some((v) => v));
-      });
-      unsubs.push(unsub);
-    }
-    return () => unsubs.forEach((u) => u());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [coach?.id, walletIds, historyLimit]);
-
-  // Separate, uncapped listener for this-month top-ups so the stat stays honest
-  // even when the History tab is paged at 20.
+  // Uncapped listener for this-month top-ups (stat bar).
   const [monthTopUps, setMonthTopUps] = useState(0);
   const monthRange = useMemo(() => getMonthRange(), []);
 
@@ -820,12 +613,6 @@ export default function PaymentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coach?.id, walletIds, monthRange.start, monthRange.end]);
 
-  const allTransactions = useMemo(
-    () => mergedTransactions.slice(0, historyLimit),
-    [mergedTransactions, historyLimit],
-  );
-  const hasMoreHistory = mergedTransactions.length > historyLimit || anyWalletAtLimit;
-
   // Wallet detail panel.
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
 
@@ -855,6 +642,9 @@ export default function PaymentsPage() {
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingWallet, setDeletingWallet] = useState(false);
+
+  const [showTabModeModal, setShowTabModeModal] = useState(false);
+  const [togglingTabMode, setTogglingTabMode] = useState(false);
 
   // Filters.
   const [walletSearch, setWalletSearch] = useState('');
@@ -1128,6 +918,25 @@ export default function PaymentsPage() {
     }
   };
 
+  const handleToggleTabMode = async () => {
+    if (!db || !selectedWallet) return;
+    setTogglingTabMode(true);
+    try {
+      const firestore = db as Firestore;
+      const next = !(selectedWallet.tabMode ?? false);
+      await updateDoc(
+        doc(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id),
+        { tabMode: next, updatedAt: serverTimestamp() },
+      );
+      showToast(next ? 'Tab mode on' : 'Tab mode off', 'success');
+      setShowTabModeModal(false);
+    } catch {
+      showToast('Failed to update tab mode', 'error');
+    } finally {
+      setTogglingTabMode(false);
+    }
+  };
+
   const handleDeleteWallet = async () => {
     if (!db || !selectedWallet) return;
     setDeletingWallet(true);
@@ -1208,22 +1017,9 @@ export default function PaymentsPage() {
         <Stat label="This month" value={formatRM(monthTopUps)} sub="in top-ups" />
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-3 mb-4">
-        <Segmented<Tab>
-          options={[
-            { value: 'wallets', label: 'Wallets' },
-            { value: 'history', label: 'Transaction history' },
-          ]}
-          value={activeTab}
-          onChange={setActiveTab}
-        />
-      </div>
-
-      {/* Wallets tab */}
-      {activeTab === 'wallets' && (
-        <div>
-          {wallets.length > 0 && (
+      {/* Wallets */}
+      <div>
+        {wallets.length > 0 && (
             <div className="mb-3 flex items-center gap-2">
               <div className="relative flex-1 min-w-0">
                 <div
@@ -1347,19 +1143,8 @@ export default function PaymentsPage() {
                 );
               })}
             </div>
-          )}
-        </div>
-      )}
-
-      {/* History tab */}
-      {activeTab === 'history' && (
-        <HistoryList
-          transactions={allTransactions}
-          wallets={wallets}
-          hasMore={hasMoreHistory}
-          onLoadMore={() => setHistoryLimit(historyLimit + HISTORY_PAGE_SIZE)}
-        />
-      )}
+        )}
+      </div>
 
       {/* ── Wallet detail modal ── */}
       <PaperModal
@@ -1376,6 +1161,7 @@ export default function PaymentsPage() {
             wallets={wallets}
             onTopUp={() => setShowTopUpModal(true)}
             onAdjust={() => setShowAdjustModal(true)}
+            onToggleTabMode={() => setShowTabModeModal(true)}
             onDelete={() => setShowDeleteModal(true)}
             onClose={() => setSelectedWallet(null)}
             showToast={showToast}
@@ -1767,6 +1553,52 @@ export default function PaymentsPage() {
           </div>
         )}
       </PaperModal>
+
+      {/* ── Tab mode confirmation ── */}
+      <PaperModal
+        open={showTabModeModal}
+        onClose={() => !togglingTabMode && setShowTabModeModal(false)}
+        title={selectedWallet?.tabMode ? 'Turn off tab mode?' : 'Turn on tab mode?'}
+      >
+        {selectedWallet && (
+          <div className="space-y-3">
+            <p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>
+              {selectedWallet.tabMode ? (
+                <>
+                  This wallet will go back to prepaid mode. Low-balance alerts
+                  will fire when the balance drops below two lessons worth.
+                </>
+              ) : (
+                <>
+                  Tab mode is for students who pay after each lesson instead of
+                  prepaying. The wallet will be excluded from low-balance alerts
+                  so it doesn&rsquo;t nag you when it sits near zero.
+                </>
+              )}
+            </p>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <Btn
+                variant="primary"
+                onClick={handleToggleTabMode}
+                disabled={togglingTabMode}
+              >
+                {togglingTabMode
+                  ? 'Saving…'
+                  : selectedWallet.tabMode
+                    ? 'Turn off'
+                    : 'Turn on'}
+              </Btn>
+              <Btn
+                variant="outline"
+                onClick={() => setShowTabModeModal(false)}
+                disabled={togglingTabMode}
+              >
+                Cancel
+              </Btn>
+            </div>
+          </div>
+        )}
+      </PaperModal>
     </div>
   );
 }
@@ -1784,23 +1616,25 @@ function FilterPill({
   children: React.ReactNode;
   tone?: 'neutral' | 'warn' | 'bad';
 }) {
-  const activeBg =
+  // Soft tonal active states (matches Chip tones) — less harsh than solid
+  // saturated fills, in line with the Paper & Ink palette.
+  const activeStyle: React.CSSProperties =
     tone === 'bad'
-      ? 'var(--bad)'
+      ? { background: 'var(--bad-soft)', color: 'var(--bad)', borderColor: 'var(--bad-soft)' }
       : tone === 'warn'
-        ? 'var(--warn)'
-        : 'var(--ink)';
-  const activeColor = tone === 'warn' ? 'var(--ink)' : '#fff';
+        ? { background: 'var(--warn-soft)', color: 'var(--warn)', borderColor: 'var(--warn-soft)' }
+        : { background: 'var(--ink)', color: 'var(--bg)', borderColor: 'var(--ink)' };
+  const inactiveStyle: React.CSSProperties = {
+    background: 'var(--panel)',
+    color: 'var(--ink-3)',
+    borderColor: 'var(--line-2)',
+  };
   return (
     <button
       type="button"
       onClick={onClick}
       className="rounded-full px-3 py-1 text-[12px] font-medium border transition-colors"
-      style={{
-        background: active ? activeBg : 'var(--panel)',
-        color: active ? activeColor : 'var(--ink-2)',
-        borderColor: active ? 'transparent' : 'var(--line-2)',
-      }}
+      style={active ? activeStyle : inactiveStyle}
     >
       {children}
     </button>
