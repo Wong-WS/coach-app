@@ -73,3 +73,38 @@ export function getWalletStatus(
   const isLow = active && wallet.balance < rate * 2;
   return { rate, isLow };
 }
+
+/**
+ * Wallet health buckets:
+ *   owing    — balance < 0 (student owes coach)
+ *   empty    — 0 ≤ balance < rate (can't cover next lesson)
+ *   low      — rate ≤ balance < 2×rate (1 lesson left, top up soon)
+ *   healthy  — balance ≥ 2×rate
+ *   tab      — tab-mode wallet (pays after lesson, never "low")
+ *   inactive — archived or no active bookings (nothing to alert)
+ */
+export type WalletHealth =
+  | 'owing'
+  | 'empty'
+  | 'low'
+  | 'healthy'
+  | 'tab'
+  | 'inactive';
+
+export function getWalletHealth(
+  wallet: Wallet,
+  bookings: Booking[],
+  today: string,
+): { health: WalletHealth; rate: number; lessonsLeft: number } {
+  if (wallet.archived) return { health: 'inactive', rate: 0, lessonsLeft: 0 };
+  const rate = getNextLessonCost(wallet, bookings);
+  const lessonsLeft = rate > 0 ? Math.floor(wallet.balance / rate) : 0;
+  if (wallet.tabMode) return { health: 'tab', rate, lessonsLeft };
+  if (!hasActiveBooking(wallet, bookings, today))
+    return { health: 'inactive', rate, lessonsLeft };
+  if (wallet.balance < 0) return { health: 'owing', rate, lessonsLeft };
+  if (rate <= 0) return { health: 'healthy', rate, lessonsLeft };
+  if (wallet.balance < rate) return { health: 'empty', rate, lessonsLeft };
+  if (wallet.balance < rate * 2) return { health: 'low', rate, lessonsLeft };
+  return { health: 'healthy', rate, lessonsLeft };
+}

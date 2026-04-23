@@ -37,7 +37,7 @@ import {
 } from '@/lib/class-schedule';
 import { resolveWallet } from '@/lib/wallets';
 import { findOrCreateStudent } from '@/lib/students';
-import { isLowBalance } from '@/lib/wallet-alerts';
+import { isLowBalance, getNextLessonCost } from '@/lib/wallet-alerts';
 import { formatTimeDisplay } from '@/lib/time-format';
 import { formatDateFull, formatDateShort, parseDateString } from '@/lib/date-format';
 import {
@@ -205,6 +205,10 @@ export default function DashboardPage() {
     const attendingIds = markDoneAttending;
     closeMarkDone();
     showToast(`Marked ${booking.className || 'class'} done`, 'success');
+
+    // Track wallet impact so we can alert when this lesson empties a wallet.
+    const walletImpacts = new Map<string, { wallet: Wallet; charge: number }>();
+
     try {
       const firestore = db as Firestore;
       const batch = writeBatch(firestore);
@@ -228,6 +232,10 @@ export default function DashboardPage() {
 
         const wallet = resolveWallet(booking, studentId, wallets);
         if (wallet && price > 0) {
+          const existing = walletImpacts.get(wallet.id);
+          if (existing) existing.charge += price;
+          else walletImpacts.set(wallet.id, { wallet, charge: price });
+
           const newBalance = wallet.balance - price;
           const txnRef = doc(
             collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'),
@@ -254,6 +262,31 @@ export default function DashboardPage() {
       }
 
       await batch.commit();
+
+      // After the commit, notify on wallets that just crossed below next-lesson cost.
+      // "Can cover next" = balance >= rate (or rate == 0). Skip tab-mode wallets.
+      for (const { wallet, charge } of walletImpacts.values()) {
+        if (wallet.tabMode) continue;
+        const rate = getNextLessonCost(wallet, bookings);
+        if (rate <= 0) continue;
+        const prevBalance = wallet.balance;
+        const newBalance = prevBalance - charge;
+        const prevCouldCover = prevBalance >= rate;
+        const nowCouldCover = newBalance >= rate;
+        if (prevCouldCover && !nowCouldCover) {
+          if (newBalance < 0) {
+            showToast(
+              `${wallet.name} now owes RM ${Math.abs(newBalance).toFixed(0)}`,
+              'error',
+            );
+          } else {
+            showToast(
+              `${wallet.name} can't cover the next lesson — time to top up`,
+              'info',
+            );
+          }
+        }
+      }
     } catch (e) {
       console.error(e);
       showToast('Failed to mark class as done', 'error');

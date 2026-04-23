@@ -29,7 +29,11 @@ import {
 } from '@/hooks/useCoachData';
 import { useToast } from '@/components/ui/Toast';
 import { getScheduledRevenueForDateRange } from '@/lib/class-schedule';
-import { isLowBalance, getWalletStatus } from '@/lib/wallet-alerts';
+import {
+  isLowBalance,
+  getWalletStatus,
+  getWalletHealth,
+} from '@/lib/wallet-alerts';
 import { useSearchParams } from 'next/navigation';
 import {
   Btn,
@@ -150,10 +154,14 @@ function WalletCard({
   selected: boolean;
   onClick: () => void;
 }) {
-  const { rate, isLow } = getWalletStatus(wallet, bookings, todayStr);
+  const { health, rate, lessonsLeft } = getWalletHealth(wallet, bookings, todayStr);
 
   const balanceColor =
-    wallet.balance < 0 ? 'var(--bad)' : isLow ? 'var(--warn)' : 'var(--ink)';
+    health === 'owing'
+      ? 'var(--bad)'
+      : health === 'empty' || health === 'low'
+        ? 'var(--warn)'
+        : 'var(--ink)';
 
   const subtitle =
     linkedStudents.length === 0
@@ -163,13 +171,17 @@ function WalletCard({
         : `${linkedStudents.length} students`;
 
   const footer =
-    wallet.balance < 0
+    health === 'owing'
       ? 'Owes you'
-      : wallet.tabMode
+      : health === 'tab'
         ? 'Tab mode'
-        : rate <= 0
-          ? 'No lessons scheduled'
-          : '';
+        : health === 'inactive'
+          ? rate <= 0 ? 'No lessons scheduled' : ''
+          : health === 'empty'
+            ? "Can't cover next lesson"
+            : health === 'low'
+              ? '1 lesson left'
+              : `${lessonsLeft} lessons left`;
 
   return (
     <button
@@ -214,8 +226,9 @@ function WalletCard({
           )}
         </div>
         <div className="shrink-0 flex items-center gap-1.5">
-          {wallet.balance < 0 && <Chip tone="bad">Owing</Chip>}
-          {wallet.balance >= 0 && isLow && <Chip tone="bad">Low</Chip>}
+          {health === 'owing' && <Chip tone="bad">Owing</Chip>}
+          {health === 'empty' && <Chip tone="bad">Empty</Chip>}
+          {health === 'low' && <Chip tone="warn">Low</Chip>}
         </div>
       </div>
     </button>
@@ -753,12 +766,17 @@ export default function PaymentsPage() {
   // Stats.
   const lastMonthRange = useMemo(() => getLastMonthRange(), []);
   const needsAttention = useMemo(() => {
-    const visible = wallets.filter((w) => !(w.archived ?? false));
-    const owingCount = visible.filter((w) => w.balance < 0).length;
-    const lowCount = visible.filter(
-      (w) => w.balance >= 0 && isLowBalance(w, bookings, todayStr),
-    ).length;
-    return { owingCount, lowCount };
+    let owing = 0;
+    let empty = 0;
+    let low = 0;
+    for (const w of wallets) {
+      if (w.archived) continue;
+      const { health } = getWalletHealth(w, bookings, todayStr);
+      if (health === 'owing') owing += 1;
+      else if (health === 'empty') empty += 1;
+      else if (health === 'low') low += 1;
+    }
+    return { owing, empty, low };
   }, [wallets, bookings, todayStr]);
   const monthActual = useMemo(
     () =>
@@ -1027,19 +1045,18 @@ export default function PaymentsPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mb-5">
         <Stat
           label="Needs attention"
-          value={needsAttention.owingCount + needsAttention.lowCount}
+          value={needsAttention.owing + needsAttention.empty + needsAttention.low}
           sub={(() => {
             const parts: string[] = [];
-            if (needsAttention.owingCount > 0)
-              parts.push(`${needsAttention.owingCount} owing`);
-            if (needsAttention.lowCount > 0)
-              parts.push(`${needsAttention.lowCount} low`);
+            if (needsAttention.owing > 0) parts.push(`${needsAttention.owing} owing`);
+            if (needsAttention.empty > 0) parts.push(`${needsAttention.empty} empty`);
+            if (needsAttention.low > 0) parts.push(`${needsAttention.low} low`);
             return parts.length ? parts.join(' · ') : 'all healthy';
           })()}
           tone={
-            needsAttention.owingCount > 0
+            needsAttention.owing > 0 || needsAttention.empty > 0
               ? 'bad'
-              : needsAttention.lowCount > 0
+              : needsAttention.low > 0
                 ? 'warn'
                 : undefined
           }
