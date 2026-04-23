@@ -628,17 +628,19 @@ export default function StudentsPage() {
   useEffect(() => {
     if (isMobile) return;
     if (filtered.length === 0) {
-      queueMicrotask(() => setSelectedId(null));
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing selection when the filtered list becomes empty
+      setSelectedId(null);
       return;
     }
     if (!selectedId || !filtered.some((s) => s.id === selectedId)) {
-      queueMicrotask(() => setSelectedId(filtered[0].id));
+      setSelectedId(filtered[0].id);
     }
   }, [isMobile, filtered, selectedId]);
 
   // Reset the log-limit whenever the selected student changes.
   useEffect(() => {
-    queueMicrotask(() => setLogLimit(20));
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset pagination when switching students
+    setLogLimit(20);
   }, [selectedId]);
 
   const selectedStudent = useMemo(
