@@ -686,7 +686,7 @@ export default function DashboardPage() {
 
           <div className="flex flex-col gap-3.5">
             <StatCard
-              label="Earned today"
+              label={isToday ? 'Earned today' : `Earned ${formatDateShort(selectedDate)}`}
               value={`RM ${Math.round(todayRevenue)}`}
               sub={`of RM ${Math.round(expectedRevenue)} expected`}
             />
@@ -775,7 +775,7 @@ export default function DashboardPage() {
         {/* mobile stat row */}
         <div className="mt-4 grid grid-cols-2 gap-3">
           <StatCard
-            label="Earned today"
+            label={isToday ? 'Earned today' : `Earned ${formatDateShort(selectedDate)}`}
             value={`RM ${Math.round(todayRevenue)}`}
             sub={`of RM ${Math.round(expectedRevenue)}`}
           />
