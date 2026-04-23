@@ -1,96 +1,115 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useBookings } from '@/hooks/useCoachData';
-import { DayOfWeek, Booking } from '@/types';
-import { getDayDisplayName, formatTimeDisplay } from '@/lib/time-format';
-import { getBookingTotal, isGroupBooking } from '@/lib/class-schedule';
+import { Chip } from '@/components/paper';
+import type { Booking } from '@/types';
 
-const DAYS: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// Weekly RM for one booking (sum over studentPrices for linked students).
+function perBookingTotal(b: Booking): number {
+  return b.studentIds.reduce(
+    (sum, sid) => sum + (b.studentPrices[sid] ?? 0),
+    0,
+  );
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function BookingsPage() {
   const { coach } = useAuth();
   const { bookings, loading } = useBookings(coach?.id);
 
-  const confirmedBookings = bookings.filter((b) =>
-    b.status === 'confirmed' &&
-    !b.endDate // Exclude one-time classes and ended/split bookings
+  const confirmedBookings = useMemo(
+    () =>
+      bookings.filter(
+        (b) => b.status === 'confirmed' && !b.endDate, // recurring only
+      ),
+    [bookings],
   );
 
-  // Group bookings by day
-  const bookingsByDay = DAYS.reduce((acc, day) => {
-    acc[day] = confirmedBookings
-      .filter((b) => b.dayOfWeek === day)
-      .sort((a, b) => a.startTime.localeCompare(b.startTime));
-    return acc;
-  }, {} as Record<DayOfWeek, Booking[]>);
+  const totalSlots = confirmedBookings.length;
+  const weeklyTotal = useMemo(
+    () => confirmedBookings.reduce((s, b) => s + perBookingTotal(b), 0),
+    [confirmedBookings],
+  );
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div
+          className="animate-spin rounded-full h-8 w-8 border-b-2"
+          style={{ borderColor: 'var(--accent)' }}
+        />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100">Schedule</h1>
-        <p className="text-gray-600 dark:text-zinc-400 mt-1">Your recurring weekly bookings</p>
-      </div>
-
-      {/* Weekly schedule view */}
-      <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333]">
-        <div className="p-6 border-b border-gray-100 dark:border-[#333333]">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">Weekly Schedule</h2>
-        </div>
-        <div className="p-6">
-          <div className="space-y-6">
-            {DAYS.map((day) => (
-              <div key={day} className="border-b border-gray-100 dark:border-[#333333] pb-4 last:border-0 last:pb-0">
-                <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-3">
-                  {getDayDisplayName(day)}
-                </h3>
-                {bookingsByDay[day].length === 0 ? (
-                  <p className="text-sm text-gray-400 dark:text-zinc-500">No bookings</p>
-                ) : (
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {bookingsByDay[day].map((booking) => {
-                      const isGroup = isGroupBooking(booking);
-                      const total = getBookingTotal(booking);
-                      return (
-                      <div
-                        key={booking.id}
-                        className="p-4 bg-gray-50 dark:bg-[#1a1a1a]/50 rounded-lg"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-gray-900 dark:text-zinc-100">
-                            {formatTimeDisplay(booking.startTime)} - {formatTimeDisplay(booking.endTime)}
-                          </span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            isGroup
-                              ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
-                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                          }`}>
-                            {isGroup ? `Group (${booking.studentIds.length})` : 'Private'}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-600 dark:text-zinc-400 mt-1">{booking.className}</p>
-                        <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{booking.locationName}</p>
-                        <p className={`text-xs font-medium mt-1 ${total > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-zinc-500'}`}>
-                          {total > 0 ? `RM ${total}` : 'Free'}
-                        </p>
-                      </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            ))}
+    <div className="px-4 sm:px-6 py-5 sm:py-7" style={{ color: 'var(--ink)' }}>
+      {/* Header */}
+      <div className="flex items-end justify-between gap-3 mb-5">
+        <div>
+          <div
+            className="text-[11px] font-semibold uppercase"
+            style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
+          >
+            Schedule
+          </div>
+          <div
+            className="text-[22px] sm:text-[28px] font-semibold leading-tight"
+            style={{ letterSpacing: '-0.6px' }}
+          >
+            Recurring weekly
+          </div>
+          <div
+            className="text-[13px] mt-1.5"
+            style={{ color: 'var(--ink-3)' }}
+          >
+            <span className="tnum" style={{ color: 'var(--ink)', fontWeight: 500 }}>
+              {totalSlots}
+            </span>{' '}
+            {totalSlots === 1 ? 'slot' : 'slots'} ·{' '}
+            <span
+              className="mono tnum"
+              style={{ color: 'var(--ink)', fontWeight: 500 }}
+            >
+              RM {weeklyTotal.toLocaleString()}
+            </span>
+            <span className="ml-1">/week</span>
           </div>
         </div>
+        <div className="hidden sm:flex items-center gap-2 text-[12px]" style={{ color: 'var(--ink-3)' }}>
+          <Chip tone="soft">Read-only</Chip>
+          <span>To change, open the class on Overview</span>
+        </div>
       </div>
+
+      {confirmedBookings.length === 0 ? (
+        <div
+          className="rounded-[12px] border py-16 text-center"
+          style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
+        >
+          <p
+            className="text-[15px] font-semibold mb-1"
+            style={{ color: 'var(--ink)' }}
+          >
+            No recurring classes yet
+          </p>
+          <p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
+            Add a recurring class on Overview to see it here.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Desktop grid — added in Task 2 */}
+          <div className="hidden sm:block" />
+          {/* Mobile list — added in Task 3 */}
+          <div className="sm:hidden" />
+        </>
+      )}
     </div>
   );
 }
