@@ -124,15 +124,18 @@ Below `sm` (640px):
 - Tapping a row sets `selectedId` and opens a `PaperModal` titled with `clientName`. Modal body: the same `StudentDetail` subtree.
 - Closing the modal sets `selectedId = null`.
 
-Implementation: one `StudentDetail` component, rendered twice — once directly into the right pane (desktop) inside a `<div className="hidden sm:block">`, once inside a `<PaperModal className="sm:hidden"-style wrapper>` gated on `selectedId !== null` on mobile.
+Implementation: a single `StudentDetail` component is rendered in two places but only one ever displays content.
 
-In practice the simplest shape is: always render `<PaperModal>` but only open it when `window width < sm AND selectedId set`. Use a Tailwind-only check — render two wrappers and let CSS hide the wrong one. This mirrors the Schedule page approach (`hidden sm:block` / `sm:hidden`).
+1. Desktop right pane: a `<div className="hidden sm:block">` containing `<StudentDetail … />` — Tailwind removes it from layout below `sm`.
+2. Mobile modal: a `<PaperModal>` whose `open` prop is `selectedId !== null && isMobile`. `isMobile` comes from a `useIsMobile()` hook that wraps `window.matchMedia('(max-width: 639px)')` and subscribes to changes (standard pattern — fallback to `false` during SSR).
+
+`PaperModal` itself returns `null` when `open` is false, so the modal does not render on desktop even if `selectedId` is set. The two trees never show simultaneously.
 
 ### Selection behaviour
 
 - `const [selectedId, setSelectedId] = useState<string | null>(null);`
-- On desktop, auto-select the first filtered student on first render (and when the filter changes) so the detail pane is never empty when data exists. Use a `useEffect` that sets `selectedId` to `filtered[0]?.id ?? null` when `selectedId` is null or no longer in `filtered`.
-- On mobile, `selectedId` triples as the modal-open signal. No auto-select on mobile (`window.matchMedia('(min-width: 640px)')` check inside the auto-select effect).
+- On desktop (`!isMobile`), auto-select the first filtered student so the detail pane is never empty when data exists. Use a `useEffect` whose deps are `[isMobile, filtered, selectedId]`: when `!isMobile` and either `selectedId === null` or `selectedId` is not in `filtered`, set it to `filtered[0]?.id ?? null`.
+- On mobile, `selectedId` doubles as the modal-open signal. No auto-select — it only gets set when the user taps a row.
 
 ### Adaptive filter
 
