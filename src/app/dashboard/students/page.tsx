@@ -1,11 +1,23 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import type { DayOfWeek, Student } from '@/types';
+import type { Booking, DayOfWeek, LessonLog, Student, Wallet } from '@/types';
 import { useAuth } from '@/lib/auth-context';
-import { useStudents, useBookings, useWallets } from '@/hooks/useCoachData';
+import {
+  useStudents,
+  useBookings,
+  useWallets,
+  useLessonLogs,
+} from '@/hooks/useCoachData';
 import { Avatar, BalancePill } from '@/components/paper';
-import { IconSearch } from '@/components/paper';
+import {
+  IconSearch,
+  IconPhone,
+  IconEdit,
+  IconSparkle,
+  IconClose,
+} from '@/components/paper';
+import { formatDateMedium, parseDateString } from '@/lib/date-format';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -45,6 +57,15 @@ function useIsMobile(): boolean {
   return isMobile;
 }
 
+// Matches the Schedule page helper. Follow-up: hoist to @/lib/time-format.
+function fmtTimeShort(t: string): string {
+  const [hh, mm] = t.split(':').map(Number);
+  const period = hh >= 12 ? 'p' : 'a';
+  const h12 = hh % 12 || 12;
+  if (mm === 0) return `${h12}${period}`;
+  return `${h12}:${String(mm).padStart(2, '0')}${period}`;
+}
+
 type FilterValue = 'all' | 'owing' | 'no-booking' | DayOfWeek;
 
 // ─── Filter chip ─────────────────────────────────────────────────────────────
@@ -74,6 +95,58 @@ function FilterChip({
     >
       {children}
     </button>
+  );
+}
+
+// ─── MiniStat ────────────────────────────────────────────────────────────────
+
+function MiniStat({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  tone?: 'bad';
+}) {
+  return (
+    <div
+      style={{
+        padding: 12,
+        background: 'var(--bg)',
+        border: '1px solid var(--line)',
+        borderRadius: 10,
+      }}
+    >
+      <div
+        className="text-[10.5px] font-semibold uppercase"
+        style={{ color: 'var(--ink-3)', letterSpacing: '0.05em' }}
+      >
+        {label}
+      </div>
+      <div
+        className="mono tnum"
+        style={{
+          fontSize: 18,
+          fontWeight: 600,
+          color: tone === 'bad' ? 'var(--bad)' : 'var(--ink)',
+          letterSpacing: '-0.4px',
+          marginTop: 4,
+        }}
+      >
+        {value}
+      </div>
+      {sub && (
+        <div
+          className="text-[11px]"
+          style={{ color: 'var(--ink-3)', marginTop: 2 }}
+        >
+          {sub}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -127,6 +200,303 @@ function StudentListRow({
   );
 }
 
+// ─── Student detail ──────────────────────────────────────────────────────────
+
+function StudentDetail({
+  student,
+  wallet,
+  studentBookings,
+  studentLogs,
+  logsLoading,
+  logLimit,
+  onEdit,
+  onDeleteLog,
+  onDeleteStudent,
+  onLoadMore,
+}: {
+  student: Student;
+  wallet: Wallet | null;
+  studentBookings: Booking[];
+  studentLogs: LessonLog[];
+  logsLoading: boolean;
+  logLimit: number;
+  onEdit: () => void;
+  onDeleteLog: (logId: string) => void;
+  onDeleteStudent: () => void;
+  onLoadMore: () => void;
+}) {
+  const sortedBookings = useMemo(() => {
+    return [...studentBookings].sort(
+      (a, b) => DAYS.indexOf(a.dayOfWeek) - DAYS.indexOf(b.dayOfWeek),
+    );
+  }, [studentBookings]);
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex items-start gap-3.5 mb-5">
+        <Avatar name={student.clientName} size={56} />
+        <div className="flex-1 min-w-0">
+          <div
+            className="text-[20px]"
+            style={{ fontWeight: 600, letterSpacing: '-0.4px', color: 'var(--ink)' }}
+          >
+            {student.clientName}
+          </div>
+          <div
+            className="flex items-center gap-2.5 mt-0.5"
+            style={{ color: 'var(--ink-3)', fontSize: 13 }}
+          >
+            <span className="flex items-center gap-1">
+              <IconPhone size={12} />
+              {student.clientPhone || '—'}
+            </span>
+            <span className="mono text-[11px]">
+              joined {formatDateMedium(student.createdAt)}
+            </span>
+          </div>
+        </div>
+        <button
+          onClick={onEdit}
+          aria-label="Edit student"
+          className="flex items-center justify-center"
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            background: 'var(--panel)',
+            border: '1px solid var(--line)',
+            color: 'var(--ink-2)',
+            cursor: 'pointer',
+          }}
+        >
+          <IconEdit size={13} />
+        </button>
+      </div>
+
+      {/* MiniStat row */}
+      <div
+        className="grid gap-2.5 mb-5"
+        style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}
+      >
+        <MiniStat
+          label="Wallet"
+          value={
+            wallet
+              ? `${wallet.balance < 0 ? '−' : ''}RM ${Math.abs(wallet.balance).toFixed(0)}`
+              : '—'
+          }
+          tone={wallet && wallet.balance < 0 ? 'bad' : undefined}
+        />
+        <MiniStat label="Weekly" value={studentBookings.length} />
+        <MiniStat
+          label="All-time"
+          value={studentLogs.length}
+          sub="lessons done"
+        />
+      </div>
+
+      {/* Notes */}
+      {student.notes?.trim() && (
+        <div
+          className="flex items-start gap-2.5 mb-5"
+          style={{
+            background: 'var(--bg)',
+            border: '1px solid var(--line)',
+            borderRadius: 10,
+            padding: 14,
+          }}
+        >
+          <IconSparkle size={14} />
+          <div
+            className="text-[13px]"
+            style={{ color: 'var(--ink-2)', lineHeight: 1.5 }}
+          >
+            {student.notes}
+          </div>
+        </div>
+      )}
+
+      {/* Weekly schedule */}
+      <div className="mb-5">
+        <div
+          className="text-[11px] font-semibold uppercase mb-2.5"
+          style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
+        >
+          Weekly schedule
+        </div>
+        {sortedBookings.length === 0 ? (
+          <div
+            className="text-[12.5px] italic py-1"
+            style={{ color: 'var(--ink-4)' }}
+          >
+            No recurring bookings.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {sortedBookings.map((b) => (
+              <div
+                key={b.id}
+                className="flex items-center gap-2.5"
+                style={{
+                  padding: 10,
+                  border: '1px solid var(--line)',
+                  borderRadius: 8,
+                }}
+              >
+                <div
+                  className="text-[11px] font-semibold uppercase"
+                  style={{
+                    color: 'var(--ink-3)',
+                    letterSpacing: '0.06em',
+                    width: 36,
+                  }}
+                >
+                  {DAY_LABELS_SHORT[b.dayOfWeek]}
+                </div>
+                <div
+                  className="mono tnum text-[12.5px]"
+                  style={{ color: 'var(--ink)', fontWeight: 500, width: 90 }}
+                >
+                  {fmtTimeShort(b.startTime)}–{fmtTimeShort(b.endTime)}
+                </div>
+                <div
+                  className="flex-1 text-[12.5px] truncate"
+                  style={{ color: 'var(--ink-2)' }}
+                >
+                  {b.locationName}
+                </div>
+                <div
+                  className="mono tnum text-[12.5px]"
+                  style={{ color: 'var(--ink)' }}
+                >
+                  RM {b.studentPrices[student.id] ?? 0}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Recent lessons */}
+      <div>
+        <div
+          className="text-[11px] font-semibold uppercase mb-2.5"
+          style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
+        >
+          Recent lessons
+        </div>
+        {logsLoading ? (
+          <div className="flex justify-center py-4">
+            <div
+              className="animate-spin rounded-full h-5 w-5 border-2 border-t-transparent"
+              style={{ borderColor: 'var(--accent)' }}
+            />
+          </div>
+        ) : studentLogs.length === 0 ? (
+          <div
+            className="text-[12.5px] italic"
+            style={{ color: 'var(--ink-4)' }}
+          >
+            Nothing yet.
+          </div>
+        ) : (
+          <div className="flex flex-col">
+            {studentLogs.map((log, i) => (
+              <div
+                key={log.id}
+                className="flex items-center gap-2.5"
+                style={{
+                  padding: '10px 0',
+                  borderBottom:
+                    i === studentLogs.length - 1
+                      ? 'none'
+                      : '1px solid var(--line)',
+                }}
+              >
+                <span
+                  className="mono tnum text-[11.5px]"
+                  style={{ color: 'var(--ink-3)', width: 84 }}
+                >
+                  {formatDateMedium(parseDateString(log.date))}
+                </span>
+                <span
+                  className="mono tnum text-[11.5px]"
+                  style={{ color: 'var(--ink-2)' }}
+                >
+                  {fmtTimeShort(log.startTime)}
+                </span>
+                <span
+                  className="flex-1 text-[12.5px] truncate"
+                  style={{ color: 'var(--ink-2)' }}
+                >
+                  {log.locationName}
+                </span>
+                <span
+                  className="mono tnum text-[12.5px]"
+                  style={{ color: 'var(--ink)' }}
+                >
+                  RM {log.price}
+                </span>
+                <button
+                  onClick={() => onDeleteLog(log.id)}
+                  aria-label="Delete lesson"
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: 'var(--ink-3)',
+                    cursor: 'pointer',
+                    padding: 2,
+                  }}
+                >
+                  <IconClose size={11} />
+                </button>
+              </div>
+            ))}
+            {studentLogs.length >= logLimit && (
+              <button
+                onClick={onLoadMore}
+                className="text-[12.5px] py-2"
+                style={{
+                  color: 'var(--accent-ink)',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                Load more
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Danger footer */}
+      <div
+        className="flex justify-end"
+        style={{
+          borderTop: '1px solid var(--line)',
+          paddingTop: 16,
+          marginTop: 20,
+        }}
+      >
+        <button
+          onClick={onDeleteStudent}
+          className="text-[12.5px]"
+          style={{
+            color: 'var(--bad)',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          Delete student
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function StudentsPage() {
@@ -139,6 +509,15 @@ export default function StudentsPage() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterValue>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [logLimit, setLogLimit] = useState(20);
+
+  const { lessonLogs: studentLogs, loading: logsLoading } = useLessonLogs(
+    selectedId ? coach?.id : undefined,
+    undefined,
+    selectedId ?? undefined,
+    undefined,
+    logLimit,
+  );
 
   // Map day → student IDs with bookings that day (+ earliest start time for sorting).
   const { dayToStudents, activeDays } = useMemo(() => {
@@ -242,6 +621,51 @@ export default function StudentsPage() {
     studentsWithBookings,
     owingStudentIds,
   ]);
+
+  // Auto-select the first filtered student on desktop so the detail pane is
+  // never empty when data exists. Also reselect if the current selection
+  // drops out of the filter.
+  useEffect(() => {
+    if (isMobile) return;
+    if (filtered.length === 0) {
+      queueMicrotask(() => setSelectedId(null));
+      return;
+    }
+    if (!selectedId || !filtered.some((s) => s.id === selectedId)) {
+      queueMicrotask(() => setSelectedId(filtered[0].id));
+    }
+  }, [isMobile, filtered, selectedId]);
+
+  // Reset the log-limit whenever the selected student changes.
+  useEffect(() => {
+    queueMicrotask(() => setLogLimit(20));
+  }, [selectedId]);
+
+  const selectedStudent = useMemo(
+    () => students.find((s) => s.id === selectedId) ?? null,
+    [students, selectedId],
+  );
+
+  const selectedWallet = useMemo(
+    () =>
+      selectedStudent
+        ? wallets.find((w) => w.studentIds.includes(selectedStudent.id)) ?? null
+        : null,
+    [wallets, selectedStudent],
+  );
+
+  const selectedBookings = useMemo(
+    () =>
+      selectedStudent
+        ? bookings.filter(
+            (b) =>
+              b.status === 'confirmed' &&
+              !b.endDate &&
+              b.studentIds.includes(selectedStudent.id),
+          )
+        : [],
+    [bookings, selectedStudent],
+  );
 
   if (loading) {
     return (
@@ -360,18 +784,43 @@ export default function StudentsPage() {
           )}
         </div>
 
-        {/* Detail placeholder — filled in Task 2 */}
+        {/* Detail (desktop) */}
         {!isMobile && (
           <div
-            className="rounded-[12px] border py-16 text-center"
+            className="rounded-[12px] border"
             style={{
               background: 'var(--panel)',
               borderColor: 'var(--line)',
-              color: 'var(--ink-3)',
-              fontSize: 13,
+              padding: 20,
             }}
           >
-            Select a student
+            {selectedStudent ? (
+              <StudentDetail
+                student={selectedStudent}
+                wallet={selectedWallet}
+                studentBookings={selectedBookings}
+                studentLogs={studentLogs}
+                logsLoading={logsLoading}
+                logLimit={logLimit}
+                onEdit={() => {
+                  /* wired in Task 3 */
+                }}
+                onDeleteLog={() => {
+                  /* wired in Task 3 */
+                }}
+                onDeleteStudent={() => {
+                  /* wired in Task 3 */
+                }}
+                onLoadMore={() => setLogLimit(logLimit + 20)}
+              />
+            ) : (
+              <div
+                className="py-16 text-center"
+                style={{ color: 'var(--ink-3)', fontSize: 13 }}
+              >
+                Select a student
+              </div>
+            )}
           </div>
         )}
       </div>
