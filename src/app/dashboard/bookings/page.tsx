@@ -2,10 +2,10 @@
 
 import { useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { useBookings } from '@/hooks/useCoachData';
+import { useBookings, useStudents } from '@/hooks/useCoachData';
 import { getBookingTotal } from '@/lib/class-schedule';
 import { Chip } from '@/components/paper';
-import type { Booking, DayOfWeek } from '@/types';
+import type { Booking, DayOfWeek, Student } from '@/types';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -27,6 +27,16 @@ const DAY_LABELS_SHORT: Record<DayOfWeek, string> = {
   friday: 'FRI',
   saturday: 'SAT',
   sunday: 'SUN',
+};
+
+const DAY_LABELS_FULL: Record<DayOfWeek, string> = {
+  monday: 'Monday',
+  tuesday: 'Tuesday',
+  wednesday: 'Wednesday',
+  thursday: 'Thursday',
+  friday: 'Friday',
+  saturday: 'Saturday',
+  sunday: 'Sunday',
 };
 
 const HOUR_PX = 56;
@@ -59,6 +69,104 @@ function computeGridHours(bookings: Booking[]): number[] {
   const out: number[] = [];
   for (let h = startH; h < endH; h++) out.push(h);
   return out;
+}
+
+// ─── Mobile list ─────────────────────────────────────────────────────────────
+
+function RecurringCard({
+  b,
+  studentsById,
+}: {
+  b: Booking;
+  studentsById: Map<string, Student>;
+}) {
+  const isGroup = b.studentIds.length > 1;
+  const total = getBookingTotal(b);
+  const firstNames = b.studentIds
+    .map((sid) => studentsById.get(sid)?.clientName.split(' ')[0])
+    .filter((n): n is string => Boolean(n))
+    .join(', ');
+  return (
+    <div
+      className="flex items-center gap-2.5 p-2.5 rounded-[10px]"
+      style={{
+        background: 'var(--panel)',
+        border: '1px solid var(--line)',
+        borderLeft: `3px solid ${isGroup ? 'var(--accent)' : 'var(--ink-3)'}`,
+      }}
+    >
+      <div
+        className="mono tnum text-[12.5px] font-semibold"
+        style={{ color: 'var(--ink)', width: 64 }}
+      >
+        {fmtTimeShort(b.startTime)}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div
+          className="text-[13px] truncate"
+          style={{ color: 'var(--ink)', fontWeight: 500 }}
+        >
+          {b.className}
+          {isGroup && (
+            <span style={{ color: 'var(--accent-ink)' }}>
+              {' '}
+              · {b.studentIds.length}
+            </span>
+          )}
+        </div>
+        <div
+          className="text-[11.5px] truncate"
+          style={{ color: 'var(--ink-3)' }}
+        >
+          {b.locationName}
+          {firstNames ? ` · ${firstNames}` : ''}
+        </div>
+      </div>
+      <div
+        className="mono tnum text-[12.5px] shrink-0"
+        style={{ color: 'var(--ink-2)', fontWeight: 500 }}
+      >
+        RM {total}
+      </div>
+    </div>
+  );
+}
+
+function DayList({
+  byDay,
+  studentsById,
+}: {
+  byDay: Record<DayOfWeek, Booking[]>;
+  studentsById: Map<string, Student>;
+}) {
+  return (
+    <div>
+      {DAYS.map((d) => (
+        <div key={d} className="mb-4 last:mb-0">
+          <div
+            className="text-[11px] font-semibold uppercase mb-2"
+            style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
+          >
+            {DAY_LABELS_FULL[d]}
+          </div>
+          {byDay[d].length === 0 ? (
+            <div
+              className="text-[12.5px] italic py-1"
+              style={{ color: 'var(--ink-4)' }}
+            >
+              No classes
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {byDay[d].map((b) => (
+                <RecurringCard key={b.id} b={b} studentsById={studentsById} />
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // ─── Desktop weekly grid ─────────────────────────────────────────────────────
@@ -228,6 +336,7 @@ function WeeklyGrid({
 export default function BookingsPage() {
   const { coach } = useAuth();
   const { bookings, loading } = useBookings(coach?.id);
+  const { students } = useStudents(coach?.id);
 
   const confirmedBookings = useMemo(
     () =>
@@ -262,6 +371,12 @@ export default function BookingsPage() {
     () => computeGridHours(confirmedBookings),
     [confirmedBookings],
   );
+
+  const studentsById = useMemo(() => {
+    const m = new Map<string, Student>();
+    for (const s of students) m.set(s.id, s);
+    return m;
+  }, [students]);
 
   if (loading) {
     return (
@@ -367,8 +482,9 @@ export default function BookingsPage() {
               </div>
             </div>
           </div>
-          {/* Mobile list — added in Task 3 */}
-          <div className="sm:hidden" />
+          <div className="sm:hidden">
+            <DayList byDay={byDay} studentsById={studentsById} />
+          </div>
         </>
       )}
     </div>
