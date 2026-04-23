@@ -752,13 +752,14 @@ export default function PaymentsPage() {
 
   // Stats.
   const lastMonthRange = useMemo(() => getLastMonthRange(), []);
-  const outstanding = useMemo(() => {
-    const negatives = wallets.filter((w) => w.balance < 0);
-    return {
-      total: negatives.reduce((sum, w) => sum + Math.abs(w.balance), 0),
-      count: negatives.length,
-    };
-  }, [wallets]);
+  const needsAttention = useMemo(() => {
+    const visible = wallets.filter((w) => !(w.archived ?? false));
+    const owingCount = visible.filter((w) => w.balance < 0).length;
+    const lowCount = visible.filter(
+      (w) => w.balance >= 0 && isLowBalance(w, bookings, todayStr),
+    ).length;
+    return { owingCount, lowCount };
+  }, [wallets, bookings, todayStr]);
   const monthActual = useMemo(
     () =>
       lessonLogs
@@ -1025,14 +1026,23 @@ export default function PaymentsPage() {
       {/* Stat row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mb-5">
         <Stat
-          label="Outstanding"
-          value={formatRM(outstanding.total)}
-          sub={
-            outstanding.count > 0
-              ? `from ${outstanding.count} ${outstanding.count === 1 ? 'wallet' : 'wallets'}`
-              : undefined
+          label="Needs attention"
+          value={needsAttention.owingCount + needsAttention.lowCount}
+          sub={(() => {
+            const parts: string[] = [];
+            if (needsAttention.owingCount > 0)
+              parts.push(`${needsAttention.owingCount} owing`);
+            if (needsAttention.lowCount > 0)
+              parts.push(`${needsAttention.lowCount} low`);
+            return parts.length ? parts.join(' · ') : 'all healthy';
+          })()}
+          tone={
+            needsAttention.owingCount > 0
+              ? 'bad'
+              : needsAttention.lowCount > 0
+                ? 'warn'
+                : undefined
           }
-          tone={outstanding.total > 0 ? 'bad' : undefined}
         />
         <Stat label="Last month" value={formatRM(lastMonthActual)} sub="earned" />
         <Stat
