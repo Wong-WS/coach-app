@@ -3,18 +3,8 @@
 import { useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useBookings } from '@/hooks/useCoachData';
+import { getBookingTotal } from '@/lib/class-schedule';
 import { Chip } from '@/components/paper';
-import type { Booking } from '@/types';
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-// Weekly RM for one booking (sum over studentPrices for linked students).
-function perBookingTotal(b: Booking): number {
-  return b.studentIds.reduce(
-    (sum, sid) => sum + (b.studentPrices[sid] ?? 0),
-    0,
-  );
-}
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
@@ -32,7 +22,7 @@ export default function BookingsPage() {
 
   const totalSlots = confirmedBookings.length;
   const weeklyTotal = useMemo(
-    () => confirmedBookings.reduce((s, b) => s + perBookingTotal(b), 0),
+    () => confirmedBookings.reduce((s, b) => s + getBookingTotal(b), 0),
     [confirmedBookings],
   );
 
@@ -71,7 +61,9 @@ export default function BookingsPage() {
             <span className="tnum" style={{ color: 'var(--ink)', fontWeight: 500 }}>
               {totalSlots}
             </span>{' '}
-            {totalSlots === 1 ? 'slot' : 'slots'} ·{' '}
+            <span className="sm:hidden">recurring</span>
+            <span className="hidden sm:inline">{totalSlots === 1 ? 'slot' : 'slots'}</span>{' '}
+            ·{' '}
             <span
               className="mono tnum"
               style={{ color: 'var(--ink)', fontWeight: 500 }}
