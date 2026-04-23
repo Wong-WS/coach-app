@@ -15,13 +15,52 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
-import { Button, Input, Modal } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { useLocations } from '@/hooks/useCoachData';
+import {
+  Btn,
+  PaperModal,
+  IconPin,
+  IconEdit,
+  IconTrash,
+  IconPlus,
+} from '@/components/paper';
 import type { Location } from '@/types';
 
+// ─── Shared input styling (matches Payments & Students) ──────────────────────
+
+const paperInputClass =
+  'w-full px-3 py-2.5 rounded-[10px] border text-[13.5px] outline-none focus:border-[color:var(--accent)]';
+const paperInputStyle: React.CSSProperties = {
+  background: 'var(--bg)',
+  borderColor: 'var(--line-2)',
+  color: 'var(--ink)',
+  boxSizing: 'border-box',
+  WebkitAppearance: 'none',
+  appearance: 'none',
+  minWidth: 0,
+};
+
+// ─── Eyebrow label ───────────────────────────────────────────────────────────
+
+function Eyebrow({ children, tone }: { children: React.ReactNode; tone?: 'bad' }) {
+  return (
+    <div
+      className="text-[11px] font-semibold uppercase"
+      style={{
+        color: tone === 'bad' ? 'var(--bad)' : 'var(--ink-3)',
+        letterSpacing: '0.06em',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
+
 export default function SettingsPage() {
-  const { coach } = useAuth();
+  const { coach, user } = useAuth();
   const { showToast } = useToast();
   const { locations } = useLocations(coach?.id);
 
@@ -38,6 +77,8 @@ export default function SettingsPage() {
 
   const [deletingLocation, setDeletingLocation] = useState<Location | null>(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
+
+  // ─── Handlers ──────────────────────────────────────────────────────────────
 
   const handleAddLocation = async () => {
     if (!coach || !db) return;
@@ -83,7 +124,6 @@ export default function SettingsPage() {
         name,
       });
 
-      // Propagate the new name to all bookings + classExceptions that reference this location.
       const bookingsSnap = await getDocs(
         query(
           collection(firestore, 'coaches', coach.id, 'bookings'),
@@ -128,43 +168,181 @@ export default function SettingsPage() {
     }
   };
 
+  const handleReset = async () => {
+    if (!coach) return;
+    setResetting(true);
+    try {
+      const res = await fetch('/api/reset-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coachId: coach.id }),
+      });
+      const data = await res.json();
+      const total = Object.values(data.deleted as Record<string, number>).reduce(
+        (a, b) => a + b,
+        0,
+      );
+      showToast(`Account reset — ${total} records deleted`, 'success');
+      setShowResetModal(false);
+    } catch {
+      showToast('Failed to reset account', 'error');
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const locationCount = locations.length;
+
+  // ─── Render ────────────────────────────────────────────────────────────────
+
   return (
-    <div className="space-y-8 max-w-2xl">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100">Settings</h1>
+    <div
+      className="px-4 sm:px-6 py-5 sm:py-7 mx-auto"
+      style={{ color: 'var(--ink)', maxWidth: 680 }}
+    >
+      {/* Header */}
+      <div className="mb-7">
+        <Eyebrow>Settings</Eyebrow>
+        <div
+          className="text-[22px] sm:text-[28px] font-semibold leading-tight"
+          style={{ letterSpacing: '-0.6px' }}
+        >
+          Account &amp; preferences
+        </div>
+        <div className="text-[13px] mt-1.5" style={{ color: 'var(--ink-3)' }}>
+          <span className="tnum" style={{ color: 'var(--ink)', fontWeight: 500 }}>
+            {locationCount}
+          </span>{' '}
+          {locationCount === 1 ? 'location' : 'locations'}
+        </div>
       </div>
 
-      {/* Locations */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-zinc-100">Locations</h2>
-          <Button variant="ghost" onClick={() => setShowAddLocation(true)}>
-            + Add location
-          </Button>
+      {/* ── Account ── */}
+      <section className="mb-8">
+        <Eyebrow>Account</Eyebrow>
+        <div
+          className="mt-2.5 rounded-[12px] border overflow-hidden"
+          style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
+        >
+          <div className="px-4 py-3 flex items-center justify-between gap-3">
+            <div
+              className="text-[12px] font-medium"
+              style={{ color: 'var(--ink-3)' }}
+            >
+              Name
+            </div>
+            <div
+              className="text-[13.5px] font-medium truncate"
+              style={{ color: 'var(--ink)' }}
+            >
+              {coach?.displayName ?? '—'}
+            </div>
+          </div>
+          <div
+            className="px-4 py-3 flex items-center justify-between gap-3"
+            style={{ borderTop: '1px solid var(--line)' }}
+          >
+            <div
+              className="text-[12px] font-medium"
+              style={{ color: 'var(--ink-3)' }}
+            >
+              Email
+            </div>
+            <div
+              className="mono text-[13px] truncate"
+              style={{ color: 'var(--ink-2)' }}
+            >
+              {user?.email ?? '—'}
+            </div>
+          </div>
         </div>
-        <p className="text-sm text-gray-500 dark:text-zinc-400 mb-3">
-          Renames propagate to all existing bookings. Deleting a location removes it from the picker
-          for new lessons — past lessons keep their location name.
+      </section>
+
+      {/* ── Locations ── */}
+      <section className="mb-8">
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <Eyebrow>Locations</Eyebrow>
+          <Btn
+            size="sm"
+            variant="outline"
+            onClick={() => setShowAddLocation(true)}
+          >
+            <IconPlus size={14} />
+            Add
+          </Btn>
+        </div>
+        <p className="text-[12.5px] mb-3" style={{ color: 'var(--ink-3)' }}>
+          Renames propagate to all existing bookings. Deleting a location removes it
+          from the picker — past lessons keep their location name.
         </p>
+
         {locations.length === 0 ? (
-          <p className="text-sm text-gray-400 dark:text-zinc-500">No locations yet.</p>
+          <div
+            className="rounded-[12px] border py-10 text-center"
+            style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
+          >
+            <p
+              className="text-[14px] font-semibold mb-1"
+              style={{ color: 'var(--ink)' }}
+            >
+              No locations yet
+            </p>
+            <p
+              className="text-[12.5px] mb-4"
+              style={{ color: 'var(--ink-3)' }}
+            >
+              Add the places where you teach so you can assign them to bookings.
+            </p>
+            <Btn size="sm" variant="primary" onClick={() => setShowAddLocation(true)}>
+              <IconPlus size={14} />
+              Add location
+            </Btn>
+          </div>
         ) : (
-          <div className="border border-gray-200 dark:border-[#333333] rounded-lg divide-y divide-gray-100 dark:divide-[#333333]">
+          <div className="flex flex-col gap-2">
             {locations.map((loc) => (
-              <div key={loc.id} className="flex items-center justify-between px-4 py-3">
-                <span className="text-sm text-gray-900 dark:text-zinc-100">{loc.name}</span>
-                <div className="flex items-center gap-2">
+              <div
+                key={loc.id}
+                className="flex items-center gap-3 px-3.5 py-3 rounded-[12px] border"
+                style={{
+                  background: 'var(--panel)',
+                  borderColor: 'var(--line)',
+                }}
+              >
+                <div
+                  className="shrink-0 flex items-center justify-center rounded-full"
+                  style={{
+                    width: 30,
+                    height: 30,
+                    background: 'var(--line)',
+                    color: 'var(--ink-2)',
+                  }}
+                  aria-hidden
+                >
+                  <IconPin size={15} />
+                </div>
+                <div
+                  className="flex-1 min-w-0 text-[13.5px] font-medium truncate"
+                  style={{ color: 'var(--ink)' }}
+                >
+                  {loc.name}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={() => openEditLocation(loc)}
-                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                    className="p-2 rounded-[8px] transition-colors hover:bg-[var(--line)]"
+                    style={{ color: 'var(--ink-3)' }}
+                    aria-label={`Rename ${loc.name}`}
                   >
-                    Edit
+                    <IconEdit size={15} />
                   </button>
                   <button
                     onClick={() => setDeletingLocation(loc)}
-                    className="text-xs text-red-600 dark:text-red-400 hover:underline"
+                    className="p-2 rounded-[8px] transition-colors hover:bg-[var(--bad-soft)]"
+                    style={{ color: 'var(--ink-3)' }}
+                    aria-label={`Delete ${loc.name}`}
                   >
-                    Delete
+                    <IconTrash size={15} />
                   </button>
                 </div>
               </div>
@@ -173,183 +351,237 @@ export default function SettingsPage() {
         )}
       </section>
 
-      {/* Danger zone */}
-      <div className="border-t border-gray-200 dark:border-[#333333] pt-8">
-        <h2 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-2">Danger Zone</h2>
-        <p className="text-sm text-gray-500 dark:text-zinc-400 mb-4">
-          Reset your account to start fresh. This deletes all students, bookings, lessons, wallets, and locations. Your profile is kept.
-        </p>
-        <Button
-          variant="ghost"
-          onClick={() => setShowResetModal(true)}
-          className="text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+      {/* ── Danger zone ── */}
+      <section
+        className="mt-10 pt-7"
+        style={{ borderTop: '1px solid var(--line)' }}
+      >
+        <Eyebrow tone="bad">Danger zone</Eyebrow>
+        <div
+          className="mt-2.5 rounded-[12px] border p-4 flex items-start gap-4"
+          style={{
+            background: 'var(--bad-soft)',
+            borderColor: 'var(--bad-soft)',
+          }}
         >
-          Reset Account
-        </Button>
-      </div>
+          <div className="flex-1 min-w-0">
+            <div
+              className="text-[13.5px] font-semibold"
+              style={{ color: 'var(--bad)' }}
+            >
+              Reset account
+            </div>
+            <p
+              className="text-[12.5px] mt-1"
+              style={{ color: 'var(--ink-2)' }}
+            >
+              Permanently deletes all students, bookings, lessons, wallets, and
+              locations. Your profile is kept. This can&apos;t be undone.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowResetModal(true)}
+            className="shrink-0 inline-flex items-center justify-center rounded-[8px] text-[13px] font-medium px-3 py-2 border transition-colors hover:brightness-105"
+            style={{
+              background: 'var(--panel)',
+              color: 'var(--bad)',
+              borderColor: 'var(--line-2)',
+            }}
+          >
+            Reset…
+          </button>
+        </div>
+      </section>
 
-      {/* Add Location modal */}
-      <Modal
-        isOpen={showAddLocation}
-        onClose={() => { setShowAddLocation(false); setNewLocationName(''); }}
-        title="Add Location"
+      {/* ── Add location modal ── */}
+      <PaperModal
+        open={showAddLocation}
+        onClose={() => {
+          setShowAddLocation(false);
+          setNewLocationName('');
+        }}
+        title="Add location"
       >
         <div className="space-y-4">
-          <Input
-            value={newLocationName}
-            onChange={(e) => setNewLocationName(e.target.value)}
-            placeholder="e.g. Permai Garden"
-            autoFocus
-          />
-          <div className="flex gap-3 pt-2">
-            <Button
-              onClick={handleAddLocation}
-              loading={creatingLocation}
-              disabled={!newLocationName.trim() || creatingLocation}
-              className="flex-1"
+          <div>
+            <label
+              className="block text-[11.5px] font-semibold uppercase mb-1.5"
+              style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
             >
-              Add
-            </Button>
-            <Button
+              Name
+            </label>
+            <input
+              value={newLocationName}
+              onChange={(e) => setNewLocationName(e.target.value)}
+              placeholder="e.g. Permai Garden"
+              autoFocus
+              className={paperInputClass}
+              style={paperInputStyle}
+            />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Btn
               variant="ghost"
-              onClick={() => { setShowAddLocation(false); setNewLocationName(''); }}
-              className="flex-1"
+              full
+              onClick={() => {
+                setShowAddLocation(false);
+                setNewLocationName('');
+              }}
             >
               Cancel
-            </Button>
+            </Btn>
+            <Btn
+              variant="primary"
+              full
+              onClick={handleAddLocation}
+              disabled={!newLocationName.trim() || creatingLocation}
+            >
+              {creatingLocation ? 'Adding…' : 'Add'}
+            </Btn>
           </div>
         </div>
-      </Modal>
+      </PaperModal>
 
-      {/* Edit Location modal */}
-      <Modal
-        isOpen={!!editingLocation}
+      {/* ── Rename location modal ── */}
+      <PaperModal
+        open={!!editingLocation}
         onClose={() => setEditingLocation(null)}
-        title="Rename Location"
+        title="Rename location"
       >
         {editingLocation && (
           <div className="space-y-4">
-            <Input
-              value={editLocationName}
-              onChange={(e) => setEditLocationName(e.target.value)}
-              autoFocus
-            />
-            <p className="text-xs text-gray-500 dark:text-zinc-400">
-              The new name will be applied to all existing bookings at this location.
-            </p>
-            <div className="flex gap-3 pt-2">
-              <Button
-                onClick={handleSaveLocation}
-                loading={savingLocation}
-                disabled={!editLocationName.trim() || savingLocation}
-                className="flex-1"
+            <div>
+              <label
+                className="block text-[11.5px] font-semibold uppercase mb-1.5"
+                style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
               >
-                Save
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => setEditingLocation(null)}
-                className="flex-1"
-              >
+                Name
+              </label>
+              <input
+                value={editLocationName}
+                onChange={(e) => setEditLocationName(e.target.value)}
+                autoFocus
+                className={paperInputClass}
+                style={paperInputStyle}
+              />
+              <p className="text-[11.5px] mt-2" style={{ color: 'var(--ink-3)' }}>
+                The new name will be applied to all existing bookings at this
+                location.
+              </p>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Btn variant="ghost" full onClick={() => setEditingLocation(null)}>
                 Cancel
-              </Button>
+              </Btn>
+              <Btn
+                variant="primary"
+                full
+                onClick={handleSaveLocation}
+                disabled={!editLocationName.trim() || savingLocation}
+              >
+                {savingLocation ? 'Saving…' : 'Save'}
+              </Btn>
             </div>
           </div>
         )}
-      </Modal>
+      </PaperModal>
 
-      {/* Delete Location modal */}
-      <Modal
-        isOpen={!!deletingLocation}
-        onClose={() => setDeletingLocation(null)}
-        title="Delete Location?"
+      {/* ── Delete location modal ── */}
+      <PaperModal
+        open={!!deletingLocation}
+        onClose={() => !deletingBusy && setDeletingLocation(null)}
+        title="Delete location?"
       >
         {deletingLocation && (
           <div className="space-y-4">
-            <p className="text-sm text-gray-700 dark:text-zinc-300">
-              Remove <span className="font-medium">{deletingLocation.name}</span> from the location
-              picker.
+            <p className="text-[13.5px]" style={{ color: 'var(--ink)' }}>
+              Remove{' '}
+              <span className="font-semibold">{deletingLocation.name}</span> from
+              the location picker.
             </p>
-            <p className="text-xs text-gray-500 dark:text-zinc-400">
-              Past and existing lessons keep the location name displayed. You just won&apos;t be able to
-              pick it for new lessons.
+            <p className="text-[12.5px]" style={{ color: 'var(--ink-3)' }}>
+              Past and existing lessons keep their location name displayed. You
+              just won&apos;t be able to pick it for new lessons.
             </p>
-            <div className="flex gap-3 pt-2">
-              <Button
-                variant="danger"
-                onClick={handleDeleteLocation}
-                loading={deletingBusy}
-                disabled={deletingBusy}
-                className="flex-1"
-              >
-                Delete
-              </Button>
-              <Button
+            <div className="flex gap-2 pt-1">
+              <Btn
                 variant="ghost"
+                full
                 onClick={() => setDeletingLocation(null)}
                 disabled={deletingBusy}
-                className="flex-1"
               >
                 Cancel
-              </Button>
+              </Btn>
+              <button
+                onClick={handleDeleteLocation}
+                disabled={deletingBusy}
+                className="w-full inline-flex items-center justify-center rounded-[8px] text-[13.5px] font-medium px-3.5 py-2 border transition-colors disabled:opacity-55 disabled:cursor-not-allowed hover:brightness-110"
+                style={{
+                  background: 'var(--bad)',
+                  color: '#fff',
+                  borderColor: 'transparent',
+                }}
+              >
+                {deletingBusy ? 'Deleting…' : 'Delete'}
+              </button>
             </div>
           </div>
         )}
-      </Modal>
+      </PaperModal>
 
-      {/* Reset confirmation modal */}
-      <Modal isOpen={showResetModal} onClose={() => setShowResetModal(false)} title="Reset Account">
+      {/* ── Reset confirmation modal ── */}
+      <PaperModal
+        open={showResetModal}
+        onClose={() => !resetting && setShowResetModal(false)}
+        title="Reset account?"
+      >
         <div className="space-y-4">
-          <p className="text-sm text-gray-600 dark:text-zinc-400">
-            This will permanently delete all your data:
+          <p className="text-[13.5px]" style={{ color: 'var(--ink)' }}>
+            This will permanently delete:
           </p>
-          <ul className="text-sm text-gray-600 dark:text-zinc-400 list-disc pl-5 space-y-1">
+          <ul
+            className="text-[13px] space-y-1.5 pl-4 list-disc"
+            style={{ color: 'var(--ink-2)' }}
+          >
             <li>All students</li>
             <li>All bookings</li>
             <li>All lesson logs</li>
             <li>All wallets and transactions</li>
             <li>All locations</li>
           </ul>
-          <p className="text-sm font-medium text-red-600 dark:text-red-400">
-            This cannot be undone.
-          </p>
-          <div className="flex gap-3 pt-2">
-            <Button
+          <div
+            className="rounded-[10px] px-3 py-2 text-[12.5px] font-medium"
+            style={{
+              background: 'var(--bad-soft)',
+              color: 'var(--bad)',
+            }}
+          >
+            Your profile is kept, but everything else is gone forever.
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Btn
               variant="ghost"
+              full
               onClick={() => setShowResetModal(false)}
-              className="flex-1"
+              disabled={resetting}
             >
               Cancel
-            </Button>
-            <Button
-              onClick={async () => {
-                if (!coach) return;
-                setResetting(true);
-                try {
-                  const res = await fetch('/api/reset-account', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ coachId: coach.id }),
-                  });
-                  const data = await res.json();
-                  const total = Object.values(data.deleted as Record<string, number>).reduce((a, b) => a + b, 0);
-                  showToast(`Account reset — ${total} records deleted`, 'success');
-                  setShowResetModal(false);
-                } catch {
-                  showToast('Failed to reset account', 'error');
-                } finally {
-                  setResetting(false);
-                }
-              }}
-              loading={resetting}
+            </Btn>
+            <button
+              onClick={handleReset}
               disabled={resetting}
-              className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+              className="w-full inline-flex items-center justify-center rounded-[8px] text-[13.5px] font-medium px-3.5 py-2 border transition-colors disabled:opacity-55 disabled:cursor-not-allowed hover:brightness-110"
+              style={{
+                background: 'var(--bad)',
+                color: '#fff',
+                borderColor: 'transparent',
+              }}
             >
-              {resetting ? 'Resetting...' : 'Yes, Reset Everything'}
-            </Button>
+              {resetting ? 'Resetting…' : 'Yes, reset everything'}
+            </button>
           </div>
         </div>
-      </Modal>
+      </PaperModal>
     </div>
   );
 }
