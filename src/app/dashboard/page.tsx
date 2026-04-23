@@ -183,6 +183,18 @@ export default function DashboardPage() {
   const [markDoneAttending, setMarkDoneAttending] = useState<string[]>([]);
   const [markingDone, setMarkingDone] = useState(false);
 
+  // Wallet-depletion popup shown when a mark-done charge empties a wallet.
+  const [depletedAlert, setDepletedAlert] = useState<
+    | {
+        wallets: Array<{
+          name: string;
+          newBalance: number;
+          status: 'owing' | 'empty';
+        }>;
+      }
+    | null
+  >(null);
+
   const openMarkDone = (c: Booking) => {
     setMarkDoneBooking(c);
     const init: Record<string, number> = {};
@@ -263,30 +275,29 @@ export default function DashboardPage() {
 
       await batch.commit();
 
-      // After the commit, notify on wallets that just crossed below next-lesson cost.
-      // "Can cover next" = balance >= rate (or rate == 0). Skip tab-mode wallets.
+      // After the commit, collect wallets that just crossed below next-lesson
+      // cost. "Can cover next" = balance >= rate (or rate == 0). Skip tab-mode
+      // wallets. Show a popup listing any wallets that need attention.
+      const depleted: Array<{
+        name: string;
+        newBalance: number;
+        status: 'owing' | 'empty';
+      }> = [];
       for (const { wallet, charge } of walletImpacts.values()) {
         if (wallet.tabMode) continue;
         const rate = getNextLessonCost(wallet, bookings);
         if (rate <= 0) continue;
         const prevBalance = wallet.balance;
         const newBalance = prevBalance - charge;
-        const prevCouldCover = prevBalance >= rate;
-        const nowCouldCover = newBalance >= rate;
-        if (prevCouldCover && !nowCouldCover) {
-          if (newBalance < 0) {
-            showToast(
-              `${wallet.name} now owes RM ${Math.abs(newBalance).toFixed(0)}`,
-              'error',
-            );
-          } else {
-            showToast(
-              `${wallet.name} can't cover the next lesson — time to top up`,
-              'info',
-            );
-          }
+        if (prevBalance >= rate && newBalance < rate) {
+          depleted.push({
+            name: wallet.name,
+            newBalance,
+            status: newBalance < 0 ? 'owing' : 'empty',
+          });
         }
       }
+      if (depleted.length > 0) setDepletedAlert({ wallets: depleted });
     } catch (e) {
       console.error(e);
       showToast('Failed to mark class as done', 'error');
@@ -838,6 +849,62 @@ export default function DashboardPage() {
         onClose={closeMarkDone}
         onConfirm={handleConfirmMarkDone}
       />
+
+      <PaperModal
+        open={!!depletedAlert}
+        onClose={() => setDepletedAlert(null)}
+        title={
+          depletedAlert && depletedAlert.wallets.length > 1
+            ? 'Wallets need top-up'
+            : 'Wallet needs top-up'
+        }
+      >
+        {depletedAlert && (
+          <div className="space-y-3">
+            <p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>
+              {depletedAlert.wallets.length > 1
+                ? "These wallets can't cover the next lesson after this charge:"
+                : "This wallet can't cover the next lesson after this charge:"}
+            </p>
+            <div className="space-y-2">
+              {depletedAlert.wallets.map((w, i) => {
+                const isOwing = w.status === 'owing';
+                return (
+                  <div
+                    key={i}
+                    className="rounded-[10px] border p-3"
+                    style={{
+                      background: isOwing ? 'var(--bad-soft)' : 'var(--warn-soft)',
+                      borderColor: isOwing ? 'var(--bad)' : 'var(--warn)',
+                    }}
+                  >
+                    <div
+                      className="text-[13.5px] font-semibold"
+                      style={{ color: 'var(--ink)' }}
+                    >
+                      {w.name}
+                    </div>
+                    <div
+                      className="mono tnum text-[12.5px] mt-0.5"
+                      style={{ color: isOwing ? 'var(--bad)' : 'var(--warn)' }}
+                    >
+                      {isOwing
+                        ? `Now owes RM ${Math.abs(w.newBalance).toFixed(0)}`
+                        : `Balance RM ${w.newBalance.toFixed(0)} — below next lesson`}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <Btn
+              variant="primary"
+              onClick={() => setDepletedAlert(null)}
+            >
+              Got it
+            </Btn>
+          </div>
+        )}
+      </PaperModal>
 
       <AddLessonModal
         open={showAdd}
