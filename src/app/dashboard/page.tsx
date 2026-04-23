@@ -461,32 +461,28 @@ export default function DashboardPage() {
     }
   };
 
-  const handleDuplicate = async (c: Booking) => {
-    if (!coach || !db) return;
-    try {
-      const firestore = db as Firestore;
-      const payload: Record<string, unknown> = {
-        locationId: c.locationId,
-        locationName: c.locationName,
-        dayOfWeek: c.dayOfWeek,
-        startTime: c.startTime,
-        endTime: c.endTime,
-        status: 'confirmed',
-        className: c.className ? `${c.className} (copy)` : '',
-        notes: c.notes ?? '',
-        studentIds: c.studentIds,
-        studentPrices: c.studentPrices,
-        studentWallets: c.studentWallets,
-        createdAt: serverTimestamp(),
-      };
-      if (c.startDate) payload.startDate = c.startDate;
-      if (c.endDate) payload.endDate = c.endDate;
-      await addDoc(collection(firestore, 'coaches', coach.id, 'bookings'), payload);
-      showToast('Class duplicated', 'success');
-    } catch (e) {
-      console.error(e);
-      showToast('Failed to duplicate', 'error');
-    }
+  const [duplicatePrefill, setDuplicatePrefill] = useState<AddLessonPrefill | null>(null);
+
+  const handleDuplicate = (c: Booking) => {
+    const rows: StudentRowState[] = c.studentIds.map((sid) => ({
+      mode: 'existing',
+      studentId: sid,
+      newName: '',
+      newPhone: '',
+      walletOption: c.studentWallets?.[sid] ? 'existing' : 'none',
+      existingWalletId: c.studentWallets?.[sid] ?? '',
+      newWalletName: '',
+      price: c.studentPrices?.[sid] ?? 0,
+    }));
+    setDuplicatePrefill({
+      className: c.className ? `${c.className} (copy)` : '',
+      date: selectedDateStr,
+      startTime: c.startTime,
+      endTime: c.endTime,
+      locationId: c.locationId,
+      rows,
+    });
+    setShowAdd(true);
   };
 
   // Edit-class modal state
@@ -990,12 +986,16 @@ export default function DashboardPage() {
 
       <AddLessonModal
         open={showAdd}
-        onClose={() => setShowAdd(false)}
+        onClose={() => {
+          setShowAdd(false);
+          setDuplicatePrefill(null);
+        }}
         coachId={coach?.id}
         students={students}
         wallets={wallets}
         locations={locations}
         defaultDate={selectedDateStr}
+        prefill={duplicatePrefill}
       />
 
       <EditClassModal
@@ -2363,6 +2363,15 @@ function makeEmptyRow(): StudentRowState {
   };
 }
 
+type AddLessonPrefill = {
+  className: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  locationId: string;
+  rows: StudentRowState[];
+};
+
 function AddLessonModal({
   open,
   onClose,
@@ -2371,6 +2380,7 @@ function AddLessonModal({
   wallets,
   locations,
   defaultDate,
+  prefill,
 }: {
   open: boolean;
   onClose: () => void;
@@ -2379,6 +2389,7 @@ function AddLessonModal({
   wallets: Wallet[];
   locations: Location[];
   defaultDate: string;
+  prefill?: AddLessonPrefill | null;
 }) {
   const { showToast } = useToast();
   const [className, setClassName] = useState('');
@@ -2393,6 +2404,17 @@ function AddLessonModal({
 
   useEffect(() => {
     if (!open) return;
+    if (prefill) {
+      setClassName(prefill.className);
+      setDate(prefill.date);
+      setStartTime(prefill.startTime);
+      setEndTime(prefill.endTime);
+      setRepeat(false);
+      setLocationId(prefill.locationId);
+      setNewLocationName('');
+      setRows(prefill.rows.length > 0 ? prefill.rows : [makeEmptyRow()]);
+      return;
+    }
     setClassName('');
     setDate(defaultDate);
     setStartTime('16:00');
@@ -2401,7 +2423,7 @@ function AddLessonModal({
     setLocationId('__new');
     setNewLocationName('');
     setRows([makeEmptyRow()]);
-  }, [open, defaultDate]);
+  }, [open, defaultDate, prefill]);
 
   const updateRow = (i: number, patch: Partial<StudentRowState>) =>
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -2567,7 +2589,7 @@ function AddLessonModal({
   };
 
   return (
-    <PaperModal open={open} onClose={onClose} title="Add lesson" width={560}>
+    <PaperModal open={open} onClose={onClose} title={prefill ? 'Duplicate lesson' : 'Add lesson'} width={560}>
       <div className="flex flex-col gap-4">
         <div>
           <FieldLabel>Class name</FieldLabel>
@@ -2710,7 +2732,7 @@ function AddLessonModal({
           Cancel
         </Btn>
         <Btn variant="primary" full onClick={handleSave} disabled={saving}>
-          <IconCheck size={14} /> {saving ? 'Saving…' : 'Add lesson'}
+          <IconCheck size={14} /> {saving ? 'Saving…' : prefill ? 'Duplicate' : 'Add lesson'}
         </Btn>
       </div>
     </PaperModal>
