@@ -223,8 +223,8 @@ function WalletDetailBody({
   onTopUp,
   onAdjust,
   onToggleTabMode,
+  onArchive,
   onDelete,
-  onClose,
   showToast,
 }: {
   coachId: string;
@@ -234,8 +234,8 @@ function WalletDetailBody({
   onTopUp: () => void;
   onAdjust: () => void;
   onToggleTabMode: () => void;
+  onArchive: () => void;
   onDelete: () => void;
-  onClose: () => void;
   showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }) {
   const [txnLimit, setTxnLimit] = useState(12);
@@ -483,24 +483,7 @@ function WalletDetailBody({
         <Btn variant="ghost" onClick={onToggleTabMode}>
           {wallet.tabMode ? 'Turn off tab mode' : 'Turn on tab mode'}
         </Btn>
-        <Btn
-          variant="ghost"
-          onClick={async () => {
-            if (!db) return;
-            try {
-              await updateDoc(
-                doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
-                {
-                  archived: !(wallet.archived ?? false),
-                  updatedAt: serverTimestamp(),
-                },
-              );
-              onClose();
-            } catch {
-              showToast('Failed to update', 'error');
-            }
-          }}
-        >
+        <Btn variant="ghost" onClick={onArchive}>
           {wallet.archived ? 'Unarchive wallet' : 'Archive wallet'}
         </Btn>
         <button
@@ -645,6 +628,9 @@ export default function PaymentsPage() {
 
   const [showTabModeModal, setShowTabModeModal] = useState(false);
   const [togglingTabMode, setTogglingTabMode] = useState(false);
+
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [archivingWallet, setArchivingWallet] = useState(false);
 
   // Filters.
   const [walletSearch, setWalletSearch] = useState('');
@@ -937,6 +923,26 @@ export default function PaymentsPage() {
     }
   };
 
+  const handleToggleArchive = async () => {
+    if (!db || !selectedWallet) return;
+    setArchivingWallet(true);
+    try {
+      const firestore = db as Firestore;
+      const next = !(selectedWallet.archived ?? false);
+      await updateDoc(
+        doc(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id),
+        { archived: next, updatedAt: serverTimestamp() },
+      );
+      showToast(next ? 'Wallet archived' : 'Wallet unarchived', 'success');
+      setShowArchiveModal(false);
+      if (next) setSelectedWallet(null);
+    } catch {
+      showToast('Failed to update', 'error');
+    } finally {
+      setArchivingWallet(false);
+    }
+  };
+
   const handleDeleteWallet = async () => {
     if (!db || !selectedWallet) return;
     setDeletingWallet(true);
@@ -1162,8 +1168,8 @@ export default function PaymentsPage() {
             onTopUp={() => setShowTopUpModal(true)}
             onAdjust={() => setShowAdjustModal(true)}
             onToggleTabMode={() => setShowTabModeModal(true)}
+            onArchive={() => setShowArchiveModal(true)}
             onDelete={() => setShowDeleteModal(true)}
-            onClose={() => setSelectedWallet(null)}
             showToast={showToast}
           />
         )}
@@ -1592,6 +1598,57 @@ export default function PaymentsPage() {
                 variant="outline"
                 onClick={() => setShowTabModeModal(false)}
                 disabled={togglingTabMode}
+              >
+                Cancel
+              </Btn>
+            </div>
+          </div>
+        )}
+      </PaperModal>
+
+      {/* ── Archive confirmation ── */}
+      <PaperModal
+        open={showArchiveModal}
+        onClose={() => !archivingWallet && setShowArchiveModal(false)}
+        title={selectedWallet?.archived ? 'Unarchive wallet?' : 'Archive wallet?'}
+      >
+        {selectedWallet && (
+          <div className="space-y-3">
+            <p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>
+              {selectedWallet.archived ? (
+                <>
+                  <span className="font-semibold" style={{ color: 'var(--ink)' }}>
+                    {selectedWallet.name}
+                  </span>{' '}
+                  will be restored to the active wallet list.
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold" style={{ color: 'var(--ink)' }}>
+                    {selectedWallet.name}
+                  </span>{' '}
+                  will be hidden from the default view. Transactions are kept and
+                  you can unarchive anytime from the &ldquo;Show archived&rdquo;
+                  filter.
+                </>
+              )}
+            </p>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <Btn
+                variant="primary"
+                onClick={handleToggleArchive}
+                disabled={archivingWallet}
+              >
+                {archivingWallet
+                  ? 'Saving…'
+                  : selectedWallet.archived
+                    ? 'Unarchive'
+                    : 'Archive'}
+              </Btn>
+              <Btn
+                variant="outline"
+                onClick={() => setShowArchiveModal(false)}
+                disabled={archivingWallet}
               >
                 Cancel
               </Btn>
