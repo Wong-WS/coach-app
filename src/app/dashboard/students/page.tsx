@@ -389,7 +389,7 @@ function StudentDetail({
         {logsLoading ? (
           <div className="flex justify-center py-4">
             <div
-              className="animate-spin rounded-full h-5 w-5 border-2 border-t-transparent"
+              className="animate-spin rounded-full h-5 w-5 border-b-2"
               style={{ borderColor: 'var(--accent)' }}
             />
           </div>
@@ -630,18 +630,14 @@ export default function StudentsPage() {
     if (filtered.length === 0) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing selection when the filtered list becomes empty
       setSelectedId(null);
+      setLogLimit(20);
       return;
     }
     if (!selectedId || !filtered.some((s) => s.id === selectedId)) {
       setSelectedId(filtered[0].id);
+      setLogLimit(20);
     }
   }, [isMobile, filtered, selectedId]);
-
-  // Reset the log-limit whenever the selected student changes.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset pagination when switching students
-    setLogLimit(20);
-  }, [selectedId]);
 
   const selectedStudent = useMemo(
     () => students.find((s) => s.id === selectedId) ?? null,
@@ -780,7 +776,10 @@ export default function StudentsPage() {
                 bookingCount={bookingCountByStudent.get(s.id) ?? 0}
                 walletBalance={walletByStudent.get(s.id) ?? null}
                 selected={selectedId === s.id}
-                onClick={() => setSelectedId(s.id)}
+                onClick={() => {
+                  setSelectedId(s.id);
+                  setLogLimit(20);
+                }}
               />
             ))
           )}
