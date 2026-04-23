@@ -73,6 +73,15 @@ function getMonthRange(): { start: string; end: string } {
   return { start: fmt(start), end: fmt(end) };
 }
 
+function getLastMonthRange(): { start: string; end: string } {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const end = new Date(now.getFullYear(), now.getMonth(), 0);
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return { start: fmt(start), end: fmt(end) };
+}
+
 function formatRM(amount: number): string {
   return `RM ${Math.round(amount).toLocaleString('en-MY')}`;
 }
@@ -554,7 +563,7 @@ export default function PaymentsPage() {
   const { students } = useStudents(coach?.id);
   const { bookings } = useBookings(coach?.id, 'confirmed');
   const { classExceptions } = useClassExceptions(coach?.id);
-  const { lessonLogs } = useLessonLogs(coach?.id, undefined, undefined, 1);
+  const { lessonLogs } = useLessonLogs(coach?.id, undefined, undefined, 2);
 
   const walletIds = wallets.map((w) => w.id).join(',');
 
@@ -742,16 +751,27 @@ export default function PaymentsPage() {
   }, [activeDays, walletDayFilter]);
 
   // Stats.
-  const totalOnAccount = useMemo(
-    () => wallets.filter((w) => w.balance > 0).reduce((sum, w) => sum + w.balance, 0),
-    [wallets],
-  );
+  const lastMonthRange = useMemo(() => getLastMonthRange(), []);
+  const outstanding = useMemo(() => {
+    const negatives = wallets.filter((w) => w.balance < 0);
+    return {
+      total: negatives.reduce((sum, w) => sum + Math.abs(w.balance), 0),
+      count: negatives.length,
+    };
+  }, [wallets]);
   const monthActual = useMemo(
     () =>
       lessonLogs
         .filter((l) => l.date >= monthRange.start && l.date <= monthRange.end)
         .reduce((sum, l) => sum + l.price, 0),
     [lessonLogs, monthRange],
+  );
+  const lastMonthActual = useMemo(
+    () =>
+      lessonLogs
+        .filter((l) => l.date >= lastMonthRange.start && l.date <= lastMonthRange.end)
+        .reduce((sum, l) => sum + l.price, 0),
+    [lessonLogs, lastMonthRange],
   );
   const monthProjected = useMemo(
     () =>
@@ -762,10 +782,6 @@ export default function PaymentsPage() {
         classExceptions,
       ),
     [monthRange, bookings, classExceptions],
-  );
-  const walletsVisibleCount = useMemo(
-    () => wallets.filter((w) => !(w.archived ?? false)).length,
-    [wallets],
   );
 
   // Top-up presets (require a rate > 0).
@@ -1008,19 +1024,23 @@ export default function PaymentsPage() {
 
       {/* Stat row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mb-5">
-        <Stat label="Total on account" value={formatRM(totalOnAccount)} />
         <Stat
-          label="Wallets"
-          value={walletsVisibleCount}
-          sub={lowCount > 0 ? `${lowCount} running low` : undefined}
-          tone={lowCount > 0 ? 'warn' : undefined}
+          label="Outstanding"
+          value={formatRM(outstanding.total)}
+          sub={
+            outstanding.count > 0
+              ? `from ${outstanding.count} ${outstanding.count === 1 ? 'wallet' : 'wallets'}`
+              : undefined
+          }
+          tone={outstanding.total > 0 ? 'bad' : undefined}
         />
+        <Stat label="Last month" value={formatRM(lastMonthActual)} sub="earned" />
         <Stat
           label="This month"
           value={formatRM(monthActual)}
           sub={`of ${formatRM(monthProjected)} projected`}
         />
-        <Stat label="This month" value={formatRM(monthTopUps)} sub="in top-ups" />
+        <Stat label="Top-ups" value={formatRM(monthTopUps)} sub="this month" />
       </div>
 
       {/* Wallets */}
