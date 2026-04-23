@@ -539,7 +539,8 @@ function EditDetailsModal({
       setPhone(student.clientPhone);
       setNotes(student.notes);
     }
-  }, [student]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate only when switching students, not on every Firestore snapshot
+  }, [student?.id]);
 
   const handleSave = async () => {
     if (!coachId || !db || !student) return;
@@ -1171,10 +1172,7 @@ export default function StudentsPage() {
         coachId={coach?.id}
         activeBookings={selectedBookings}
         onClose={() => setDeleteStudentOpen(false)}
-        onDeleted={() => {
-          setDeleteStudentOpen(false);
-          setSelectedId(null);
-        }}
+        onDeleted={() => setSelectedId(null)}
       />
     </div>
   );
