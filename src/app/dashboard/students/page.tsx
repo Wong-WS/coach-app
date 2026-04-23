@@ -47,6 +47,36 @@ function useIsMobile(): boolean {
 
 type FilterValue = 'all' | 'owing' | 'no-booking' | DayOfWeek;
 
+// ─── Filter chip ─────────────────────────────────────────────────────────────
+
+function FilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className="text-[12.5px] font-medium"
+      style={{
+        padding: '5px 12px',
+        borderRadius: 999,
+        border: 'none',
+        background: active ? 'var(--ink)' : 'var(--line)',
+        color: active ? 'var(--panel)' : 'var(--ink-3)',
+        cursor: 'pointer',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 // ─── List row ────────────────────────────────────────────────────────────────
 
 function StudentListRow({
@@ -256,6 +286,8 @@ export default function StudentsPage() {
         >
           <IconSearch size={14} />
           <input
+            type="search"
+            aria-label="Search students"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name or phone…"
@@ -347,31 +379,3 @@ export default function StudentsPage() {
   );
 }
 
-// ─── Filter chip ─────────────────────────────────────────────────────────────
-
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="text-[12.5px] font-medium"
-      style={{
-        padding: '5px 12px',
-        borderRadius: 999,
-        border: 'none',
-        background: active ? 'var(--ink)' : 'var(--line)',
-        color: active ? 'var(--panel)' : 'var(--ink-3)',
-        cursor: 'pointer',
-      }}
-    >
-      {children}
-    </button>
-  );
-}
