@@ -475,7 +475,7 @@ export default function DashboardPage() {
       price: c.studentPrices?.[sid] ?? 0,
     }));
     setDuplicatePrefill({
-      className: c.className ? `${c.className} (copy)` : '',
+      className: c.className ?? '',
       date: selectedDateStr,
       startTime: c.startTime,
       endTime: c.endTime,
