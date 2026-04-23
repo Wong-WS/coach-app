@@ -1,6 +1,21 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
+import {
+  collection,
+  doc,
+  updateDoc,
+  addDoc,
+  deleteDoc,
+  writeBatch,
+  serverTimestamp,
+  increment,
+  query,
+  where,
+  getDocs,
+  type Firestore,
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import type { Booking, DayOfWeek, LessonLog, Student, Wallet } from '@/types';
 import { useAuth } from '@/lib/auth-context';
 import {
@@ -9,7 +24,7 @@ import {
   useWallets,
   useLessonLogs,
 } from '@/hooks/useCoachData';
-import { Avatar, BalancePill } from '@/components/paper';
+import { Avatar, BalancePill, PaperModal } from '@/components/paper';
 import {
   IconSearch,
   IconPhone,
@@ -17,6 +32,8 @@ import {
   IconSparkle,
   IconClose,
 } from '@/components/paper';
+import { Button, Input, PhoneInput } from '@/components/ui';
+import { useToast } from '@/components/ui/Toast';
 import { formatDateMedium, parseDateString } from '@/lib/date-format';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -497,6 +514,294 @@ function StudentDetail({
   );
 }
 
+// ─── Modals ──────────────────────────────────────────────────────────────────
+
+function EditDetailsModal({
+  open,
+  student,
+  coachId,
+  onClose,
+}: {
+  open: boolean;
+  student: Student | null;
+  coachId: string | undefined;
+  onClose: () => void;
+}) {
+  const { showToast } = useToast();
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (student) {
+      setName(student.clientName);
+      setPhone(student.clientPhone);
+      setNotes(student.notes);
+    }
+  }, [student]);
+
+  const handleSave = async () => {
+    if (!coachId || !db || !student) return;
+    setSaving(true);
+    try {
+      await updateDoc(
+        doc(db as Firestore, 'coaches', coachId, 'students', student.id),
+        {
+          clientName: name.trim(),
+          clientPhone: phone.trim(),
+          notes: notes.trim(),
+          updatedAt: serverTimestamp(),
+        },
+      );
+      showToast('Student updated!', 'success');
+      onClose();
+    } catch (error) {
+      console.error('Error updating student:', error);
+      showToast('Failed to update student', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <PaperModal open={open} onClose={onClose} title="Edit student">
+      <div className="space-y-4">
+        <Input
+          id="editName"
+          label="Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <PhoneInput
+          id="editPhone"
+          label="Phone"
+          value={phone}
+          onChange={(v) => setPhone(v)}
+        />
+        <div>
+          <label
+            htmlFor="editNotes"
+            className="block text-sm font-medium mb-1"
+            style={{ color: 'var(--ink-2)' }}
+          >
+            Notes
+          </label>
+          <textarea
+            id="editNotes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            className="block w-full px-3 py-2 rounded-lg outline-none text-[14px]"
+            style={{
+              background: 'var(--panel)',
+              border: '1px solid var(--line)',
+              color: 'var(--ink)',
+            }}
+          />
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} loading={saving}>
+            Save
+          </Button>
+        </div>
+      </div>
+    </PaperModal>
+  );
+}
+
+function DeleteLessonModal({
+  open,
+  logId,
+  coachId,
+  wallets,
+  onClose,
+}: {
+  open: boolean;
+  logId: string | null;
+  coachId: string | undefined;
+  wallets: Wallet[];
+  onClose: () => void;
+}) {
+  const { showToast } = useToast();
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!coachId || !db || !logId) return;
+    setDeleting(true);
+    try {
+      const firestore = db as Firestore;
+
+      // Reverse any wallet transaction tied to this lesson.
+      for (const walletDoc of wallets) {
+        const txnQuery = query(
+          collection(
+            firestore,
+            'coaches',
+            coachId,
+            'wallets',
+            walletDoc.id,
+            'transactions',
+          ),
+          where('lessonLogId', '==', logId),
+        );
+        const txnSnap = await getDocs(txnQuery);
+        if (!txnSnap.empty) {
+          const originalTxn = txnSnap.docs[0].data();
+          const refundAmount = Math.abs(originalTxn.amount);
+          const newBalance = walletDoc.balance + refundAmount;
+          const now = new Date();
+          const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+          await addDoc(
+            collection(
+              firestore,
+              'coaches',
+              coachId,
+              'wallets',
+              walletDoc.id,
+              'transactions',
+            ),
+            {
+              type: 'refund',
+              amount: refundAmount,
+              balanceAfter: newBalance,
+              description: `Reversed: ${originalTxn.description}`,
+              studentId: originalTxn.studentId,
+              date: dateStr,
+              createdAt: serverTimestamp(),
+            },
+          );
+          await updateDoc(
+            doc(firestore, 'coaches', coachId, 'wallets', walletDoc.id),
+            {
+              balance: increment(refundAmount),
+              updatedAt: serverTimestamp(),
+            },
+          );
+          break;
+        }
+      }
+
+      await deleteDoc(
+        doc(firestore, 'coaches', coachId, 'lessonLogs', logId),
+      );
+      showToast('Lesson deleted', 'success');
+      onClose();
+    } catch (error) {
+      console.error('Error deleting lesson:', error);
+      showToast('Failed to delete lesson', 'error');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <PaperModal open={open} onClose={onClose} title="Delete lesson">
+      <div
+        className="text-sm mb-4"
+        style={{ color: 'var(--ink-2)' }}
+      >
+        Are you sure? This will delete the lesson log and refund the wallet
+        charge if applicable.
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button variant="danger" onClick={handleDelete} loading={deleting}>
+          Delete
+        </Button>
+      </div>
+    </PaperModal>
+  );
+}
+
+function DeleteStudentModal({
+  open,
+  student,
+  coachId,
+  activeBookings,
+  onClose,
+  onDeleted,
+}: {
+  open: boolean;
+  student: Student | null;
+  coachId: string | undefined;
+  activeBookings: Booking[];
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const { showToast } = useToast();
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!coachId || !db || !student) return;
+    setDeleting(true);
+    try {
+      const firestore = db as Firestore;
+      const batch = writeBatch(firestore);
+
+      batch.delete(
+        doc(firestore, 'coaches', coachId, 'students', student.id),
+      );
+
+      for (const booking of activeBookings) {
+        batch.update(
+          doc(firestore, 'coaches', coachId, 'bookings', booking.id),
+          {
+            status: 'cancelled',
+            cancelledAt: serverTimestamp(),
+          },
+        );
+      }
+
+      await batch.commit();
+
+      const msg =
+        activeBookings.length > 0
+          ? `Student deleted and ${activeBookings.length} booking${activeBookings.length > 1 ? 's' : ''} cancelled`
+          : 'Student deleted';
+      showToast(msg, 'success');
+      onDeleted();
+      onClose();
+    } catch (error) {
+      console.error('Error deleting student:', error);
+      showToast('Failed to delete student', 'error');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <PaperModal open={open} onClose={onClose} title="Delete student">
+      <div
+        className="text-sm mb-4"
+        style={{ color: 'var(--ink-2)' }}
+      >
+        Delete <strong>{student?.clientName}</strong>? This removes the student
+        record. Lesson history will be lost.
+        {activeBookings.length > 0 && (
+          <>
+            {' '}Their {activeBookings.length} active booking
+            {activeBookings.length > 1 ? 's' : ''} will also be cancelled.
+          </>
+        )}
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button variant="danger" onClick={handleDelete} loading={deleting}>
+          Delete
+        </Button>
+      </div>
+    </PaperModal>
+  );
+}
+
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function StudentsPage() {
@@ -510,6 +815,9 @@ export default function StudentsPage() {
   const [filter, setFilter] = useState<FilterValue>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [logLimit, setLogLimit] = useState(20);
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteLogId, setDeleteLogId] = useState<string | null>(null);
+  const [deleteStudentOpen, setDeleteStudentOpen] = useState(false);
 
   const { lessonLogs: studentLogs, loading: logsLoading } = useLessonLogs(
     selectedId ? coach?.id : undefined,
@@ -803,15 +1111,9 @@ export default function StudentsPage() {
                 studentLogs={studentLogs}
                 logsLoading={logsLoading}
                 logLimit={logLimit}
-                onEdit={() => {
-                  /* wired in Task 3 */
-                }}
-                onDeleteLog={() => {
-                  /* wired in Task 3 */
-                }}
-                onDeleteStudent={() => {
-                  /* wired in Task 3 */
-                }}
+                onEdit={() => setEditOpen(true)}
+                onDeleteLog={(id) => setDeleteLogId(id)}
+                onDeleteStudent={() => setDeleteStudentOpen(true)}
                 onLoadMore={() => setLogLimit(logLimit + 20)}
               />
             ) : (
@@ -825,6 +1127,55 @@ export default function StudentsPage() {
           </div>
         )}
       </div>
+
+      {/* Mobile detail modal */}
+      <PaperModal
+        open={isMobile && selectedStudent !== null}
+        onClose={() => setSelectedId(null)}
+        title={selectedStudent?.clientName}
+        width={520}
+      >
+        {selectedStudent && (
+          <StudentDetail
+            student={selectedStudent}
+            wallet={selectedWallet}
+            studentBookings={selectedBookings}
+            studentLogs={studentLogs}
+            logsLoading={logsLoading}
+            logLimit={logLimit}
+            onEdit={() => setEditOpen(true)}
+            onDeleteLog={(id) => setDeleteLogId(id)}
+            onDeleteStudent={() => setDeleteStudentOpen(true)}
+            onLoadMore={() => setLogLimit(logLimit + 20)}
+          />
+        )}
+      </PaperModal>
+
+      {/* Action modals */}
+      <EditDetailsModal
+        open={editOpen}
+        student={selectedStudent}
+        coachId={coach?.id}
+        onClose={() => setEditOpen(false)}
+      />
+      <DeleteLessonModal
+        open={deleteLogId !== null}
+        logId={deleteLogId}
+        coachId={coach?.id}
+        wallets={wallets}
+        onClose={() => setDeleteLogId(null)}
+      />
+      <DeleteStudentModal
+        open={deleteStudentOpen}
+        student={selectedStudent}
+        coachId={coach?.id}
+        activeBookings={selectedBookings}
+        onClose={() => setDeleteStudentOpen(false)}
+        onDeleted={() => {
+          setDeleteStudentOpen(false);
+          setSelectedId(null);
+        }}
+      />
     </div>
   );
 }
