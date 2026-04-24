@@ -7,13 +7,10 @@ import type { Booking, Wallet } from '@/types';
  */
 export function getNextLessonCost(wallet: Wallet, bookings: Booking[]): number {
   const studentMax: Record<string, number> = {};
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const debug: any[] = [];
   for (const b of bookings) {
     for (const studentId of b.studentIds) {
       if (b.studentWallets?.[studentId] !== wallet.id) continue;
       const price = b.studentPrices?.[studentId] ?? 0;
-      debug.push({ bookingId: b.id, day: b.dayOfWeek, time: `${b.startTime}-${b.endTime}`, studentId, price });
       if (price > (studentMax[studentId] ?? 0)) {
         studentMax[studentId] = price;
       }
@@ -21,18 +18,6 @@ export function getNextLessonCost(wallet: Wallet, bookings: Booking[]): number {
   }
   let total = 0;
   for (const sid in studentMax) total += studentMax[sid];
-  if (wallet.name?.toLowerCase().includes('dong')) {
-    // TEMP DEBUG — remove once Dong-wallet rate mystery is solved
-    console.log('[wallet-debug]', {
-      wallet: wallet.name,
-      walletId: wallet.id,
-      balance: wallet.balance,
-      walletStudentIds: wallet.studentIds,
-      rateComputed: total,
-      studentMax,
-      matchedBookingEntries: debug,
-    });
-  }
   return total;
 }
 
