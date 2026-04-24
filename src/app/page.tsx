@@ -77,6 +77,8 @@ export default function Home() {
         </div>
       </nav>
 
+      <main>
+
       {/* Hero */}
       <section className="mx-auto max-w-6xl px-6 pt-16 pb-20 md:pt-20 md:pb-24">
         <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-12">
@@ -135,7 +137,7 @@ export default function Home() {
           >
             Three things you do every week. Now they take five minutes.
           </h2>
-          <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-0 md:gap-0 border-t md:border-l"
+          <div className="mt-12 grid grid-cols-1 md:grid-cols-3 border-t md:border-l"
             style={{ borderColor: 'var(--line)' }}
           >
             {[
@@ -189,7 +191,7 @@ export default function Home() {
       </section>
 
       {/* Founder note */}
-      <div style={{ borderTop: '1px solid var(--line)' }}>
+      <div className="border-t" style={{ borderColor: 'var(--line)' }}>
         <FounderNote />
       </div>
 
@@ -268,12 +270,12 @@ export default function Home() {
             className="rounded-[14px] p-10 md:p-14 text-center"
             style={{ background: 'var(--ink)', color: 'var(--bg)' }}
           >
-            <h3
+            <h2
               className="text-[28px] md:text-[36px] font-semibold"
               style={{ letterSpacing: '-0.02em' }}
             >
               Your weekly admin, gone by Sunday night.
-            </h3>
+            </h2>
             <p
               className="mx-auto mt-3 max-w-md text-[15px] leading-relaxed"
               style={{ color: 'var(--ink-4)' }}
@@ -290,6 +292,8 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      </main>
 
       {/* Footer */}
       <footer className="border-t" style={{ borderColor: 'var(--line)' }}>
