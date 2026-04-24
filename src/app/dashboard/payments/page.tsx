@@ -369,9 +369,13 @@ function WalletDetailBody({
     if (wallet.archived) return;
     setSharingPortal(true);
     try {
-      let token = wallet.portalToken;
-      if (!token) {
-        token = nanoid(10);
+      const needsWrite = !wallet.portalToken;
+      const token = wallet.portalToken ?? nanoid(10);
+      const url = `${PORTAL_BASE_URL}/portal/${token}`;
+      // Kick off clipboard write synchronously so the user-activation gesture
+      // isn't consumed by Firestore awaits on first-time share.
+      const clipboardPromise = navigator.clipboard?.writeText(url);
+      if (needsWrite) {
         const firestore = db as Firestore;
         await setDoc(doc(firestore, 'walletPortalTokens', token), {
           coachId,
@@ -383,8 +387,7 @@ function WalletDetailBody({
           updatedAt: serverTimestamp(),
         });
       }
-      const url = `${PORTAL_BASE_URL}/portal/${token}`;
-      await navigator.clipboard?.writeText(url);
+      await clipboardPromise;
       showToast('Portal link copied', 'success');
     } catch {
       showToast('Failed to generate portal link', 'error');
