@@ -155,23 +155,33 @@ export function useLessonLogs(coachId: string | undefined, dateFilter?: string, 
       q = query(col, orderBy('date', 'desc'));
     }
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const items: LessonLog[] = snapshot.docs.map((d) => ({
-        id: d.id,
-        date: d.data().date,
-        bookingId: d.data().bookingId,
-        studentId: d.data().studentId,
-        studentName: d.data().studentName,
-        locationName: d.data().locationName,
-        startTime: d.data().startTime,
-        endTime: d.data().endTime,
-        price: d.data().price ?? 0,
-        note: d.data().note ?? undefined,
-        createdAt: d.data().createdAt?.toDate() || new Date(),
-      }));
-      setLessonLogs(items);
-      setLoading(false);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const items: LessonLog[] = snapshot.docs.map((d) => ({
+          id: d.id,
+          date: d.data().date,
+          bookingId: d.data().bookingId,
+          studentId: d.data().studentId,
+          studentName: d.data().studentName,
+          locationName: d.data().locationName,
+          startTime: d.data().startTime,
+          endTime: d.data().endTime,
+          price: d.data().price ?? 0,
+          note: d.data().note ?? undefined,
+          createdAt: d.data().createdAt?.toDate() || new Date(),
+        }));
+        setLessonLogs(items);
+        setLoading(false);
+      },
+      (error) => {
+        // Without this handler, a missing composite index or rules error
+        // leaves the UI stuck on a spinner forever.
+        console.error('[useLessonLogs] snapshot error:', error);
+        setLessonLogs([]);
+        setLoading(false);
+      },
+    );
 
     return () => unsubscribe();
   }, [coachId, dateFilter, studentIdFilter, monthsBack, limitCount]);

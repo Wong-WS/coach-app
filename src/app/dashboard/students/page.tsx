@@ -1058,6 +1058,8 @@ export default function StudentsPage() {
             background: 'var(--panel)',
             borderColor: 'var(--line)',
             padding: 4,
+            maxHeight: 'calc(100vh - 240px)',
+            overflowY: 'auto',
           }}
         >
           {filtered.length === 0 ? (
