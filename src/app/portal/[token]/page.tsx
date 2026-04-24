@@ -110,7 +110,7 @@ export default async function PortalPage({
             Time for the next top-up
           </div>
           <div className="mono tnum text-[22px] font-semibold" style={{ color: 'var(--ink)' }}>
-            Suggested: RM {suggestion.amount}
+            Suggested top-up: RM {suggestion.amount}
           </div>
           <div className="text-[11.5px] mt-1" style={{ color: 'var(--ink-3)' }}>
             Tops you up to your usual RM {suggestion.usual}.
