@@ -10,6 +10,7 @@ import {
   getDocs,
   writeBatch,
   serverTimestamp,
+  setDoc,
   increment,
   Firestore,
   onSnapshot,
@@ -17,6 +18,7 @@ import {
   orderBy,
   limit,
 } from 'firebase/firestore';
+import { nanoid } from 'nanoid';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import {
@@ -46,6 +48,8 @@ import {
   IconArrowDown,
 } from '@/components/paper';
 import type { Wallet, WalletTransaction, DayOfWeek } from '@/types';
+
+const PORTAL_BASE_URL = 'https://coach-simplify.com';
 
 // ─── Shared styles ───────────────────────────────────────────────────────────
 
@@ -327,6 +331,37 @@ function WalletDetailBody({
     }
   };
 
+  const [sharingPortal, setSharingPortal] = useState(false);
+
+  const handleSharePortalLink = async () => {
+    if (!db) return;
+    if (wallet.archived) return;
+    setSharingPortal(true);
+    try {
+      let token = wallet.portalToken;
+      if (!token) {
+        token = nanoid(10);
+        const firestore = db as Firestore;
+        await setDoc(doc(firestore, 'walletPortalTokens', token), {
+          coachId,
+          walletId: wallet.id,
+          createdAt: serverTimestamp(),
+        });
+        await updateDoc(doc(firestore, 'coaches', coachId, 'wallets', wallet.id), {
+          portalToken: token,
+          updatedAt: serverTimestamp(),
+        });
+      }
+      const url = `${PORTAL_BASE_URL}/portal/${token}`;
+      await navigator.clipboard?.writeText(url);
+      showToast('Portal link copied', 'success');
+    } catch {
+      showToast('Failed to generate portal link', 'error');
+    } finally {
+      setSharingPortal(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Big balance block */}
@@ -368,6 +403,17 @@ function WalletDetailBody({
           Adjust
         </Btn>
       </div>
+
+      {!wallet.archived && (
+        <Btn
+          variant="outline"
+          full
+          onClick={handleSharePortalLink}
+          disabled={sharingPortal}
+        >
+          {sharingPortal ? 'Copying…' : 'Share portal link'}
+        </Btn>
+      )}
 
       {/* Linked students */}
       <div>
