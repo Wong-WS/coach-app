@@ -124,11 +124,17 @@ export function useLessonLogs(coachId: string | undefined, dateFilter?: string, 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Reset state when filter params change so we don't briefly show the previous
+    // student/date/range's logs while the new subscription's first snapshot lands.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clear stale results from the prior subscription
+    setLessonLogs([]);
+
     if (!coachId || !db) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- guard branch: hydrate loading=false when no subscription will be opened
       setLoading(false);
       return;
     }
+
+    setLoading(true);
 
     const firestore = db as Firestore;
     const col = collection(firestore, 'coaches', coachId, 'lessonLogs');
@@ -275,12 +281,17 @@ export function useWalletTransactions(coachId: string | undefined, walletId: str
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Reset when walletId or limit changes so we don't flash the previous wallet's
+    // transactions while the new subscription's first snapshot lands.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clear stale results from the prior subscription
+    setTransactions([]);
+
     if (!coachId || !walletId || !db) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- guard branch: reset state when no subscription will be opened
-      setTransactions([]);
       setLoading(false);
       return;
     }
+
+    setLoading(true);
 
     const firestore = db as Firestore;
     const col = collection(firestore, 'coaches', coachId, 'wallets', walletId, 'transactions');
