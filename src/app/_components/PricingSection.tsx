@@ -17,7 +17,6 @@ interface Plan {
   tagline: string;
   features: Feature[];
   cta: string;
-  ctaVariant: 'primary' | 'outline' | 'accent';
   badge?: string;
   highlight?: boolean;
   lifetime?: boolean;
@@ -31,7 +30,6 @@ const PLANS: Plan[] = [
     name: 'Starter',
     tagline: 'Just getting organised.',
     monthlyPrice: 39,
-    ctaVariant: 'outline',
     features: [
       { label: 'Up to 15 active students' },
       { label: 'Recurring weekly classes' },
@@ -50,7 +48,6 @@ const PLANS: Plan[] = [
     badge: 'Most popular',
     tagline: 'For full-time coaches.',
     monthlyPrice: 99,
-    ctaVariant: 'primary',
     features: [
       { label: 'Unlimited active students' },
       { label: 'Recurring weekly classes' },
@@ -73,11 +70,10 @@ const PLANS: Plan[] = [
     tagline: 'Pay once. Use forever.',
     oneTimePrice: 1499,
     lifetime: true,
-    ctaVariant: 'accent',
     features: [
       { label: 'Everything in Pro' },
       { label: 'All future features included' },
-      { label: 'Lock in today’s price' },
+      { label: 'Lock in today\'s price' },
       { label: 'Direct line to the founder' },
     ],
     cta: 'Get lifetime access',
@@ -91,6 +87,12 @@ const BILLING_OPTIONS = [
   { value: 'monthly' as const, label: 'Monthly' },
   { value: 'yearly' as const, label: 'Yearly · save 2 months' },
 ];
+
+function getCtaVariant(plan: Plan): 'primary' | 'outline' | 'accent' {
+  if (plan.lifetime) return 'accent';
+  if (plan.highlight) return 'primary';
+  return 'outline';
+}
 
 export function PricingSection() {
   const [billing, setBilling] = useState<Billing>('monthly');
@@ -253,7 +255,7 @@ export function PricingSection() {
 
                 <div className="mt-6">
                   <Link href="/signup" className="block">
-                    <Btn variant={plan.ctaVariant} size="lg" full>
+                    <Btn variant={getCtaVariant(plan)} size="lg" full>
                       {plan.cta} →
                     </Btn>
                   </Link>
@@ -262,7 +264,7 @@ export function PricingSection() {
                     style={{ color: 'var(--ink-3)' }}
                   >
                     {isLifetime
-                      ? 'Lock in today’s price · refundable within 14 days of launch'
+                      ? 'Lock in today\'s price · refundable within 14 days of launch'
                       : 'Free during early access · no card required'}
                   </p>
                 </div>
