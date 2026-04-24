@@ -3,24 +3,89 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Paper & Ink — warm light palette */
+  --bg: #faf9f6;
+  --panel: #ffffff;
+  --ink: #1a1917;
+  --ink-2: #4a4845;
+  --ink-3: #807d77;
+  --ink-4: #b5b2aa;
+  --line: #ece9e1;
+  --line-2: #dcd8cc;
+  --accent: oklch(0.54 0.11 220);
+  --accent-soft: oklch(0.96 0.02 220);
+  --accent-ink: oklch(0.38 0.12 220);
+  --good: oklch(0.55 0.12 155);
+  --good-soft: oklch(0.96 0.03 155);
+  --warn: oklch(0.58 0.15 40);
+  --warn-soft: oklch(0.96 0.03 40);
+  --bad: oklch(0.55 0.17 20);
+  --bad-soft: oklch(0.96 0.03 20);
+  --radius: 10px;
+  --radius-lg: 14px;
+  --shadow-sm: 0 1px 2px rgba(20, 18, 14, 0.04);
+  --shadow: 0 1px 2px rgba(20, 18, 14, 0.04), 0 4px 18px rgba(20, 18, 14, 0.05);
+  --shadow-lg: 0 8px 40px rgba(20, 18, 14, 0.12), 0 2px 6px rgba(20, 18, 14, 0.06);
+
+  /* legacy aliases so existing components don't regress */
+  --background: var(--bg);
+  --foreground: var(--ink);
+}
+
+.dark {
+  --bg: #151412;
+  --panel: #1c1b18;
+  --ink: #f0ede4;
+  --ink-2: #cbc7bb;
+  --ink-3: #8f8c82;
+  --ink-4: #5d5b54;
+  --line: #2a2825;
+  --line-2: #3a3732;
+  --accent: oklch(0.72 0.09 220);
+  --accent-soft: oklch(0.28 0.06 220);
+  --accent-ink: oklch(0.82 0.08 220);
+  --good: oklch(0.72 0.11 155);
+  --good-soft: oklch(0.28 0.06 155);
+  --warn: oklch(0.75 0.13 60);
+  --warn-soft: oklch(0.28 0.06 60);
+  --bad: oklch(0.7 0.14 20);
+  --bad-soft: oklch(0.28 0.07 20);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 6px 20px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 10px 50px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-background: var(--bg);
+  --color-foreground: var(--ink);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 }
 
-/* Render native date/time popups in dark mode when the theme is dark */
+/* Native date/time pickers in dark mode */
 .dark input[type="date"],
 .dark input[type="time"],
 .dark input[type="datetime-local"],
@@ -29,7 +94,45 @@ body {
   color-scheme: dark;
 }
 
+/* iOS Safari auto-zooms any input whose font-size is < 16px. Force 16px on
+   mobile to prevent the zoom-on-focus bug (which is made worse by our body
+   scroll-lock — the viewport can't be un-zoomed while body is position:fixed). */
+@media (max-width: 639.99px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .mono { font-family: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .tnum { font-variant-numeric: tabular-nums; }
+}
+
+@keyframes paperBackdropIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes paperDialogIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes paperSheetSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@layer utilities {
+  .paper-backdrop-in { animation: paperBackdropIn 0.15s ease-out; }
+  .paper-sheet-in { animation: paperDialogIn 0.16s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .paper-sheet { width: 100%; max-width: 100%; }
+  @media (max-width: 639.99px) {
+    .paper-sheet-in { animation: paperSheetSlideUp 0.24s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  }
+  @media (min-width: 640px) {
+    .paper-sheet { max-width: var(--paper-modal-max, 440px); }
+  }
 }

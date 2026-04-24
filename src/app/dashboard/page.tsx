@@ -1,150 +1,491 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
-import { collection, doc, writeBatch, serverTimestamp, increment, updateDoc, deleteDoc, addDoc, getDoc, setDoc, Firestore, getDocs, query, where } from 'firebase/firestore';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import {
+  collection,
+  doc,
+  writeBatch,
+  serverTimestamp,
+  increment,
+  deleteDoc,
+  addDoc,
+  getDocs,
+  query,
+  where,
+  updateDoc,
+  setDoc,
+  Firestore,
+} from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
-import { useLocations, useBookings, useLessonLogs, useClassExceptions, useStudents, useWallets } from '@/hooks/useCoachData';
-import { Button, DatePicker, Input, Modal, Select, TimePicker } from '@/components/ui';
+import {
+  useBookings,
+  useLessonLogs,
+  useClassExceptions,
+  useStudents,
+  useWallets,
+  useLocations,
+} from '@/hooks/useCoachData';
 import { useToast } from '@/components/ui/Toast';
-import { Booking, ClassException, DayOfWeek } from '@/types';
-import { formatTimeDisplay } from '@/lib/time-format';
-import { findOrCreateStudent } from '@/lib/students';
+import type { Booking, ClassException, Student, Wallet, Location } from '@/types';
+import {
+  getClassesForDate,
+  getBookingTotal,
+  getBackingException,
+  getCancelledClassesForDate,
+  getDayOfWeekForDate,
+} from '@/lib/class-schedule';
 import { resolveWallet } from '@/lib/wallets';
+import { findOrCreateStudent } from '@/lib/students';
+import { isLowBalance, getNextLessonCost } from '@/lib/wallet-alerts';
 import { computeCancelFuture } from '@/lib/cancel-scope';
-import { getClassesForDate, getBackingException, getCancelledClassesForDate, getDayOfWeekForDate, getBookingTotal, isGroupBooking } from '@/lib/class-schedule';
+import { formatTimeDisplay } from '@/lib/time-format';
 import { formatDateFull, formatDateShort, parseDateString } from '@/lib/date-format';
-import Link from 'next/link';
-import { isLowBalance } from '@/lib/wallet-alerts';
+import {
+  Btn,
+  Chip,
+  BalancePill,
+  Avatar,
+  PaperModal,
+  IconCheck,
+  IconPlus,
+  IconPin,
+  IconUsers,
+  IconUndo,
+  IconChevL,
+  IconChevR,
+  IconArrowUp,
+  IconMore,
+  IconEdit,
+  IconCopy,
+  IconTrash,
+  IconClose,
+  IconSearch,
+  IconRepeat,
+} from '@/components/paper';
 
-function getDateString(date: Date): string {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
+const SHORT_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+
+function ymd(d: Date): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function getWeekDates(referenceDate: Date): Date[] {
-  const day = referenceDate.getDay();
-  const monday = new Date(referenceDate);
-  monday.setDate(referenceDate.getDate() - (day === 0 ? 6 : day - 1));
-  const dates: Date[] = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    dates.push(d);
-  }
-  return dates;
+function addDays(d: Date, n: number): Date {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
 }
 
-const SHORT_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+function weekStartMon(d: Date): Date {
+  const day = d.getDay();
+  const delta = day === 0 ? -6 : 1 - day;
+  return addDays(d, delta);
+}
+
+function fmtTimeShort(t: string): string {
+  const [hh, mm] = t.split(':').map(Number);
+  const period = hh >= 12 ? 'p' : 'a';
+  const h12 = hh % 12 || 12;
+  if (mm === 0) return `${h12}${period}`;
+  return `${h12}:${String(mm).padStart(2, '0')}${period}`;
+}
+
+function minutesBetween(a: string, b: string): number {
+  const [ah, am] = a.split(':').map(Number);
+  const [bh, bm] = b.split(':').map(Number);
+  return bh * 60 + bm - (ah * 60 + am);
+}
 
 export default function DashboardPage() {
   const { coach } = useAuth();
-  const { locations } = useLocations(coach?.id);
   const { bookings } = useBookings(coach?.id, 'confirmed');
   const { students } = useStudents(coach?.id);
   const { wallets } = useWallets(coach?.id);
+  const { locations } = useLocations(coach?.id);
   const { showToast } = useToast();
 
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [marking, setMarking] = useState<string | null>(null);
-  const [cancelling, setCancelling] = useState<string | null>(null);
-  const [cancelScopeBooking, setCancelScopeBooking] = useState<Booking | null>(null);
-  const [cancelScope, setCancelScope] = useState<'this' | 'future'>('this');
-  const [oneTimeCancelBooking, setOneTimeCancelBooking] = useState<Booking | null>(null);
-  const [oneTimeCancelExceptionId, setOneTimeCancelExceptionId] = useState<string | null>(null);
-  const [menuOpen, setMenuOpen] = useState<string | null>(null);
-  const [undoingCancel, setUndoingCancel] = useState<string | null>(null);
+  const selectedDateStr = useMemo(() => ymd(selectedDate), [selectedDate]);
+  const todayStr = useMemo(() => ymd(new Date()), []);
+
+  const { classExceptions } = useClassExceptions(coach?.id, selectedDateStr);
+  const { lessonLogs } = useLessonLogs(coach?.id, selectedDateStr);
+
+  const todaysClasses = useMemo(
+    () => getClassesForDate(selectedDateStr, bookings, classExceptions),
+    [selectedDateStr, bookings, classExceptions],
+  );
+
+  const cancelledToday = useMemo(
+    () => getCancelledClassesForDate(selectedDateStr, bookings, classExceptions),
+    [selectedDateStr, bookings, classExceptions],
+  );
+
+  const doneByBookingId = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of lessonLogs) {
+      if (!l.bookingId) continue;
+      m.set(l.bookingId, (m.get(l.bookingId) ?? 0) + l.price);
+    }
+    return m;
+  }, [lessonLogs]);
+
+  const doneStudentsByBookingId = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const l of lessonLogs) {
+      if (!l.bookingId || !l.studentId) continue;
+      const arr = m.get(l.bookingId) ?? [];
+      if (!arr.includes(l.studentId)) arr.push(l.studentId);
+      m.set(l.bookingId, arr);
+    }
+    return m;
+  }, [lessonLogs]);
+
+  const doneCount = todaysClasses.filter((c) => doneByBookingId.has(c.id)).length;
+  const totalCount = todaysClasses.length;
+  const todayRevenue = lessonLogs.reduce((s, l) => s + l.price, 0);
+  const expectedRevenue =
+    todaysClasses.reduce((s, c) => {
+      if (doneByBookingId.has(c.id)) return s + (doneByBookingId.get(c.id) ?? 0);
+      return s + getBookingTotal(c);
+    }, 0) +
+    cancelledToday.reduce((s, c) => s + getBookingTotal(c.booking), 0);
+
+  const lowWallets = useMemo(() => {
+    return wallets
+      .filter((w) => isLowBalance(w, bookings, todayStr))
+      .sort((a, b) => a.balance - b.balance);
+  }, [wallets, bookings, todayStr]);
+
+  const weekDays = useMemo(() => {
+    const start = weekStartMon(selectedDate);
+    return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  }, [selectedDate]);
+
+  const classesPerDay = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const d of weekDays) {
+      const k = ymd(d);
+      map.set(k, getClassesForDate(k, bookings, classExceptions).length);
+    }
+    return map;
+  }, [weekDays, bookings, classExceptions]);
+
+  const displayName = coach?.displayName || 'Coach';
+  const firstName = displayName.split(' ')[0] || 'Coach';
+  const isToday = selectedDateStr === todayStr;
+
+  // Mark-done modal state
   const [markDoneBooking, setMarkDoneBooking] = useState<Booking | null>(null);
-  const [markDonePrice, setMarkDonePrice] = useState(0);
-  const [markDoneNote, setMarkDoneNote] = useState('');
-  const [markDoneAttendees, setMarkDoneAttendees] = useState<Array<{
-    studentId: string;
-    studentName: string;
-    attended: boolean;
-    price: number;
-  }>>([]);
-  const [doneDeleteBooking, setDoneDeleteBooking] = useState<Booking | null>(null);
-  const [deletingDoneLesson, setDeletingDoneLesson] = useState<string | null>(null);
+  const [markDoneAmounts, setMarkDoneAmounts] = useState<Record<string, number>>({});
+  const [markDoneAttending, setMarkDoneAttending] = useState<string[]>([]);
+  const [markingDone, setMarkingDone] = useState(false);
 
-  // Unified Add Lesson form state
-  const [showAddLesson, setShowAddLesson] = useState(false);
-  const [lessonClassName, setLessonClassName] = useState('');
-  const [lessonDate, setLessonDate] = useState('');
-  const [lessonRepeatWeekly, setLessonRepeatWeekly] = useState(false);
-  const [lessonLocationId, setLessonLocationId] = useState('');
-  const [lessonNewLocationName, setLessonNewLocationName] = useState('');
-  const [lessonStartTime, setLessonStartTime] = useState('09:00');
-  const [lessonEndTime, setLessonEndTime] = useState('10:00');
-  const [lessonNote, setLessonNote] = useState('');
-  const [addingLesson, setAddingLesson] = useState(false);
+  // Wallet-depletion popup shown when a mark-done charge empties a wallet.
+  const [depletedAlert, setDepletedAlert] = useState<
+    | {
+        wallets: Array<{
+          name: string;
+          newBalance: number;
+          status: 'owing' | 'empty';
+        }>;
+      }
+    | null
+  >(null);
 
-  // Student rows for the unified form
-  interface StudentRow {
-    studentId: string;
-    displayName: string;
-    phone: string;
-    isNew: boolean;
-    walletOption: 'none' | 'existing' | 'create';
-    existingWalletId: string;
-    newWalletName: string;
-    price: number;
-  }
-  const [studentRows, setStudentRows] = useState<StudentRow[]>([{
-    studentId: '', displayName: '', phone: '', isNew: true,
-    walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
-  }]);
-  const [studentSearches, setStudentSearches] = useState<string[]>(['']);
-  const [focusedStudentRow, setFocusedStudentRow] = useState<number | null>(null);
-  const [expandedStudentRows, setExpandedStudentRows] = useState<Set<number>>(new Set());
+  // Cancel-lesson scope picker state.
+  const [cancelCtx, setCancelCtx] = useState<
+    | {
+        booking: Booking;
+        dateStr: string;
+        backingExceptionId: string | null;
+        isOneTime: boolean;
+        canScope: boolean;
+      }
+    | null
+  >(null);
+  const [cancelScope, setCancelScope] = useState<'this' | 'future'>('this');
+  const [cancelling, setCancelling] = useState(false);
 
-  const toggleStudentRowExpanded = (index: number) => {
-    setExpandedStudentRows(prev => {
-      const next = new Set(prev);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
+  const openCancelFlow = (c: Booking) => {
+    const backing = getBackingException(c.id, selectedDateStr, classExceptions);
+    const isOneTime = !!(c.startDate && c.endDate && c.startDate === c.endDate);
+    const canScope = !backing && !isOneTime;
+    setCancelScope('this');
+    setCancelCtx({
+      booking: c,
+      dateStr: selectedDateStr,
+      backingExceptionId: backing?.id ?? null,
+      isOneTime,
+      canScope,
     });
   };
 
-  // Overlap warning
-  const [overlapWarning, setOverlapWarning] = useState('');
+  const openMarkDone = (c: Booking) => {
+    setMarkDoneBooking(c);
+    const init: Record<string, number> = {};
+    for (const sid of c.studentIds) init[sid] = c.studentPrices[sid] ?? 0;
+    setMarkDoneAmounts(init);
+    setMarkDoneAttending([...c.studentIds]);
+  };
 
-  const checkOverlap = useCallback((dayOfWeek: string, startTime: string, endTime: string, fromDate: string): string => {
-    const recurringOnDay = bookings.filter(
-      b => b.dayOfWeek === dayOfWeek && b.status === 'confirmed' && !(b.startDate && b.startDate === b.endDate)
-    );
-    for (const b of recurringOnDay) {
-      // Skip bookings that have already ended before the new lesson starts.
-      if (b.endDate && b.endDate < fromDate) continue;
-      if (startTime < b.endTime && endTime > b.startTime) {
-        return `This overlaps with ${b.className} (${formatTimeDisplay(b.startTime)}–${formatTimeDisplay(b.endTime)})`;
+  const closeMarkDone = () => {
+    setMarkDoneBooking(null);
+    setMarkDoneAmounts({});
+    setMarkDoneAttending([]);
+  };
+
+  const handleConfirmMarkDone = async () => {
+    const booking = markDoneBooking;
+    if (!coach || !db || !booking) return;
+    if (markDoneAttending.length === 0) return;
+    setMarkingDone(true);
+    const attendingIds = markDoneAttending;
+    closeMarkDone();
+    showToast(`Marked ${booking.className || 'class'} done`, 'success');
+
+    // Track wallet impact so we can alert when this lesson empties a wallet.
+    const walletImpacts = new Map<string, { wallet: Wallet; charge: number }>();
+
+    try {
+      const firestore = db as Firestore;
+      const batch = writeBatch(firestore);
+
+      for (const studentId of attendingIds) {
+        const price = markDoneAmounts[studentId] ?? booking.studentPrices[studentId] ?? 0;
+        const studentName = students.find((s) => s.id === studentId)?.clientName ?? '';
+
+        const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
+        batch.set(logRef, {
+          date: selectedDateStr,
+          bookingId: booking.id,
+          studentId,
+          studentName,
+          locationName: booking.locationName,
+          startTime: booking.startTime,
+          endTime: booking.endTime,
+          price,
+          createdAt: serverTimestamp(),
+        });
+
+        const wallet = resolveWallet(booking, studentId, wallets);
+        if (wallet && price > 0) {
+          const existing = walletImpacts.get(wallet.id);
+          if (existing) existing.charge += price;
+          else walletImpacts.set(wallet.id, { wallet, charge: price });
+
+          const newBalance = wallet.balance - price;
+          const txnRef = doc(
+            collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'),
+          );
+          batch.set(txnRef, {
+            type: 'charge',
+            amount: -price,
+            balanceAfter: newBalance,
+            description: `Lesson — ${studentName} (${booking.startTime})`,
+            studentId,
+            lessonLogId: logRef.id,
+            date: selectedDateStr,
+            createdAt: serverTimestamp(),
+          });
+          batch.update(doc(firestore, 'coaches', coach.id, 'wallets', wallet.id), {
+            balance: increment(-price),
+            updatedAt: serverTimestamp(),
+          });
+        }
+
+        batch.update(doc(firestore, 'coaches', coach.id, 'students', studentId), {
+          updatedAt: serverTimestamp(),
+        });
       }
+
+      await batch.commit();
+
+      // After the commit, collect wallets that just crossed below next-lesson
+      // cost. "Can cover next" = balance >= rate (or rate == 0). Skip tab-mode
+      // wallets. Show a popup listing any wallets that need attention.
+      const depleted: Array<{
+        name: string;
+        newBalance: number;
+        status: 'owing' | 'empty';
+      }> = [];
+      for (const { wallet, charge } of walletImpacts.values()) {
+        if (wallet.tabMode) continue;
+        const rate = getNextLessonCost(wallet, bookings);
+        if (rate <= 0) continue;
+        const prevBalance = wallet.balance;
+        const newBalance = prevBalance - charge;
+        if (prevBalance >= rate && newBalance < rate) {
+          depleted.push({
+            name: wallet.name,
+            newBalance,
+            status: newBalance < 0 ? 'owing' : 'empty',
+          });
+        }
+      }
+      if (depleted.length > 0) setDepletedAlert({ wallets: depleted });
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to mark class as done', 'error');
+    } finally {
+      setMarkingDone(false);
     }
-    return '';
-  }, [bookings]);
+  };
 
-  const lessonDayOfWeek: DayOfWeek | '' = useMemo(() => {
-    if (!lessonDate) return '';
-    return getDayOfWeekForDate(lessonDate);
-  }, [lessonDate]);
+  const handleConfirmCancel = async () => {
+    if (!coach || !db || !cancelCtx) return;
+    const { booking, dateStr, backingExceptionId, isOneTime, canScope } = cancelCtx;
+    const scope: 'this' | 'future' = canScope ? cancelScope : 'this';
+    setCancelling(true);
+    try {
+      const firestore = db as Firestore;
 
-  const lessonDayName = useMemo(() => {
-    if (!lessonDate) return '';
-    return new Date(lessonDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' });
-  }, [lessonDate]);
+      if (backingExceptionId) {
+        // Rescheduled single occurrence — just mark that exception cancelled.
+        await updateDoc(
+          doc(firestore, 'coaches', coach.id, 'classExceptions', backingExceptionId),
+          { type: 'cancelled' },
+        );
+      } else if (isOneTime) {
+        // One-time booking — delete booking + its exceptions.
+        const batch = writeBatch(firestore);
+        batch.delete(doc(firestore, 'coaches', coach.id, 'bookings', booking.id));
+        const exQuery = query(
+          collection(firestore, 'coaches', coach.id, 'classExceptions'),
+          where('bookingId', '==', booking.id),
+        );
+        const exSnapshot = await getDocs(exQuery);
+        for (const d of exSnapshot.docs) {
+          batch.delete(doc(firestore, 'coaches', coach.id, 'classExceptions', d.id));
+        }
+        await batch.commit();
+      } else if (scope === 'this') {
+        // Recurring → cancel this date only.
+        await addDoc(collection(firestore, 'coaches', coach.id, 'classExceptions'), {
+          bookingId: booking.id,
+          originalDate: dateStr,
+          type: 'cancelled',
+          createdAt: serverTimestamp(),
+        });
+      } else {
+        // Recurring → cancel this and all future occurrences.
+        const exQuery = query(
+          collection(firestore, 'coaches', coach.id, 'classExceptions'),
+          where('bookingId', '==', booking.id),
+        );
+        const exSnapshot = await getDocs(exQuery);
+        const allExceptions: ClassException[] = exSnapshot.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<ClassException, 'id'>),
+        }));
+        const result = computeCancelFuture(booking, allExceptions, dateStr);
+        const batch = writeBatch(firestore);
+        if (result.action === 'delete') {
+          batch.delete(doc(firestore, 'coaches', coach.id, 'bookings', booking.id));
+        } else {
+          batch.update(doc(firestore, 'coaches', coach.id, 'bookings', booking.id), {
+            endDate: result.newEndDate,
+          });
+        }
+        for (const exId of result.exceptionIdsToDelete) {
+          batch.delete(doc(firestore, 'coaches', coach.id, 'classExceptions', exId));
+        }
+        await batch.commit();
+      }
 
-  // Check for overlaps when repeat-weekly toggle or time fields change
-  useEffect(() => {
-    if (!showAddLesson || !lessonRepeatWeekly || !lessonDayOfWeek || !lessonDate) {
-      setOverlapWarning('');
-      return;
+      showToast(
+        scope === 'future'
+          ? 'Recurring lesson ended'
+          : `Cancelled ${booking.className || 'class'}`,
+        'success',
+      );
+      setCancelCtx(null);
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to cancel class', 'error');
+    } finally {
+      setCancelling(false);
     }
-    setOverlapWarning(checkOverlap(lessonDayOfWeek, lessonStartTime, lessonEndTime, lessonDate));
-  }, [showAddLesson, lessonRepeatWeekly, lessonDayOfWeek, lessonStartTime, lessonEndTime, lessonDate, checkOverlap]);
+  };
 
-  // Edit booking modal state
+  const handleUndoMarkDone = async (c: Booking) => {
+    if (!coach || !db) return;
+    try {
+      const firestore = db as Firestore;
+      const logs = lessonLogs.filter((l) => l.bookingId === c.id && l.date === selectedDateStr);
+      if (logs.length === 0) return;
+      const batch = writeBatch(firestore);
+      for (const l of logs) {
+        batch.delete(doc(firestore, 'coaches', coach.id, 'lessonLogs', l.id));
+        const wallet = resolveWallet(c, l.studentId, wallets);
+        if (wallet && l.price > 0) {
+          const newBalance = wallet.balance + l.price;
+          const txnRef = doc(
+            collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'),
+          );
+          batch.set(txnRef, {
+            type: 'refund',
+            amount: l.price,
+            balanceAfter: newBalance,
+            description: `Reversed — ${l.studentName}`,
+            studentId: l.studentId,
+            date: selectedDateStr,
+            createdAt: serverTimestamp(),
+          });
+          batch.update(doc(firestore, 'coaches', coach.id, 'wallets', wallet.id), {
+            balance: increment(l.price),
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+      await batch.commit();
+      showToast('Reopened class', 'success');
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to undo', 'error');
+    }
+  };
+
+  const handleUndoCancel = async (exceptionId: string) => {
+    if (!coach || !db) return;
+    try {
+      const firestore = db as Firestore;
+      await deleteDoc(doc(firestore, 'coaches', coach.id, 'classExceptions', exceptionId));
+      showToast('Cancellation undone', 'success');
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to undo', 'error');
+    }
+  };
+
+  const [duplicatePrefill, setDuplicatePrefill] = useState<AddLessonPrefill | null>(null);
+
+  const handleDuplicate = (c: Booking) => {
+    const rows: StudentRowState[] = c.studentIds.map((sid) => ({
+      mode: 'existing',
+      studentId: sid,
+      newName: '',
+      newPhone: '',
+      walletOption: c.studentWallets?.[sid] ? 'existing' : 'none',
+      existingWalletId: c.studentWallets?.[sid] ?? '',
+      newWalletName: '',
+      price: c.studentPrices?.[sid] ?? 0,
+    }));
+    setDuplicatePrefill({
+      className: c.className ?? '',
+      date: selectedDateStr,
+      startTime: c.startTime,
+      endTime: c.endTime,
+      locationId: c.locationId,
+      rows,
+    });
+    setShowAdd(true);
+  };
+
+  // Edit-class modal state
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
   const [editBackingExceptionId, setEditBackingExceptionId] = useState<string | null>(null);
   const [editClassName, setEditClassName] = useState('');
@@ -161,459 +502,6 @@ export default function DashboardPage() {
   const [showEditSaveOptions, setShowEditSaveOptions] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
 
-  const selectedDateStr = getDateString(selectedDate);
-  const todayStr = getDateString(new Date());
-  const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
-
-  const { classExceptions } = useClassExceptions(coach?.id, selectedDateStr);
-  const { lessonLogs } = useLessonLogs(coach?.id, selectedDateStr);
-
-  const dayClasses = useMemo(() => {
-    return getClassesForDate(selectedDateStr, bookings, classExceptions);
-  }, [selectedDateStr, bookings, classExceptions]);
-
-  const cancelledClasses = useMemo(() => {
-    return getCancelledClassesForDate(selectedDateStr, bookings, classExceptions);
-  }, [selectedDateStr, bookings, classExceptions]);
-
-  const doneBookingIds = useMemo(() => {
-    return new Set(lessonLogs.map((l) => l.bookingId));
-  }, [lessonLogs]);
-
-  // Build selectable student list for Add Class (all students individually)
-  const selectableStudentList = useMemo(() => {
-    return students.map((s) => ({
-      studentId: s.id,
-      displayName: s.clientName,
-      clientName: s.clientName,
-    }));
-  }, [students]);
-
-  const findWalletForStudent = useCallback(
-    (studentId: string) => resolveWallet(markDoneBooking, studentId, wallets),
-    [markDoneBooking, wallets],
-  );
-
-  const canConfirmMarkDone = useMemo(() => {
-    if (!markDoneBooking || markDoneAttendees.length === 0) return false;
-    const attending = markDoneAttendees.length > 1
-      ? markDoneAttendees.filter((a) => a.attended)
-      : markDoneAttendees;
-    return attending.every((a) => findWalletForStudent(a.studentId));
-  }, [markDoneBooking, markDoneAttendees, findWalletForStudent]);
-
-  const getFilteredStudentsForRow = (rowIndex: number) => {
-    const search = studentSearches[rowIndex] ?? '';
-    if (!search.trim()) return selectableStudentList;
-    const q = search.toLowerCase();
-    return selectableStudentList.filter((s) => s.displayName.toLowerCase().includes(q));
-  };
-
-  const shiftEndTime = (oldStart: string, oldEnd: string, newStart: string): string => {
-    const toMin = (t: string) => {
-      const [h, m] = t.split(':').map(Number);
-      return h * 60 + m;
-    };
-    const toStr = (min: number) => {
-      const h = Math.floor(min / 60);
-      const m = min % 60;
-      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    };
-    const duration = toMin(oldEnd) - toMin(oldStart);
-    if (duration <= 0) return oldEnd;
-    const maxMin = 23 * 60 + 55;
-    return toStr(Math.min(toMin(newStart) + duration, maxMin));
-  };
-
-  const updateStudentRow = (index: number, updates: Partial<StudentRow>) => {
-    setStudentRows(rows => rows.map((r, i) => i === index ? { ...r, ...updates } : r));
-  };
-
-  const getLastPriceForStudent = (studentId: string): number => {
-    const sorted = [...bookings].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    for (const b of sorted) {
-      const p = b.studentPrices[studentId];
-      if (p !== undefined && p > 0) return p;
-    }
-    return 0;
-  };
-
-  const getStudentRowSummary = (row: StudentRow): string => {
-    if (!row.displayName.trim()) return '';
-    const parts: string[] = [];
-    if (row.isNew) parts.push('New student');
-    if (row.walletOption === 'create' && row.newWalletName) {
-      parts.push(`New wallet "${row.newWalletName}"`);
-    } else if (row.walletOption === 'existing') {
-      if (row.existingWalletId.startsWith('pending:')) {
-        const refIdx = parseInt(row.existingWalletId.split(':')[1]);
-        const refRow = studentRows[refIdx];
-        if (refRow?.newWalletName) parts.push(`Shared wallet "${refRow.newWalletName}"`);
-      } else {
-        const w = wallets.find(w => w.id === row.existingWalletId);
-        if (w) parts.push(`Wallet "${w.name}" · RM ${w.balance}`);
-      }
-    } else {
-      parts.push('No wallet');
-    }
-    return parts.join(' · ');
-  };
-
-  const resetLessonForm = () => {
-    setLessonClassName('');
-    setLessonDate(getDateString(selectedDate));
-    setLessonRepeatWeekly(false);
-    setLessonLocationId(locations[0]?.id || '');
-    setLessonNewLocationName('');
-    setLessonStartTime('09:00');
-    setLessonEndTime('10:00');
-    setLessonNote('');
-    setStudentRows([{
-      studentId: '', displayName: '', phone: '', isNew: true,
-      walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
-    }]);
-    setStudentSearches(['']);
-    setExpandedStudentRows(new Set());
-    setOverlapWarning('');
-  };
-
-  const handleCreateLesson = async () => {
-    if (!coach || !db || studentRows.length === 0 || !studentRows[0].displayName) return;
-    if (!lessonClassName.trim()) {
-      showToast('Please enter a class name', 'error');
-      return;
-    }
-    if (!lessonDate) {
-      showToast('Please select a date', 'error');
-      return;
-    }
-    if (!lessonLocationId) {
-      showToast('Please select a location', 'error');
-      return;
-    }
-    if (lessonLocationId === 'create' && !lessonNewLocationName.trim()) {
-      showToast('Please enter a location name', 'error');
-      return;
-    }
-    setAddingLesson(true);
-    try {
-      const firestore = db as Firestore;
-
-      // If creating a new location, save it first and use its ID going forward
-      let resolvedLocationId = lessonLocationId;
-      let resolvedLocationName = locations.find(l => l.id === lessonLocationId)?.name || '';
-      if (lessonLocationId === 'create') {
-        const trimmed = lessonNewLocationName.trim();
-        const locRef = await addDoc(collection(firestore, 'coaches', coach.id, 'locations'), {
-          name: trimmed,
-          address: '',
-          notes: '',
-          createdAt: serverTimestamp(),
-        });
-        resolvedLocationId = locRef.id;
-        resolvedLocationName = trimmed;
-      }
-
-      const studentIds: string[] = [];
-      const studentPrices: Record<string, number> = {};
-      const studentWallets: Record<string, string> = {};
-      const createdWalletsByRow = new Map<number, string>();
-
-      for (let i = 0; i < studentRows.length; i++) {
-        const row = studentRows[i];
-        if (!row.displayName) continue;
-
-        const studentId = await findOrCreateStudent(
-          firestore, coach.id, row.displayName, row.phone
-        );
-        studentIds.push(studentId);
-        studentPrices[studentId] = row.price;
-
-        let walletId: string | undefined;
-        if (row.walletOption === 'create' && row.newWalletName) {
-          const walletRef = await addDoc(collection(firestore, 'coaches', coach.id, 'wallets'), {
-            name: row.newWalletName,
-            balance: 0,
-            studentIds: [studentId],
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-          walletId = walletRef.id;
-          createdWalletsByRow.set(i, walletId);
-        } else if (row.walletOption === 'existing' && row.existingWalletId) {
-          if (row.existingWalletId.startsWith('pending:')) {
-            const refIdx = parseInt(row.existingWalletId.split(':')[1]);
-            walletId = createdWalletsByRow.get(refIdx);
-          } else {
-            walletId = row.existingWalletId;
-          }
-
-          if (walletId) {
-            const walletRef = doc(firestore, 'coaches', coach.id, 'wallets', walletId);
-            const walletSnap = await getDoc(walletRef);
-            const currentIds: string[] = walletSnap.data()?.studentIds || [];
-            if (!currentIds.includes(studentId)) {
-              await updateDoc(walletRef, {
-                studentIds: [...currentIds, studentId],
-                updatedAt: serverTimestamp(),
-              });
-            }
-          }
-        }
-
-        if (walletId) studentWallets[studentId] = walletId;
-      }
-
-      const dayOfWeek = getDayOfWeekForDate(lessonDate);
-
-      const bookingData: Record<string, unknown> = {
-        locationId: resolvedLocationId,
-        locationName: resolvedLocationName,
-        dayOfWeek,
-        startTime: lessonStartTime,
-        endTime: lessonEndTime,
-        status: 'confirmed',
-        className: lessonClassName.trim(),
-        notes: lessonNote,
-        studentIds,
-        studentPrices,
-        studentWallets,
-        startDate: lessonDate,
-        createdAt: serverTimestamp(),
-      };
-      // One-time: startDate === endDate. Recurring: only startDate, no endDate.
-      if (!lessonRepeatWeekly) {
-        bookingData.endDate = lessonDate;
-      }
-
-      await addDoc(collection(firestore, 'coaches', coach.id, 'bookings'), bookingData);
-
-      // Close the modal before any Firestore snapshot can arrive with the new
-      // booking and trigger a self-overlap warning flash.
-      setShowAddLesson(false);
-      resetLessonForm();
-      showToast('Lesson created!', 'success');
-
-      for (const id of studentIds) {
-        updateDoc(doc(firestore, 'coaches', coach.id, 'students', id), {
-          updatedAt: serverTimestamp(),
-        }).catch(err => console.error('Failed to touch student record:', err));
-      }
-    } catch (error) {
-      console.error('Error creating lesson:', error);
-      showToast('Failed to create lesson', 'error');
-    } finally {
-      setAddingLesson(false);
-    }
-  };
-
-  const openMarkDone = (booking: Booking) => {
-    setMarkDoneBooking(booking);
-    setMarkDonePrice(getBookingTotal(booking));
-    setMarkDoneNote(booking.notes || '');
-    setMenuOpen(null);
-
-    const attendees = booking.studentIds
-      .map((id) => {
-        const student = students.find((s) => s.id === id);
-        if (!student) return null;
-        return {
-          studentId: id,
-          studentName: student.clientName,
-          attended: true,
-          price: booking.studentPrices[id] ?? 0,
-        };
-      })
-      .filter((a): a is NonNullable<typeof a> => a !== null);
-    setMarkDoneAttendees(attendees);
-  };
-
-  const handleConfirmMarkDone = async () => {
-    const booking = markDoneBooking;
-    if (!coach || !db || !booking) return;
-    setMarking(booking.id);
-
-    const firestore = db as Firestore;
-    const isGroup = markDoneAttendees.length > 1;
-    const noteText = markDoneNote.trim();
-    const price = markDonePrice;
-
-    // Close modal immediately (optimistic UI)
-    setMarkDoneBooking(null);
-    showToast('Class marked as done!', 'success');
-
-    try {
-      // Group: use per-attendee price. Single: split the total form-price to
-      // the sole attendee.
-      const resolvedAttendees = isGroup
-        ? markDoneAttendees.filter((a) => a.attended)
-        : markDoneAttendees.map((a) => ({ ...a, price }));
-
-      const batch = writeBatch(firestore);
-
-      for (const attendee of resolvedAttendees) {
-        const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
-        const logData: Record<string, unknown> = {
-          date: selectedDateStr,
-          bookingId: booking.id,
-          studentId: attendee.studentId,
-          studentName: attendee.studentName,
-          locationName: booking.locationName,
-          startTime: booking.startTime,
-          endTime: booking.endTime,
-          price: attendee.price,
-          createdAt: serverTimestamp(),
-        };
-        if (noteText) {
-          logData.note = noteText;
-        }
-        batch.set(logRef, logData);
-
-        const studentRef = doc(firestore, 'coaches', coach.id, 'students', attendee.studentId);
-
-        const wallet = resolveWallet(booking, attendee.studentId, wallets);
-        if (wallet && attendee.price > 0) {
-          const newBalance = wallet.balance - attendee.price;
-          const txnRef = doc(collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'));
-          batch.set(txnRef, {
-            type: 'charge',
-            amount: -attendee.price,
-            balanceAfter: newBalance,
-            description: `Lesson — ${attendee.studentName} (${booking.startTime})`,
-            studentId: attendee.studentId,
-            lessonLogId: logRef.id,
-            date: selectedDateStr,
-            createdAt: serverTimestamp(),
-          });
-          const walletRef = doc(firestore, 'coaches', coach.id, 'wallets', wallet.id);
-          batch.update(walletRef, {
-            balance: increment(-attendee.price),
-            updatedAt: serverTimestamp(),
-          });
-        }
-
-        batch.update(studentRef, { updatedAt: serverTimestamp() });
-      }
-
-      await batch.commit();
-
-      for (const attendee of resolvedAttendees) {
-        const wallet = resolveWallet(booking, attendee.studentId, wallets);
-        if (wallet && wallet.balance - attendee.price < 0) {
-          showToast(`${wallet.name} balance is now negative`, 'info');
-          break;
-        }
-      }
-    } catch (error) {
-      console.error('Error marking class done:', error);
-      showToast('Failed to mark class as done — please try again', 'error');
-    } finally {
-      setMarking(null);
-    }
-  };
-
-  const handleCancelScoped = async (
-    booking: Booking,
-    scope: 'this' | 'future',
-    backingExceptionId: string | null = null,
-  ) => {
-    if (!coach || !db) return;
-    setCancelling(booking.id);
-    try {
-      const firestore = db as Firestore;
-      const batch = writeBatch(firestore);
-
-      const isOneTime = !!(booking.startDate && booking.endDate && booking.startDate === booking.endDate);
-
-      if (backingExceptionId) {
-        // Exception-backed single instance: convert the reschedule into a
-        // cancellation so the class disappears from this date and the original
-        // series date is marked cancelled for audit.
-        batch.update(doc(firestore, 'coaches', coach.id, 'classExceptions', backingExceptionId), {
-          type: 'cancelled',
-        });
-      } else if (isOneTime) {
-        // One-time bookings are hard-deleted along with any orphaned exceptions.
-        batch.delete(doc(firestore, 'coaches', coach.id, 'bookings', booking.id));
-        const exQuery = query(
-          collection(firestore, 'coaches', coach.id, 'classExceptions'),
-          where('bookingId', '==', booking.id),
-        );
-        const exSnapshot = await getDocs(exQuery);
-        for (const d of exSnapshot.docs) {
-          batch.delete(doc(firestore, 'coaches', coach.id, 'classExceptions', d.id));
-        }
-      } else if (scope === 'this') {
-        const exRef = doc(collection(firestore, 'coaches', coach.id, 'classExceptions'));
-        batch.set(exRef, {
-          bookingId: booking.id,
-          originalDate: selectedDateStr,
-          type: 'cancelled',
-          createdAt: serverTimestamp(),
-        });
-      } else {
-        // Fetch ALL exceptions for this booking — the in-scope `classExceptions`
-        // is only a ±2 month window, which may miss orphans we need to clean up.
-        const exQuery = query(
-          collection(firestore, 'coaches', coach.id, 'classExceptions'),
-          where('bookingId', '==', booking.id),
-        );
-        const exSnapshot = await getDocs(exQuery);
-        const allExceptions: ClassException[] = exSnapshot.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as Omit<ClassException, 'id'>),
-        }));
-
-        const result = computeCancelFuture(booking, allExceptions, selectedDateStr);
-        if (result.action === 'delete') {
-          batch.delete(doc(firestore, 'coaches', coach.id, 'bookings', booking.id));
-        } else {
-          batch.update(doc(firestore, 'coaches', coach.id, 'bookings', booking.id), {
-            endDate: result.newEndDate,
-          });
-        }
-        for (const exId of result.exceptionIdsToDelete) {
-          batch.delete(doc(firestore, 'coaches', coach.id, 'classExceptions', exId));
-        }
-      }
-
-      await batch.commit();
-      showToast(
-        backingExceptionId
-          ? 'Lesson cancelled'
-          : isOneTime
-            ? 'Lesson deleted'
-            : scope === 'this'
-              ? 'Class cancelled for this date'
-              : 'Recurring series ended',
-        'success',
-      );
-      setCancelScopeBooking(null);
-      setOneTimeCancelBooking(null);
-      setOneTimeCancelExceptionId(null);
-    } catch (error) {
-      console.error('Error cancelling class:', error);
-      showToast('Failed to cancel class', 'error');
-    } finally {
-      setCancelling(null);
-    }
-  };
-
-  const handleUndoCancel = async (exceptionId: string) => {
-    if (!coach || !db) return;
-    setUndoingCancel(exceptionId);
-    try {
-      const firestore = db as Firestore;
-      await deleteDoc(doc(firestore, 'coaches', coach.id, 'classExceptions', exceptionId));
-      showToast('Cancellation undone', 'success');
-    } catch (error) {
-      console.error('Error undoing cancel:', error);
-      showToast('Failed to undo cancellation', 'error');
-    } finally {
-      setUndoingCancel(null);
-    }
-  };
-
   const openEditBooking = (booking: Booking) => {
     setEditBooking(booking);
     setEditBackingExceptionId(getBackingException(booking.id, selectedDateStr, classExceptions)?.id ?? null);
@@ -629,28 +517,33 @@ export default function DashboardPage() {
     setEditAddStudentOpen(false);
     setEditAddStudentSearch('');
     setShowEditSaveOptions(false);
-    setMenuOpen(null);
   };
 
-  const handleRescheduleInstead = async (exceptionId: string, booking: Booking) => {
-    if (!coach || !db) return;
-    setUndoingCancel(exceptionId);
-    try {
-      const firestore = db as Firestore;
-      await deleteDoc(doc(firestore, 'coaches', coach.id, 'classExceptions', exceptionId));
-      openEditBooking(booking);
-    } catch (error) {
-      console.error('Error removing cancellation:', error);
-      showToast('Failed to undo cancellation', 'error');
-    } finally {
-      setUndoingCancel(null);
+  const closeEditBooking = () => {
+    setEditBooking(null);
+    setEditBackingExceptionId(null);
+    setShowEditSaveOptions(false);
+  };
+
+  const getLastPriceForStudent = (studentId: string): number => {
+    const sorted = [...bookings].sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+    );
+    for (const b of sorted) {
+      const p = b.studentPrices[studentId];
+      if (p !== undefined && p > 0) return p;
     }
+    return 0;
   };
 
-  const editTotalPrice = editStudentIds.reduce((sum, id) => sum + (editStudentPrices[id] ?? 0), 0);
-
-  const hasEditRosterChange = () => {
+  const hasEditChanges = () => {
     if (!editBooking) return false;
+    if (editClassName !== (editBooking.className || '')) return true;
+    if (editLocationId !== editBooking.locationId) return true;
+    if (editDate !== selectedDateStr) return true;
+    if (editStartTime !== editBooking.startTime) return true;
+    if (editEndTime !== editBooking.endTime) return true;
+    if (editNote !== (editBooking.notes || '')) return true;
     const origIds = editBooking.studentIds;
     if (editStudentIds.length !== origIds.length) return true;
     for (const id of editStudentIds) if (!origIds.includes(id)) return true;
@@ -659,22 +552,6 @@ export default function DashboardPage() {
       if ((editBooking.studentWallets[id] ?? '') !== (editStudentWallets[id] ?? '')) return true;
     }
     return false;
-  };
-
-  const hasEditBookingLevelChange = () => {
-    if (!editBooking) return false;
-    return editClassName !== (editBooking.className || '');
-  };
-
-  const hasEditChanges = () => {
-    if (!editBooking) return false;
-    return editLocationId !== editBooking.locationId ||
-      editDate !== selectedDateStr ||
-      editStartTime !== editBooking.startTime ||
-      editEndTime !== editBooking.endTime ||
-      editNote !== (editBooking.notes || '') ||
-      hasEditBookingLevelChange() ||
-      hasEditRosterChange();
   };
 
   const handleEditSave = async (mode?: 'this' | 'future') => {
@@ -701,7 +578,11 @@ export default function DashboardPage() {
         if (w) studentWalletsOut[id] = w;
       }
 
-      const isOneTime = !!(editBooking.startDate && editBooking.endDate && editBooking.startDate === editBooking.endDate);
+      const isOneTime = !!(
+        editBooking.startDate &&
+        editBooking.endDate &&
+        editBooking.startDate === editBooking.endDate
+      );
       const effectiveDate = editDate || selectedDateStr;
 
       if (isOneTime) {
@@ -725,20 +606,21 @@ export default function DashboardPage() {
         await updateDoc(doc(firestore, 'coaches', coach.id, 'bookings', editBooking.id), update);
         showToast('Updated', 'success');
       } else if (editBackingExceptionId) {
-        // Already a per-date override for this instance — update it in place
-        // rather than creating a second exception doc.
-        await updateDoc(doc(firestore, 'coaches', coach.id, 'classExceptions', editBackingExceptionId), {
-          newDate: effectiveDate,
-          newStartTime: editStartTime,
-          newEndTime: editEndTime,
-          newLocationId: editLocationId,
-          newLocationName: newLocationName,
-          newNote: editNote,
-          newClassName: editClassName.trim(),
-          newStudentIds: editStudentIds,
-          newStudentPrices: studentPricesOut,
-          newStudentWallets: studentWalletsOut,
-        });
+        await updateDoc(
+          doc(firestore, 'coaches', coach.id, 'classExceptions', editBackingExceptionId),
+          {
+            newDate: effectiveDate,
+            newStartTime: editStartTime,
+            newEndTime: editEndTime,
+            newLocationId: editLocationId,
+            newLocationName: newLocationName,
+            newNote: editNote,
+            newClassName: editClassName.trim(),
+            newStudentIds: editStudentIds,
+            newStudentPrices: studentPricesOut,
+            newStudentWallets: studentWalletsOut,
+          },
+        );
         showToast('Updated for this date', 'success');
       } else if (mode === 'this') {
         const exRef = doc(collection(firestore, 'coaches', coach.id, 'classExceptions'));
@@ -762,17 +644,13 @@ export default function DashboardPage() {
       } else if (mode === 'future') {
         const batch = writeBatch(firestore);
         const oldBookingRef = doc(firestore, 'coaches', coach.id, 'bookings', editBooking.id);
-        const newDayOfWeek = effectiveDate !== selectedDateStr
-          ? getDayOfWeekForDate(effectiveDate)
-          : editBooking.dayOfWeek;
-        // The last real occurrence of the old series is selectedDate - 7 days
-        // (weekly recurrence on the same dayOfWeek). Capping endDate there
-        // avoids leaving the old booking with a range that contains no
-        // actual class — so if only one prior occurrence remains, startDate
-        // === endDate and it's correctly treated as a one-time class.
+        const newDayOfWeek =
+          effectiveDate !== selectedDateStr
+            ? getDayOfWeekForDate(effectiveDate)
+            : editBooking.dayOfWeek;
         const lastOccurrence = new Date(selectedDate);
         lastOccurrence.setDate(lastOccurrence.getDate() - 7);
-        const lastOccurrenceStr = getDateString(lastOccurrence);
+        const lastOccurrenceStr = ymd(lastOccurrence);
         const startDateStr = editBooking.startDate;
         const hasPriorOccurrences = !startDateStr || lastOccurrenceStr >= startDateStr;
 
@@ -799,8 +677,6 @@ export default function DashboardPage() {
           };
           batch.set(newBookingRef, newData);
         } else {
-          // Editing the very first occurrence — no prior classes to preserve.
-          // Update the existing booking in place to keep bookingId stable.
           batch.update(oldBookingRef, {
             locationId: editLocationId,
             locationName: newLocationName,
@@ -819,816 +695,1415 @@ export default function DashboardPage() {
         await batch.commit();
         showToast('Future events updated', 'success');
       }
-      setEditBooking(null);
-      setEditBackingExceptionId(null);
-      setShowEditSaveOptions(false);
-    } catch (error) {
-      console.error('Error editing booking:', error);
+      closeEditBooking();
+    } catch (e) {
+      console.error(e);
       showToast('Failed to update', 'error');
     } finally {
       setEditSaving(false);
     }
   };
 
+  const editTotalPrice = editStudentIds.reduce(
+    (sum, id) => sum + (editStudentPrices[id] ?? 0),
+    0,
+  );
 
-  const handleDeleteDoneLesson = async (booking: Booking) => {
-    if (!coach || !db) return;
-    setDeletingDoneLesson(booking.id);
-    try {
-      const firestore = db as Firestore;
-      const logs = lessonLogs.filter(
-        (l) => l.bookingId === booking.id && l.date === selectedDateStr,
-      );
-      if (logs.length === 0) {
-        showToast('No lesson log found', 'error');
-        return;
-      }
-
-      const batch = writeBatch(firestore);
-      const prettyDate = formatDateShort(parseDateString(selectedDateStr));
-
-      for (const log of logs) {
-        batch.delete(doc(firestore, 'coaches', coach.id, 'lessonLogs', log.id));
-
-        // Find the charge txn by lessonLogId across all wallets — this handles
-        // the case where the booking's wallet attachment has since changed.
-        for (const walletDoc of wallets) {
-          const txnQuery = query(
-            collection(firestore, 'coaches', coach.id, 'wallets', walletDoc.id, 'transactions'),
-            where('lessonLogId', '==', log.id),
-          );
-          const txnSnap = await getDocs(txnQuery);
-          if (txnSnap.empty) continue;
-          const originalTxn = txnSnap.docs[0].data();
-          const refundAmount = Math.abs(originalTxn.amount);
-          const newBalance = walletDoc.balance + refundAmount;
-          const refundRef = doc(collection(firestore, 'coaches', coach.id, 'wallets', walletDoc.id, 'transactions'));
-          batch.set(refundRef, {
-            type: 'refund',
-            amount: refundAmount,
-            balanceAfter: newBalance,
-            description: `Lesson deleted: ${booking.className || 'lesson'} on ${prettyDate}`,
-            studentId: originalTxn.studentId,
-            date: selectedDateStr,
-            createdAt: serverTimestamp(),
-          });
-          batch.update(doc(firestore, 'coaches', coach.id, 'wallets', walletDoc.id), {
-            balance: increment(refundAmount),
-            updatedAt: serverTimestamp(),
-          });
-          break;
-        }
-      }
-
-      await batch.commit();
-      showToast('Lesson deleted and wallet refunded', 'success');
-      setDoneDeleteBooking(null);
-    } catch (error) {
-      console.error('Error deleting done lesson:', error);
-      showToast('Failed to delete lesson', 'error');
-    } finally {
-      setDeletingDoneLesson(null);
-    }
-  };
-
-  const navigateWeek = (direction: number) => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() + direction * 7);
-    setSelectedDate(d);
-  };
-
-  const lowWallets = useMemo(() => {
-    const today = getDateString(new Date());
-    return wallets.filter((w) => isLowBalance(w, bookings, today));
-  }, [wallets, bookings]);
-
-  if (!coach) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
-  const formattedDate = formatDateFull(selectedDate);
+  // Add-lesson modal
+  const [showAdd, setShowAdd] = useState(false);
 
   return (
-    <div className="space-y-6">
-      {lowWallets.length > 0 && (
-        <Link
-          href="/dashboard/payments?filter=low"
-          className="flex items-center justify-between gap-3 border-l-4 border-red-500 bg-red-50 dark:bg-red-900/20 rounded-r-lg px-4 py-3 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
-        >
-          <div className="min-w-0">
-            <p className="font-medium text-red-800 dark:text-red-300">
-              ⚠ {lowWallets.length} {lowWallets.length === 1 ? 'wallet needs' : 'wallets need'} top-up
-            </p>
-            <p className="text-sm text-red-700 dark:text-red-400 truncate">
-              {lowWallets.slice(0, 3).map((w) => {
-                const sign = w.balance < 0 ? '-' : '';
-                return `${w.name} (${sign}RM ${Math.abs(w.balance).toFixed(0)})`;
-              }).join(' · ')}
-              {lowWallets.length > 3 ? ` · +${lowWallets.length - 3} more` : ''}
-            </p>
-          </div>
-          <span className="shrink-0 text-sm text-red-700 dark:text-red-400 font-medium">View →</span>
-        </Link>
-      )}
-      {/* Week navigation */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <button
-            onClick={() => navigateWeek(-1)}
-            className="p-2 text-gray-500 hover:text-gray-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <button
-            onClick={() => setSelectedDate(new Date())}
-            className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-          >
-            Today
-          </button>
-          <button
-            onClick={() => navigateWeek(1)}
-            className="p-2 text-gray-500 hover:text-gray-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-        </div>
+    <>
+      {/* Desktop layout */}
+      <div className="hidden lg:block px-7 py-7 max-w-[1200px] mx-auto">
+        <DesktopHero
+          selectedDate={selectedDate}
+          isToday={isToday}
+          firstName={firstName}
+          totalCount={totalCount}
+          doneCount={doneCount}
+          earliest={todaysClasses[0]?.startTime}
+          onToday={() => setSelectedDate(new Date())}
+          onAdd={() => setShowAdd(true)}
+        />
 
-        <div className="grid grid-cols-7 gap-1">
-          {weekDates.map((date, i) => {
-            const dateStr = getDateString(date);
-            const isSelected = dateStr === selectedDateStr;
-            const isToday = dateStr === todayStr;
+        <WeekStrip
+          weekDays={weekDays}
+          selectedDateStr={selectedDateStr}
+          todayStr={todayStr}
+          classesPerDay={classesPerDay}
+          onPick={setSelectedDate}
+          onWeekShift={(delta) => setSelectedDate(addDays(selectedDate, delta))}
+        />
 
-            return (
-              <button
-                key={dateStr}
-                onClick={() => setSelectedDate(date)}
-                className={`flex flex-col items-center py-2 px-1 rounded-lg text-sm transition-colors ${
-                  isSelected
-                    ? 'bg-blue-600 text-white'
-                    : isToday
-                      ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                      : 'text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-[#2a2a2a]'
-                }`}
-              >
-                <span className="text-xs font-medium">{SHORT_DAYS[i]}</span>
-                <span className={`text-lg font-semibold ${isSelected ? '' : ''}`}>
-                  {date.getDate()}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Date header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-zinc-100">{formattedDate}</h1>
-          <p className="text-sm text-gray-500 dark:text-zinc-400 mt-0.5">
-            {dayClasses.length} class{dayClasses.length !== 1 ? 'es' : ''}
-          </p>
-        </div>
-        <Button variant="secondary" size="sm" onClick={() => { resetLessonForm(); setShowAddLesson(true); }}>
-          + Add Lesson
-        </Button>
-      </div>
-
-      {/* Classes list */}
-      <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333]">
-        {dayClasses.length === 0 ? (
-          <div className="p-6 text-center text-gray-400 dark:text-zinc-500">
-            No classes scheduled for this date.
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-100 dark:divide-[#333333]">
-            {dayClasses.map((booking) => {
-              const isDone = doneBookingIds.has(booking.id);
-              const backingException = getBackingException(booking.id, selectedDateStr, classExceptions);
-              const isExceptionBacked = backingException !== null;
-              const isOneTimeDisplay = isExceptionBacked || !!(booking.startDate && booking.startDate === booking.endDate);
-              const total = getBookingTotal(booking);
-
-              return (
+        <div className="grid grid-cols-[1fr_300px] gap-5 items-start">
+          <div>
+            <SectionHeader
+              title="Classes"
+              trailing={
+                totalCount > 0 && (
+                  <div className="text-[12px] tnum" style={{ color: 'var(--ink-3)' }}>
+                    {doneCount}/{totalCount} done
+                  </div>
+                )
+              }
+            />
+            <div className="flex flex-col gap-2.5">
+              {totalCount === 0 && (
                 <div
-                  key={booking.id}
-                  className="flex items-center gap-3 p-4 sm:p-5"
+                  className="rounded-[14px] border p-7 text-center text-[13px]"
+                  style={{
+                    background: 'var(--panel)',
+                    borderColor: 'var(--line)',
+                    color: 'var(--ink-3)',
+                  }}
                 >
-                  {/* Status indicator */}
-                  <div className={`flex-shrink-0 ${isDone ? 'opacity-50' : ''}`}>
-                    {isDone ? (
-                      <div className="w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                        <svg className="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
-                    ) : (
-                      <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                        <div className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400" />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Info */}
-                  <div className={`flex-1 min-w-0 ${isDone ? 'opacity-50' : ''}`}>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <div className="flex items-center gap-1.5">
-                        {!isOneTimeDisplay && (
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0">
-                            <path fillRule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H4.598a.75.75 0 00-.75.75v3.634a.75.75 0 001.5 0v-2.033l.312.311a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm-9.624-2.848a5.5 5.5 0 019.201-2.466l.312.311H12.768a.75.75 0 000 1.5h3.634a.75.75 0 00.75-.75V3.537a.75.75 0 00-1.5 0v2.033l-.312-.311A7 7 0 003.628 8.397a.75.75 0 001.449.39z" clipRule="evenodd" />
-                          </svg>
-                        )}
-                        <span className="font-medium text-gray-900 dark:text-zinc-100">
-                          {formatTimeDisplay(booking.startTime)} – {formatTimeDisplay(booking.endTime)}
-                        </span>
-                      </div>
-                      {isDone && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
-                          Done
-                        </span>
-                      )}
-                      {isExceptionBacked && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                          Rescheduled
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-600 dark:text-zinc-400 mt-0.5">
-                      {booking.className}
-                    </p>
-                    <p className="text-xs text-gray-400 dark:text-zinc-500 truncate">
-                      {booking.locationName}{booking.notes ? <span className="text-amber-500 dark:text-amber-400"> · {booking.notes}</span> : null}
-                    </p>
-                  </div>
-
-                  <div className={`text-right flex-shrink-0 ${isDone ? 'opacity-50' : ''}`}>
-                    {total > 0 && (
-                      <p className="text-sm font-medium text-green-600 dark:text-green-400">
-                        RM {total}
-                      </p>
-                    )}
-                    <p className="text-xs text-gray-400 dark:text-zinc-500">
-                      {isGroupBooking(booking) ? `Group (${booking.studentIds.length})` : 'Private'}
-                    </p>
-                  </div>
-
-                  {/* Actions menu */}
-                  <div className="relative flex-shrink-0">
-                      <button
-                        onClick={() => setMenuOpen(menuOpen === booking.id ? null : booking.id)}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:text-zinc-500 dark:hover:text-zinc-300 dark:hover:bg-[#2a2a2a]"
-                      >
-                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                          <circle cx="12" cy="5" r="1.5" />
-                          <circle cx="12" cy="12" r="1.5" />
-                          <circle cx="12" cy="19" r="1.5" />
-                        </svg>
-                      </button>
-
-                      {menuOpen === booking.id && (
-                        <>
-                          <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(null)} />
-                          <div className="absolute right-0 top-full mt-1 z-20 w-40 bg-white dark:bg-[#2a2a2a] rounded-lg shadow-lg border border-gray-200 dark:border-[#444] py-1">
-                            {!isDone && (
-                            <button
-                              onClick={() => selectedDateStr <= todayStr && openMarkDone(booking)}
-                              disabled={selectedDateStr > todayStr}
-                              className={`w-full text-left px-3 py-2 text-sm ${
-                                selectedDateStr > todayStr
-                                  ? 'text-gray-400 dark:text-zinc-600 cursor-not-allowed'
-                                  : 'text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#333]'
-                              }`}
-                            >
-                              Mark Done
-                              {selectedDateStr > todayStr && (
-                                <span className="block text-xs text-gray-400 dark:text-zinc-600">(future date)</span>
-                              )}
-                            </button>
-                            )}
-                            {!isDone && (
-                              <button
-                                onClick={() => openEditBooking(booking)}
-                                className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#333]"
-                              >
-                                Edit
-                              </button>
-                            )}
-                            <button
-                              onClick={() => {
-                                resetLessonForm();
-                                setLessonRepeatWeekly(false);
-                                setLessonClassName(booking.className || '');
-                                setLessonDate(selectedDateStr);
-                                setLessonLocationId(booking.locationId || locations[0]?.id || '');
-                                setLessonStartTime(booking.startTime || '09:00');
-                                setLessonEndTime(booking.endTime || '10:00');
-                                setLessonNote(booking.notes || '');
-                                const dupRows: StudentRow[] = [];
-                                for (const sid of booking.studentIds) {
-                                  const s = students.find((st) => st.id === sid);
-                                  if (!s) continue;
-                                  const walletId = booking.studentWallets?.[s.id];
-                                  const walletStillExists = !!walletId && wallets.some((w) => w.id === walletId);
-                                  dupRows.push({
-                                    studentId: s.id, displayName: s.clientName,
-                                    phone: s.clientPhone || '', isNew: false,
-                                    walletOption: walletStillExists ? 'existing' : 'none',
-                                    existingWalletId: walletStillExists ? walletId! : '',
-                                    newWalletName: '',
-                                    price: booking.studentPrices[s.id] ?? 0,
-                                  });
-                                }
-                                setStudentRows(dupRows.length ? dupRows : [{
-                                  studentId: '', displayName: '', phone: '', isNew: true,
-                                  walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
-                                }]);
-                                setStudentSearches(dupRows.length ? dupRows.map(() => '') : ['']);
-                                setShowAddLesson(true);
-                                setMenuOpen(null);
-                              }}
-                              className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#333]"
-                            >
-                              Duplicate
-                            </button>
-                            {!isDone ? (
-                                <button
-                                  onClick={() => {
-                                    if (isOneTimeDisplay) {
-                                      setOneTimeCancelBooking(booking);
-                                      setOneTimeCancelExceptionId(backingException?.id ?? null);
-                                    } else {
-                                      setCancelScopeBooking(booking);
-                                      setCancelScope('this');
-                                    }
-                                    setMenuOpen(null);
-                                  }}
-                                  disabled={cancelling === booking.id}
-                                  className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-[#333] disabled:opacity-50"
-                                >
-                                  {cancelling === booking.id
-                                    ? (isOneTimeDisplay ? 'Deleting...' : 'Cancelling...')
-                                    : (isOneTimeDisplay ? 'Delete' : 'Cancel')}
-                                </button>
-                            ) : (
-                                <button
-                                  onClick={() => {
-                                    setDoneDeleteBooking(booking);
-                                    setMenuOpen(null);
-                                  }}
-                                  className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-[#333]"
-                                >
-                                  Delete
-                                </button>
-                            )}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Cancelled classes */}
-      {cancelledClasses.length > 0 && (
-        <div>
-          <p className="text-xs font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wider mb-2">
-            Cancelled
-          </p>
-          <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-sm border border-gray-100 dark:border-[#333333] opacity-60">
-            <div className="divide-y divide-gray-100 dark:divide-[#333333]">
-              {cancelledClasses.map(({ booking, exceptionId }) => (
-                <div key={exceptionId} className="flex items-center gap-3 p-4 sm:p-5">
-                  {/* Status indicator */}
-                  <div className="flex-shrink-0">
-                    <div className="w-6 h-6 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                      <svg className="w-4 h-4 text-red-500 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </div>
-                  </div>
-
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-gray-900 dark:text-zinc-100">
-                        {formatTimeDisplay(booking.startTime)} – {formatTimeDisplay(booking.endTime)}
-                      </span>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
-                        Cancelled
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-600 dark:text-zinc-400 mt-0.5">{booking.className}</p>
-                    <p className="text-xs text-gray-400 dark:text-zinc-500">{booking.locationName}</p>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-1 flex-shrink-0">
-                    <button
-                      onClick={() => handleUndoCancel(exceptionId)}
-                      disabled={undoingCancel === exceptionId}
-                      className="px-2.5 py-1.5 text-xs font-medium rounded-lg text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50"
-                    >
-                      {undoingCancel === exceptionId ? 'Undoing...' : 'Undo'}
-                    </button>
-                    <button
-                      onClick={() => handleRescheduleInstead(exceptionId, booking)}
-                      disabled={undoingCancel === exceptionId}
-                      className="px-2.5 py-1.5 text-xs font-medium rounded-lg text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
-                    >
-                      Reschedule
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete done lesson modal */}
-      <Modal
-        isOpen={!!doneDeleteBooking}
-        onClose={() => setDoneDeleteBooking(null)}
-        title="Delete this lesson?"
-      >
-        {doneDeleteBooking && (() => {
-          const logs = lessonLogs.filter(
-            (l) => l.bookingId === doneDeleteBooking.id && l.date === selectedDateStr,
-          );
-          const refunds = logs.map((l) => {
-            const w = resolveWallet(doneDeleteBooking, l.studentId, wallets);
-            return { studentName: l.studentName, price: l.price, walletName: w?.name ?? null };
-          });
-          const busy = deletingDoneLesson === doneDeleteBooking.id;
-          return (
-            <div className="space-y-4">
-              <p className="text-sm text-gray-600 dark:text-zinc-400">
-                {doneDeleteBooking.className} — {formatDateShort(parseDateString(selectedDateStr))}
-              </p>
-              <p className="text-sm text-gray-700 dark:text-zinc-300">
-                This removes the lesson from the student&apos;s history and refunds the wallet charge.
-              </p>
-              {refunds.length > 0 && (
-                <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3 space-y-1">
-                  {refunds.map((r, i) => (
-                    <div key={i} className="flex items-center justify-between text-sm">
-                      <span className="text-gray-700 dark:text-zinc-300">
-                        {r.walletName ? r.walletName : r.studentName}
-                      </span>
-                      <span className="font-medium text-green-600 dark:text-green-400">
-                        + RM {r.price}
-                      </span>
-                    </div>
-                  ))}
+                  Nothing on the schedule.
                 </div>
               )}
-              <div className="flex gap-3 pt-2">
-                <Button
-                  variant="danger"
-                  onClick={() => handleDeleteDoneLesson(doneDeleteBooking)}
-                  loading={busy}
-                  disabled={busy}
-                  className="flex-1"
-                >
-                  Delete lesson
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => setDoneDeleteBooking(null)}
-                  disabled={busy}
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          );
-        })()}
-      </Modal>
-
-      {/* Cancel scope modal (recurring) */}
-      <Modal
-        isOpen={!!cancelScopeBooking}
-        onClose={() => setCancelScopeBooking(null)}
-        title="Cancel recurring lesson?"
-      >
-        {cancelScopeBooking && (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600 dark:text-zinc-400">
-              {cancelScopeBooking.className} — {formatDateShort(parseDateString(selectedDateStr))}
-            </p>
-
-            <label className={`flex gap-3 p-3 rounded-lg cursor-pointer border-2 ${cancelScope === 'this' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-[#333]'}`}>
-              <input
-                type="radio"
-                name="cancel-scope"
-                value="this"
-                checked={cancelScope === 'this'}
-                onChange={() => setCancelScope('this')}
-                className="mt-1"
-              />
-              <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This lesson</p>
-                <p className="text-xs text-gray-600 dark:text-zinc-400">
-                  Only {formatDateShort(parseDateString(selectedDateStr))} — other dates unaffected.
-                </p>
-              </div>
-            </label>
-
-            <label className={`flex gap-3 p-3 rounded-lg cursor-pointer border-2 ${cancelScope === 'future' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-[#333]'}`}>
-              <input
-                type="radio"
-                name="cancel-scope"
-                value="future"
-                checked={cancelScope === 'future'}
-                onChange={() => setCancelScope('future')}
-                className="mt-1"
-              />
-              <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This and future lessons</p>
-                <p className="text-xs text-gray-600 dark:text-zinc-400">
-                  Ends the recurring series from {formatDateShort(parseDateString(selectedDateStr))} onwards. Past lessons kept.
-                </p>
-              </div>
-            </label>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="secondary" onClick={() => setCancelScopeBooking(null)}>
-                Back
-              </Button>
-              <Button
-                variant="danger"
-                disabled={cancelling === cancelScopeBooking.id}
-                onClick={() => handleCancelScoped(cancelScopeBooking, cancelScope)}
-              >
-                {cancelling === cancelScopeBooking.id ? 'Cancelling...' : 'Cancel lesson'}
-              </Button>
+              {todaysClasses.map((c) => (
+                <ClassCard
+                  key={c.id}
+                  cls={c}
+                  students={students}
+                  wallets={wallets}
+                  bookings={bookings}
+                  todayStr={todayStr}
+                  isDone={doneByBookingId.has(c.id)}
+                  doneTotal={doneByBookingId.get(c.id) ?? 0}
+                  attendedIds={doneStudentsByBookingId.get(c.id)}
+                  onMarkDone={() => openMarkDone(c)}
+                  onCancel={() => openCancelFlow(c)}
+                  onUndo={() => handleUndoMarkDone(c)}
+                  onEdit={() => openEditBooking(c)}
+                  onDuplicate={() => handleDuplicate(c)}
+                  compact={false}
+                />
+              ))}
+              {cancelledToday.length > 0 && (
+                <CancelledList
+                  items={cancelledToday}
+                  onUndo={(id) => handleUndoCancel(id)}
+                />
+              )}
             </div>
           </div>
-        )}
-      </Modal>
 
-      {/* One-time delete confirm modal */}
-      <Modal
-        isOpen={!!oneTimeCancelBooking}
-        onClose={() => { setOneTimeCancelBooking(null); setOneTimeCancelExceptionId(null); }}
-        title={oneTimeCancelExceptionId ? 'Cancel this lesson?' : 'Delete this lesson?'}
-      >
-        {oneTimeCancelBooking && (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600 dark:text-zinc-400">
-              {oneTimeCancelBooking.className} — {formatDateShort(parseDateString(selectedDateStr))}
-            </p>
-            <p className="text-sm text-gray-600 dark:text-zinc-400">
-              {oneTimeCancelExceptionId
-                ? 'This lesson will be cancelled. Other dates in the series are unaffected.'
-                : 'This lesson will be permanently deleted.'}
-            </p>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="secondary" onClick={() => { setOneTimeCancelBooking(null); setOneTimeCancelExceptionId(null); }}>
-                Back
-              </Button>
-              <Button
-                variant="danger"
-                disabled={cancelling === oneTimeCancelBooking.id}
-                onClick={() => handleCancelScoped(oneTimeCancelBooking, 'this', oneTimeCancelExceptionId)}
-              >
-                {cancelling === oneTimeCancelBooking.id
-                  ? (oneTimeCancelExceptionId ? 'Cancelling...' : 'Deleting...')
-                  : (oneTimeCancelExceptionId ? 'Cancel lesson' : 'Delete lesson')}
-              </Button>
-            </div>
+          <div className="flex flex-col gap-3.5">
+            <StatCard
+              label={isToday ? 'Earned today' : `Earned ${formatDateShort(selectedDate)}`}
+              value={`RM ${Math.round(todayRevenue)}`}
+              sub={`of RM ${Math.round(expectedRevenue)} expected`}
+            />
+            <LowWalletsCard wallets={lowWallets} />
+            <QuickActionsCard
+              onAdd={() => setShowAdd(true)}
+            />
           </div>
-        )}
-      </Modal>
+        </div>
+      </div>
 
-      {/* Edit Booking modal */}
-      <Modal
-        isOpen={editBooking !== null}
-        onClose={() => { setEditBooking(null); setEditBackingExceptionId(null); setShowEditSaveOptions(false); }}
-        title="Edit Class"
+      {/* Mobile layout */}
+      <div className="lg:hidden px-4 py-4">
+        <div className="flex items-center gap-1.5 mb-3.5">
+          <div className="text-[15px] font-semibold flex-1">
+            {isToday ? 'Today' : formatDateShort(selectedDate)}
+          </div>
+          <Btn size="sm" variant="outline" onClick={() => setSelectedDate(addDays(selectedDate, -1))}>
+            <IconChevL size={14} />
+          </Btn>
+          <Btn size="sm" variant="outline" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
+            <IconChevR size={14} />
+          </Btn>
+        </div>
+
+        <WeekStrip
+          weekDays={weekDays}
+          selectedDateStr={selectedDateStr}
+          todayStr={todayStr}
+          classesPerDay={classesPerDay}
+          onPick={setSelectedDate}
+          onWeekShift={(delta) => setSelectedDate(addDays(selectedDate, delta))}
+          compact
+        />
+
+        <SectionHeader
+          title="Classes"
+          trailing={
+            totalCount > 0 && (
+              <div className="text-[12px] tnum" style={{ color: 'var(--ink-3)' }}>
+                {doneCount}/{totalCount} done
+              </div>
+            )
+          }
+        />
+        <div className="flex flex-col gap-2.5">
+          {totalCount === 0 && (
+            <div
+              className="rounded-[14px] border p-7 text-center text-[13px]"
+              style={{
+                background: 'var(--panel)',
+                borderColor: 'var(--line)',
+                color: 'var(--ink-3)',
+              }}
+            >
+              Nothing on the schedule.
+            </div>
+          )}
+          {todaysClasses.map((c) => (
+            <ClassCard
+              key={c.id}
+              cls={c}
+              students={students}
+              wallets={wallets}
+              bookings={bookings}
+              todayStr={todayStr}
+              isDone={doneByBookingId.has(c.id)}
+              doneTotal={doneByBookingId.get(c.id) ?? 0}
+              attendedIds={doneStudentsByBookingId.get(c.id)}
+              onMarkDone={() => openMarkDone(c)}
+              onCancel={() => openCancelFlow(c)}
+              onUndo={() => handleUndoMarkDone(c)}
+              onEdit={() => openEditBooking(c)}
+              onDuplicate={() => handleDuplicate(c)}
+              compact
+            />
+          ))}
+          {cancelledToday.length > 0 && (
+            <CancelledList items={cancelledToday} onUndo={(id) => handleUndoCancel(id)} />
+          )}
+          <Btn variant="outline" full onClick={() => setShowAdd(true)}>
+            <IconPlus size={14} /> Add lesson
+          </Btn>
+        </div>
+
+        {/* mobile stat row */}
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <StatCard
+            label={isToday ? 'Earned today' : `Earned ${formatDateShort(selectedDate)}`}
+            value={`RM ${Math.round(todayRevenue)}`}
+            sub={`of RM ${Math.round(expectedRevenue)}`}
+          />
+          <StatCard
+            label="Low wallets"
+            value={`${lowWallets.length}`}
+            sub={lowWallets.length > 0 ? 'need top-up' : 'all healthy'}
+          />
+        </div>
+      </div>
+
+      <MarkDoneModal
+        open={!!markDoneBooking}
+        booking={markDoneBooking}
+        amounts={markDoneAmounts}
+        onAmountsChange={setMarkDoneAmounts}
+        attending={markDoneAttending}
+        onRemoveAttendee={(sid) =>
+          setMarkDoneAttending((prev) => prev.filter((x) => x !== sid))
+        }
+        onRestoreAttendee={(sid) =>
+          setMarkDoneAttending((prev) => (prev.includes(sid) ? prev : [...prev, sid]))
+        }
+        students={students}
+        wallets={wallets}
+        busy={markingDone}
+        onClose={closeMarkDone}
+        onConfirm={handleConfirmMarkDone}
+      />
+
+      <PaperModal
+        open={!!depletedAlert}
+        onClose={() => setDepletedAlert(null)}
+        title={
+          depletedAlert && depletedAlert.wallets.length > 1
+            ? 'Wallets need top-up'
+            : 'Wallet needs top-up'
+        }
       >
-        {editBooking && !showEditSaveOptions && (
-          <div className="space-y-4">
-            <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3">
-              <p className="font-medium text-gray-900 dark:text-zinc-100">
-                {editClassName || '(unnamed class)'}
-              </p>
-              <p className="text-sm text-gray-500 dark:text-zinc-400">
-                {formatDateFull(selectedDate)}
-              </p>
-            </div>
-
-            <Input
-              id="editClassName"
-              label="Class Name"
-              value={editClassName}
-              onChange={(e) => setEditClassName(e.target.value)}
-              placeholder="e.g. Tuesday swim squad"
-            />
-
-            <Select
-              id="editLocation"
-              label="Location"
-              value={editLocationId}
-              onChange={(e) => setEditLocationId(e.target.value)}
-              options={locations.map((l) => ({ value: l.id, label: l.name }))}
-            />
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
-                Date
-              </label>
-              <DatePicker value={editDate} onChange={setEditDate} ariaLabel="Class date" />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <TimePicker
-                id="editStartTime"
-                label="Start Time"
-                value={editStartTime}
-                onChange={(newStart) => {
-                  if (editStartTime && editEndTime) {
-                    setEditEndTime(shiftEndTime(editStartTime, editEndTime, newStart));
-                  }
-                  setEditStartTime(newStart);
-                }}
-              />
-              <TimePicker
-                id="editEndTime"
-                label="End Time"
-                value={editEndTime}
-                onChange={setEditEndTime}
-                contextHalfDay={Number(editStartTime.split(':')[0]) >= 12 ? 'PM' : 'AM'}
-              />
-            </div>
-
-            {/* Students section */}
+        {depletedAlert && (
+          <div className="space-y-3">
+            <p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>
+              {depletedAlert.wallets.length > 1
+                ? "These wallets can't cover the next lesson after this charge:"
+                : "This wallet can't cover the next lesson after this charge:"}
+            </p>
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300">
-                  Students ({editStudentIds.length})
-                </label>
-                <p className="text-sm text-gray-600 dark:text-zinc-400">Total: RM {editTotalPrice.toFixed(0)}</p>
-              </div>
-
-              {editStudentIds.map((sid) => {
-                const student = students.find((s) => s.id === sid);
+              {depletedAlert.wallets.map((w, i) => {
+                const isOwing = w.status === 'owing';
                 return (
-                  <div key={sid} className="p-3 bg-gray-50 dark:bg-[#1a1a1a] rounded-lg space-y-2">
+                  <div
+                    key={i}
+                    className="rounded-[10px] border p-3"
+                    style={{
+                      background: isOwing ? 'var(--bad-soft)' : 'var(--warn-soft)',
+                      borderColor: isOwing ? 'var(--bad)' : 'var(--warn)',
+                    }}
+                  >
+                    <div
+                      className="text-[13.5px] font-semibold"
+                      style={{ color: 'var(--ink)' }}
+                    >
+                      {w.name}
+                    </div>
+                    <div
+                      className="mono tnum text-[12.5px] mt-0.5"
+                      style={{ color: isOwing ? 'var(--bad)' : 'var(--warn)' }}
+                    >
+                      {isOwing
+                        ? `Now owes RM ${Math.abs(w.newBalance).toFixed(0)}`
+                        : `Balance RM ${w.newBalance.toFixed(0)} — below next lesson`}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <Btn
+              variant="primary"
+              onClick={() => setDepletedAlert(null)}
+            >
+              Got it
+            </Btn>
+          </div>
+        )}
+      </PaperModal>
+
+      <PaperModal
+        open={!!cancelCtx}
+        onClose={() => !cancelling && setCancelCtx(null)}
+        title="Cancel lesson?"
+      >
+        {cancelCtx && (
+          <CancelScopeBody
+            ctx={cancelCtx}
+            scope={cancelScope}
+            setScope={setCancelScope}
+            cancelling={cancelling}
+            onKeep={() => setCancelCtx(null)}
+            onConfirm={handleConfirmCancel}
+          />
+        )}
+      </PaperModal>
+
+      <AddLessonModal
+        open={showAdd}
+        onClose={() => {
+          setShowAdd(false);
+          setDuplicatePrefill(null);
+        }}
+        coachId={coach?.id}
+        students={students}
+        wallets={wallets}
+        locations={locations}
+        defaultDate={selectedDateStr}
+        prefill={duplicatePrefill}
+      />
+
+      <EditClassModal
+        open={editBooking !== null}
+        booking={editBooking}
+        backingExceptionId={editBackingExceptionId}
+        selectedDate={selectedDate}
+        selectedDateStr={selectedDateStr}
+        className={editClassName}
+        onClassNameChange={setEditClassName}
+        locationId={editLocationId}
+        onLocationIdChange={setEditLocationId}
+        date={editDate}
+        onDateChange={setEditDate}
+        startTime={editStartTime}
+        onStartTimeChange={(t) => {
+          if (editStartTime && editEndTime) {
+            setEditEndTime(shiftEndTime(editStartTime, editEndTime, t));
+          }
+          setEditStartTime(t);
+        }}
+        endTime={editEndTime}
+        onEndTimeChange={setEditEndTime}
+        note={editNote}
+        onNoteChange={setEditNote}
+        studentIds={editStudentIds}
+        studentPrices={editStudentPrices}
+        studentWallets={editStudentWallets}
+        onRemoveStudent={(sid) => {
+          setEditStudentIds((ids) => ids.filter((i) => i !== sid));
+          setEditStudentPrices((p) => {
+            const next = { ...p };
+            delete next[sid];
+            return next;
+          });
+          setEditStudentWallets((w) => {
+            const next = { ...w };
+            delete next[sid];
+            return next;
+          });
+        }}
+        onStudentPriceChange={(sid, v) =>
+          setEditStudentPrices({ ...editStudentPrices, [sid]: v })
+        }
+        onStudentWalletChange={(sid, v) =>
+          setEditStudentWallets({ ...editStudentWallets, [sid]: v })
+        }
+        addStudentOpen={editAddStudentOpen}
+        onAddStudentOpenChange={setEditAddStudentOpen}
+        addStudentSearch={editAddStudentSearch}
+        onAddStudentSearchChange={setEditAddStudentSearch}
+        onAddStudent={(s) => {
+          const lastPrice = getLastPriceForStudent(s.id);
+          const linkedWallet = wallets.find((w) => w.studentIds.includes(s.id));
+          setEditStudentIds([...editStudentIds, s.id]);
+          setEditStudentPrices({ ...editStudentPrices, [s.id]: lastPrice });
+          setEditStudentWallets({
+            ...editStudentWallets,
+            [s.id]: linkedWallet?.id || '',
+          });
+          setEditAddStudentOpen(false);
+          setEditAddStudentSearch('');
+        }}
+        totalPrice={editTotalPrice}
+        students={students}
+        wallets={wallets}
+        locations={locations}
+        showSaveOptions={showEditSaveOptions}
+        onShowSaveOptions={setShowEditSaveOptions}
+        saving={editSaving}
+        canSave={hasEditChanges() && editStudentIds.length > 0}
+        onSave={handleEditSave}
+        onClose={closeEditBooking}
+      />
+    </>
+  );
+}
+
+function shiftEndTime(oldStart: string, oldEnd: string, newStart: string): string {
+  const toMin = (t: string) => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
+  const toStr = (min: number) => {
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+  const duration = toMin(oldEnd) - toMin(oldStart);
+  if (duration <= 0) return oldEnd;
+  const maxMin = 23 * 60 + 55;
+  return toStr(Math.min(toMin(newStart) + duration, maxMin));
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+
+function DesktopHero({
+  selectedDate,
+  isToday,
+  firstName,
+  totalCount,
+  doneCount,
+  earliest,
+  onToday,
+  onAdd,
+}: {
+  selectedDate: Date;
+  isToday: boolean;
+  firstName: string;
+  totalCount: number;
+  doneCount: number;
+  earliest: string | undefined;
+  onToday: () => void;
+  onAdd: () => void;
+}) {
+  return (
+    <div className="flex items-end justify-between mb-5 gap-5">
+      <div>
+        <div
+          className="text-[11px] font-medium uppercase mb-1.5"
+          style={{ color: 'var(--ink-3)', letterSpacing: '0.05em' }}
+        >
+          {formatDateFull(selectedDate)}
+        </div>
+        <div
+          className="text-[30px] font-semibold leading-[1.1]"
+          style={{ color: 'var(--ink)', letterSpacing: '-0.8px' }}
+        >
+          {isToday ? `Good morning, ${firstName}.` : `Viewing ${formatDateShort(selectedDate)}`}
+        </div>
+        <div className="text-[14px] mt-1.5" style={{ color: 'var(--ink-3)' }}>
+          {totalCount > 0 ? (
+            <>
+              You have{' '}
+              <b style={{ color: 'var(--ink)' }}>
+                {totalCount} {totalCount === 1 ? 'class' : 'classes'}
+              </b>
+              {doneCount > 0 && <> · {doneCount} done</>}
+              {earliest && (
+                <>
+                  . Earliest at <b style={{ color: 'var(--ink)' }}>{formatTimeDisplay(earliest)}</b>.
+                </>
+              )}
+            </>
+          ) : (
+            <>Nothing scheduled. Enjoy the day.</>
+          )}
+        </div>
+      </div>
+      <div className="flex gap-2 items-center">
+        <Btn variant="outline" onClick={onToday}>Today</Btn>
+        <Btn variant="primary" onClick={onAdd}>
+          <IconPlus size={14} /> Add lesson
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function fmtWeekRange(weekDays: Date[]): string {
+  if (weekDays.length === 0) return '';
+  const start = weekDays[0];
+  const end = weekDays[weekDays.length - 1];
+  const startLbl = `${MONTH_ABBR[start.getMonth()]} ${start.getDate()}`;
+  const endLbl =
+    start.getMonth() === end.getMonth()
+      ? `${end.getDate()}`
+      : `${MONTH_ABBR[end.getMonth()]} ${end.getDate()}`;
+  return `${startLbl} – ${endLbl}`;
+}
+
+function WeekStrip({
+  weekDays,
+  selectedDateStr,
+  todayStr,
+  classesPerDay,
+  onPick,
+  onWeekShift,
+  compact = false,
+}: {
+  weekDays: Date[];
+  selectedDateStr: string;
+  todayStr: string;
+  classesPerDay: Map<string, number>;
+  onPick: (d: Date) => void;
+  onWeekShift?: (delta: number) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div className="mb-5">
+      {onWeekShift && (
+        <div className="flex items-center justify-between mb-2">
+          <div
+            className="text-[12px] font-medium tnum"
+            style={{ color: 'var(--ink-2)' }}
+          >
+            {fmtWeekRange(weekDays)}
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              aria-label="Previous week"
+              onClick={() => onWeekShift(-7)}
+              className="p-1 rounded-md border"
+              style={{ borderColor: 'var(--line)', color: 'var(--ink-2)' }}
+            >
+              <IconChevL size={14} />
+            </button>
+            <button
+              type="button"
+              aria-label="Next week"
+              onClick={() => onWeekShift(7)}
+              className="p-1 rounded-md border"
+              style={{ borderColor: 'var(--line)', color: 'var(--ink-2)' }}
+            >
+              <IconChevR size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+    <div
+      className="grid grid-cols-7"
+      style={{ gap: compact ? 4 : 8 }}
+    >
+      {weekDays.map((d, i) => {
+        const k = ymd(d);
+        const isSel = k === selectedDateStr;
+        const isToday = k === todayStr;
+        const count = classesPerDay.get(k) ?? 0;
+        return (
+          <button
+            key={i}
+            onClick={() => onPick(d)}
+            className="rounded-[10px] flex flex-col items-center gap-1 border transition-colors"
+            style={{
+              borderColor: isSel ? 'var(--ink)' : 'var(--line)',
+              background: isSel ? 'var(--ink)' : 'var(--panel)',
+              color: isSel ? 'var(--bg)' : 'var(--ink)',
+              padding: compact ? '8px 4px' : '10px 8px',
+            }}
+          >
+            <span
+              className="text-[10px] font-medium uppercase"
+              style={{ opacity: 0.7, letterSpacing: '0.04em' }}
+            >
+              {SHORT_DAYS[i]}
+            </span>
+            <span
+              className="font-semibold"
+              style={{
+                fontSize: compact ? 15 : 18,
+                letterSpacing: '-0.4px',
+              }}
+            >
+              {d.getDate()}
+            </span>
+            <span className="flex gap-[2px] h-1">
+              {Array.from({ length: Math.min(count, 4) }).map((_, j) => (
+                <span
+                  key={j}
+                  className="w-1 h-1 rounded-sm"
+                  style={{
+                    background: isSel
+                      ? 'var(--bg)'
+                      : isToday
+                        ? 'var(--accent)'
+                        : 'var(--ink-4)',
+                    opacity: isSel ? 0.85 : 1,
+                  }}
+                />
+              ))}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+    </div>
+  );
+}
+
+function SectionHeader({ title, trailing }: { title: string; trailing?: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between mb-2.5">
+      <div
+        className="text-[11px] font-semibold uppercase"
+        style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
+      >
+        {title}
+      </div>
+      {trailing}
+    </div>
+  );
+}
+
+function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div
+      className="rounded-[14px] border p-4"
+      style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
+    >
+      <div
+        className="text-[11.5px] font-medium uppercase mb-1.5"
+        style={{ color: 'var(--ink-3)', letterSpacing: '0.04em' }}
+      >
+        {label}
+      </div>
+      <div
+        className="mono tnum text-[26px] font-semibold"
+        style={{ color: 'var(--ink)', letterSpacing: '-0.6px' }}
+      >
+        {value}
+      </div>
+      {sub && (
+        <div className="text-[12px] mt-1" style={{ color: 'var(--ink-3)' }}>
+          {sub}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ClassActionsMenu({
+  onMarkDone,
+  onEdit,
+  onDuplicate,
+  onCancel,
+}: {
+  onMarkDone: () => void;
+  onEdit: () => void;
+  onDuplicate: () => void;
+  onCancel: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const items: {
+    label: string;
+    icon: React.ReactNode;
+    onClick: () => void;
+    danger?: boolean;
+  }[] = [
+    { label: 'Mark done', icon: <IconCheck size={14} />, onClick: onMarkDone },
+    { label: 'Edit', icon: <IconEdit size={14} />, onClick: onEdit },
+    { label: 'Duplicate', icon: <IconCopy size={14} />, onClick: onDuplicate },
+    { label: 'Cancel lesson', icon: <IconTrash size={14} />, onClick: onCancel, danger: true },
+  ];
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-label="Class actions"
+        onClick={() => setOpen((o) => !o)}
+        className="p-1 rounded-md"
+        style={{ color: 'var(--ink-3)' }}
+      >
+        <IconMore size={16} />
+      </button>
+      {open && (
+        <div
+          className="absolute right-0 top-full mt-1 z-20 min-w-[170px] rounded-[10px] border py-1"
+          style={{
+            background: 'var(--panel)',
+            borderColor: 'var(--line)',
+            boxShadow: 'var(--shadow-lg)',
+          }}
+        >
+          {items.map((it) => (
+            <button
+              key={it.label}
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                it.onClick();
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-left"
+              style={{ color: it.danger ? 'var(--bad)' : 'var(--ink-2)' }}
+            >
+              {it.icon}
+              {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ClassCard({
+  cls,
+  students,
+  wallets,
+  bookings,
+  todayStr,
+  isDone,
+  doneTotal,
+  attendedIds,
+  onMarkDone,
+  onCancel,
+  onUndo,
+  onEdit,
+  onDuplicate,
+  compact,
+}: {
+  cls: Booking;
+  students: Student[];
+  wallets: Wallet[];
+  bookings: Booking[];
+  todayStr: string;
+  isDone: boolean;
+  doneTotal: number;
+  attendedIds?: string[];
+  onMarkDone: () => void;
+  onCancel: () => void;
+  onUndo: () => void;
+  onEdit: () => void;
+  onDuplicate: () => void;
+  compact: boolean;
+}) {
+  const effectiveIds = isDone && attendedIds ? attendedIds : cls.studentIds;
+  const isGroup = effectiveIds.length > 1;
+  const total = isDone ? doneTotal : getBookingTotal(cls);
+  const attendees = effectiveIds
+    .map((sid) => students.find((s) => s.id === sid))
+    .filter((s): s is Student => !!s);
+  const walletsFor = cls.studentIds
+    .map((sid) => resolveWallet(cls, sid, wallets))
+    .filter((w): w is Wallet => !!w);
+  const anyLow = walletsFor.some((w) => isLowBalance(w, bookings, todayStr));
+  const duration = minutesBetween(cls.startTime, cls.endTime);
+  const isRecurring = !cls.startDate || !cls.endDate || cls.startDate !== cls.endDate;
+
+  return (
+    <div
+      className="rounded-[14px] border flex items-stretch relative"
+      style={{
+        background: 'var(--panel)',
+        borderColor: 'var(--line)',
+        padding: compact ? 14 : 16,
+        gap: compact ? 12 : 16,
+        opacity: isDone ? 0.72 : 1,
+      }}
+    >
+      {/* Time column */}
+      <div
+        className="flex-shrink-0 border-r"
+        style={{
+          width: compact ? 58 : 66,
+          paddingRight: compact ? 12 : 16,
+          borderColor: 'var(--line)',
+        }}
+      >
+        <div
+          className="mono tnum font-semibold leading-[1.1]"
+          style={{
+            color: 'var(--ink)',
+            fontSize: compact ? 15 : 16,
+            letterSpacing: '-0.3px',
+          }}
+        >
+          {fmtTimeShort(cls.startTime)}
+        </div>
+        <div
+          className="mono tnum text-[11.5px] mt-0.5"
+          style={{ color: 'var(--ink-3)' }}
+        >
+          → {fmtTimeShort(cls.endTime)}
+        </div>
+        <div
+          className="text-[10.5px] font-medium uppercase mt-2"
+          style={{ color: 'var(--ink-4)', letterSpacing: '0.04em' }}
+        >
+          {duration} min
+        </div>
+      </div>
+
+      {/* Main */}
+      <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+        <div className="flex items-center gap-2 flex-wrap">
+          {isRecurring && (
+            <span
+              className="inline-flex items-center justify-center rounded-md"
+              style={{
+                color: 'var(--accent)',
+                background: 'var(--accent-soft)',
+                padding: '2px 4px',
+              }}
+              title="Recurring weekly"
+              aria-label="Recurring weekly"
+            >
+              <IconRepeat size={12} sw={2} />
+            </span>
+          )}
+          <div
+            className="text-[14.5px] font-semibold"
+            style={{ color: 'var(--ink)', letterSpacing: '-0.2px' }}
+          >
+            {cls.className || 'Untitled class'}
+          </div>
+          {isDone && (
+            <Chip tone="good">
+              <IconCheck size={11} /> Done
+            </Chip>
+          )}
+          {isGroup && <Chip tone="accent">Group · {effectiveIds.length}</Chip>}
+          {anyLow && !isDone && <Chip tone="bad">Low wallet</Chip>}
+        </div>
+        <div
+          className="flex items-center gap-2.5 text-[12.5px] flex-wrap"
+          style={{ color: 'var(--ink-3)' }}
+        >
+          {cls.locationName && (
+            <span className="inline-flex items-center gap-1">
+              <IconPin size={12} /> {cls.locationName}
+            </span>
+          )}
+          {attendees.length > 0 && (
+            <span className="inline-flex items-center gap-1 tnum">
+              <IconUsers size={12} />{' '}
+              {attendees.map((a) => a.clientName.split(' ')[0]).join(', ')}
+            </span>
+          )}
+        </div>
+        {!compact && (
+          <div className="flex gap-2 mt-1.5">
+            {!isDone ? (
+              <Btn size="sm" variant="primary" onClick={onMarkDone}>
+                <IconCheck size={13} /> Mark done
+              </Btn>
+            ) : (
+              <Btn size="sm" variant="ghost" onClick={onUndo}>
+                <IconUndo size={13} /> Undo
+              </Btn>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Right */}
+      <div className="flex flex-col items-end justify-between gap-2 flex-shrink-0">
+        <div
+          className="mono tnum font-semibold"
+          style={{
+            color: 'var(--ink)',
+            fontSize: compact ? 14 : 15,
+            letterSpacing: '-0.2px',
+          }}
+        >
+          RM {Math.round(total)}
+        </div>
+        {isDone ? (
+          compact ? (
+            <Btn size="sm" variant="ghost" onClick={onUndo}>
+              <IconUndo size={12} />
+            </Btn>
+          ) : null
+        ) : (
+          <ClassActionsMenu
+            onMarkDone={onMarkDone}
+            onEdit={onEdit}
+            onDuplicate={onDuplicate}
+            onCancel={onCancel}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CancelledList({
+  items,
+  onUndo,
+}: {
+  items: { booking: Booking; exceptionId: string }[];
+  onUndo: (id: string) => void;
+}) {
+  return (
+    <div
+      className="rounded-[14px] border p-3 flex flex-col gap-2"
+      style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
+    >
+      <div
+        className="text-[10.5px] font-semibold uppercase px-1"
+        style={{ color: 'var(--ink-4)', letterSpacing: '0.06em' }}
+      >
+        Cancelled for this date
+      </div>
+      {items.map((c) => (
+        <div
+          key={c.exceptionId}
+          className="flex items-center gap-3 px-1 py-1.5 border-t"
+          style={{ borderColor: 'var(--line)' }}
+        >
+          <div
+            className="mono tnum text-[12.5px] flex-shrink-0"
+            style={{ color: 'var(--ink-3)' }}
+          >
+            {fmtTimeShort(c.booking.startTime)}
+          </div>
+          <div
+            className="text-[13px] flex-1 min-w-0 truncate line-through"
+            style={{ color: 'var(--ink-3)' }}
+          >
+            {c.booking.className || 'Untitled class'}
+          </div>
+          <Btn size="sm" variant="ghost" onClick={() => onUndo(c.exceptionId)}>
+            <IconUndo size={13} /> Undo
+          </Btn>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function LowWalletsCard({ wallets }: { wallets: Wallet[] }) {
+  const describe = (w: Wallet) => {
+    if (w.balance < 0) return `Owes RM ${Math.abs(w.balance).toFixed(0)}`;
+    if (w.balance === 0) return 'Needs top-up';
+    return `RM ${w.balance.toFixed(0)}`;
+  };
+
+  return (
+    <div
+      className="rounded-[14px] border p-4"
+      style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
+    >
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="text-[13.5px] font-semibold" style={{ color: 'var(--ink)' }}>
+          Wallets running low
+        </div>
+        <Chip tone={wallets.length > 0 ? 'bad' : 'good'}>{wallets.length}</Chip>
+      </div>
+      {wallets.length === 0 ? (
+        <div className="text-[12.5px]" style={{ color: 'var(--ink-3)' }}>
+          All balances healthy.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {wallets.slice(0, 4).map((w) => (
+            <div key={w.id} className="flex items-center gap-2.5">
+              <Avatar name={w.name} size={28} />
+              <div className="flex-1 min-w-0">
+                <div
+                  className="text-[13px] font-medium truncate"
+                  style={{ color: 'var(--ink)' }}
+                >
+                  {w.name}
+                </div>
+                <div className="text-[11.5px]" style={{ color: 'var(--ink-3)' }}>
+                  {describe(w)}
+                </div>
+              </div>
+              <BalancePill balance={w.balance} compact />
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="h-px my-3" style={{ background: 'var(--line)' }} />
+      <a
+        href="/dashboard/payments"
+        className="block text-[12.5px] font-medium text-center rounded-md py-1.5"
+        style={{ color: 'var(--ink-2)' }}
+      >
+        Go to payments →
+      </a>
+    </div>
+  );
+}
+
+function QuickActionsCard({ onAdd }: { onAdd: () => void }) {
+  return (
+    <div
+      className="rounded-[14px] border p-4"
+      style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
+    >
+      <div className="text-[13.5px] font-semibold mb-2.5" style={{ color: 'var(--ink)' }}>
+        Quick actions
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Btn variant="outline" full style={{ justifyContent: 'flex-start' }} onClick={onAdd}>
+          <IconPlus size={14} /> Add lesson
+        </Btn>
+        <a href="/dashboard/students" className="block">
+          <Btn variant="outline" full style={{ justifyContent: 'flex-start' }}>
+            <IconUsers size={14} /> New student
+          </Btn>
+        </a>
+        <a href="/dashboard/payments" className="block">
+          <Btn variant="outline" full style={{ justifyContent: 'flex-start' }}>
+            <IconArrowUp size={14} /> Record top-up
+          </Btn>
+        </a>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <label
+      className="block text-[11.5px] font-semibold uppercase mb-1.5"
+      style={{ color: 'var(--ink-3)', letterSpacing: '0.04em' }}
+    >
+      {children}
+    </label>
+  );
+}
+
+const paperInputClass =
+  'w-full px-3 py-2.5 rounded-[10px] border text-[13.5px] outline-none focus:border-[color:var(--accent)]';
+const paperInputStyle: React.CSSProperties = {
+  background: 'var(--bg)',
+  borderColor: 'var(--line-2)',
+  color: 'var(--ink)',
+  boxSizing: 'border-box',
+  WebkitAppearance: 'none',
+  appearance: 'none',
+  minWidth: 0,
+};
+
+function EditClassModal({
+  open,
+  booking,
+  backingExceptionId,
+  selectedDate,
+  selectedDateStr,
+  className,
+  onClassNameChange,
+  locationId,
+  onLocationIdChange,
+  date,
+  onDateChange,
+  startTime,
+  onStartTimeChange,
+  endTime,
+  onEndTimeChange,
+  note,
+  onNoteChange,
+  studentIds,
+  studentPrices,
+  studentWallets,
+  onRemoveStudent,
+  onStudentPriceChange,
+  onStudentWalletChange,
+  addStudentOpen,
+  onAddStudentOpenChange,
+  addStudentSearch,
+  onAddStudentSearchChange,
+  onAddStudent,
+  totalPrice,
+  students,
+  wallets,
+  locations,
+  showSaveOptions,
+  onShowSaveOptions,
+  saving,
+  canSave,
+  onSave,
+  onClose,
+}: {
+  open: boolean;
+  booking: Booking | null;
+  backingExceptionId: string | null;
+  selectedDate: Date;
+  selectedDateStr: string;
+  className: string;
+  onClassNameChange: (v: string) => void;
+  locationId: string;
+  onLocationIdChange: (v: string) => void;
+  date: string;
+  onDateChange: (v: string) => void;
+  startTime: string;
+  onStartTimeChange: (v: string) => void;
+  endTime: string;
+  onEndTimeChange: (v: string) => void;
+  note: string;
+  onNoteChange: (v: string) => void;
+  studentIds: string[];
+  studentPrices: Record<string, number>;
+  studentWallets: Record<string, string>;
+  onRemoveStudent: (sid: string) => void;
+  onStudentPriceChange: (sid: string, v: number) => void;
+  onStudentWalletChange: (sid: string, v: string) => void;
+  addStudentOpen: boolean;
+  onAddStudentOpenChange: (v: boolean) => void;
+  addStudentSearch: string;
+  onAddStudentSearchChange: (v: string) => void;
+  onAddStudent: (s: Student) => void;
+  totalPrice: number;
+  students: Student[];
+  wallets: Wallet[];
+  locations: Location[];
+  showSaveOptions: boolean;
+  onShowSaveOptions: (v: boolean) => void;
+  saving: boolean;
+  canSave: boolean;
+  onSave: (mode?: 'this' | 'future') => void;
+  onClose: () => void;
+}) {
+  if (!booking) return null;
+  const isOneTime = !!(
+    booking.startDate &&
+    booking.endDate &&
+    booking.startDate === booking.endDate
+  );
+
+  return (
+    <PaperModal open={open} onClose={onClose} title="Edit class" width={520}>
+      {!showSaveOptions ? (
+        <div className="flex flex-col gap-4">
+          <div
+            className="rounded-[10px] border p-3"
+            style={{ background: 'var(--bg)', borderColor: 'var(--line-2)' }}
+          >
+            <div className="text-[14px] font-semibold" style={{ color: 'var(--ink)' }}>
+              {className || '(unnamed class)'}
+            </div>
+            <div className="text-[12.5px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
+              {formatDateFull(selectedDate)}
+            </div>
+          </div>
+
+          <div>
+            <FieldLabel>Class name</FieldLabel>
+            <input
+              type="text"
+              value={className}
+              onChange={(e) => onClassNameChange(e.target.value)}
+              placeholder="e.g. Tuesday swim squad"
+              className={paperInputClass}
+              style={paperInputStyle}
+            />
+          </div>
+
+          <div>
+            <FieldLabel>Location</FieldLabel>
+            <select
+              value={locationId}
+              onChange={(e) => onLocationIdChange(e.target.value)}
+              className={paperInputClass}
+              style={paperInputStyle}
+            >
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <FieldLabel>Date</FieldLabel>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => onDateChange(e.target.value)}
+              className={`${paperInputClass} mono tnum`}
+              style={paperInputStyle}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <FieldLabel>Start</FieldLabel>
+              <input
+                type="time"
+                value={startTime}
+                onChange={(e) => onStartTimeChange(e.target.value)}
+                step={300}
+                className={`${paperInputClass} mono tnum`}
+                style={paperInputStyle}
+              />
+            </div>
+            <div>
+              <FieldLabel>End</FieldLabel>
+              <input
+                type="time"
+                value={endTime}
+                onChange={(e) => onEndTimeChange(e.target.value)}
+                step={300}
+                className={`${paperInputClass} mono tnum`}
+                style={paperInputStyle}
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div
+                className="text-[11.5px] font-semibold uppercase"
+                style={{ color: 'var(--ink-3)', letterSpacing: '0.04em' }}
+              >
+                Students ({studentIds.length})
+              </div>
+              <div className="mono tnum text-[12.5px]" style={{ color: 'var(--ink-2)' }}>
+                Total RM {totalPrice.toFixed(0)}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {studentIds.map((sid) => {
+                const s = students.find((x) => x.id === sid);
+                return (
+                  <div
+                    key={sid}
+                    className="rounded-[10px] border p-3 flex flex-col gap-2"
+                    style={{ background: 'var(--bg)', borderColor: 'var(--line-2)' }}
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900 dark:text-zinc-100 truncate">
-                          {student?.clientName ?? '(unknown)'}
-                        </p>
-                        {student?.clientPhone && (
-                          <p className="text-xs text-gray-500 dark:text-zinc-400 truncate">{student.clientPhone}</p>
+                        <div
+                          className="text-[13.5px] font-medium truncate"
+                          style={{ color: 'var(--ink)' }}
+                        >
+                          {s?.clientName ?? '(unknown)'}
+                        </div>
+                        {s?.clientPhone && (
+                          <div
+                            className="mono text-[11.5px] truncate"
+                            style={{ color: 'var(--ink-3)' }}
+                          >
+                            {s.clientPhone}
+                          </div>
                         )}
                       </div>
-                      {editStudentIds.length > 1 && (
+                      {studentIds.length > 1 && (
                         <button
-                          onClick={() => {
-                            setEditStudentIds((ids) => ids.filter((i) => i !== sid));
-                            setEditStudentPrices((p) => { const next = { ...p }; delete next[sid]; return next; });
-                            setEditStudentWallets((w) => { const next = { ...w }; delete next[sid]; return next; });
-                          }}
-                          className="text-xs text-red-500 dark:text-red-400 hover:underline shrink-0"
+                          type="button"
+                          onClick={() => onRemoveStudent(sid)}
+                          className="text-[11.5px] font-medium"
+                          style={{ color: 'var(--bad)' }}
                         >
                           Remove
                         </button>
                       )}
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        id={`editPrice-${sid}`}
-                        label="Price (RM)"
-                        type="number"
-                        value={String(editStudentPrices[sid] ?? 0)}
-                        onChange={(e) => setEditStudentPrices({ ...editStudentPrices, [sid]: parseFloat(e.target.value) || 0 })}
-                        min={0}
-                      />
-                      <Select
-                        id={`editWallet-${sid}`}
-                        label="Wallet"
-                        value={editStudentWallets[sid] ?? ''}
-                        onChange={(e) => setEditStudentWallets({ ...editStudentWallets, [sid]: e.target.value })}
-                        options={[
-                          { value: '', label: 'Auto (student\u2019s own)' },
-                          ...wallets.map((w) => ({ value: w.id, label: `${w.name} (RM ${w.balance.toFixed(0)})` })),
-                        ]}
-                      />
+                      <div>
+                        <FieldLabel>Price</FieldLabel>
+                        <input
+                          type="number"
+                          min={0}
+                          value={String(studentPrices[sid] ?? 0)}
+                          onChange={(e) =>
+                            onStudentPriceChange(sid, parseFloat(e.target.value) || 0)
+                          }
+                          className={`${paperInputClass} mono tnum`}
+                          style={paperInputStyle}
+                        />
+                      </div>
+                      <div>
+                        <FieldLabel>Wallet</FieldLabel>
+                        <select
+                          value={studentWallets[sid] ?? ''}
+                          onChange={(e) => onStudentWalletChange(sid, e.target.value)}
+                          className={paperInputClass}
+                          style={paperInputStyle}
+                        >
+                          <option value="">Auto (student&rsquo;s own)</option>
+                          {wallets.map((w) => (
+                            <option key={w.id} value={w.id}>
+                              {w.name} (RM {w.balance.toFixed(0)})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   </div>
                 );
               })}
 
-              {/* Add student */}
-              {editAddStudentOpen ? (
-                <div className="p-3 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-[#333] rounded-lg space-y-2">
-                  <Input
-                    id="editAddStudentSearch"
-                    label="Find student"
-                    placeholder="Search name or phone"
-                    value={editAddStudentSearch}
-                    onChange={(e) => setEditAddStudentSearch(e.target.value)}
-                  />
-                  <div className="max-h-40 overflow-y-auto space-y-1">
+              {addStudentOpen ? (
+                <div
+                  className="rounded-[10px] border p-3 flex flex-col gap-2"
+                  style={{ background: 'var(--panel)', borderColor: 'var(--line-2)' }}
+                >
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={addStudentSearch}
+                      onChange={(e) => onAddStudentSearchChange(e.target.value)}
+                      placeholder="Search name or phone"
+                      className={`${paperInputClass} pl-8`}
+                      style={paperInputStyle}
+                    />
+                    <div
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2"
+                      style={{ color: 'var(--ink-4)' }}
+                    >
+                      <IconSearch size={14} />
+                    </div>
+                  </div>
+                  <div className="max-h-44 overflow-y-auto flex flex-col gap-1 no-scrollbar">
                     {students
-                      .filter((s) => !editStudentIds.includes(s.id))
+                      .filter((s) => !studentIds.includes(s.id))
                       .filter((s) => {
-                        if (!editAddStudentSearch.trim()) return true;
-                        const q = editAddStudentSearch.toLowerCase();
-                        return s.clientName.toLowerCase().includes(q) || s.clientPhone.toLowerCase().includes(q);
+                        if (!addStudentSearch.trim()) return true;
+                        const q = addStudentSearch.toLowerCase();
+                        return (
+                          s.clientName.toLowerCase().includes(q) ||
+                          s.clientPhone.toLowerCase().includes(q)
+                        );
                       })
                       .slice(0, 8)
                       .map((s) => (
                         <button
                           key={s.id}
-                          onClick={() => {
-                            const lastPrice = getLastPriceForStudent(s.id);
-                            const linkedWallet = wallets.find((w) => w.studentIds.includes(s.id));
-                            setEditStudentIds([...editStudentIds, s.id]);
-                            setEditStudentPrices({ ...editStudentPrices, [s.id]: lastPrice });
-                            setEditStudentWallets({ ...editStudentWallets, [s.id]: linkedWallet?.id || '' });
-                            setEditAddStudentOpen(false);
-                            setEditAddStudentSearch('');
-                          }}
-                          className="w-full text-left p-2 text-sm rounded hover:bg-gray-100 dark:hover:bg-[#2a2a2a]"
+                          type="button"
+                          onClick={() => onAddStudent(s)}
+                          className="text-left p-2 rounded-md text-[13px]"
+                          style={{ color: 'var(--ink)' }}
                         >
-                          <span className="text-gray-900 dark:text-zinc-100">{s.clientName}</span>
-                          {s.clientPhone && <span className="text-gray-500 dark:text-zinc-400 ml-2">{s.clientPhone}</span>}
+                          <div>{s.clientName}</div>
+                          {s.clientPhone && (
+                            <div
+                              className="mono text-[11.5px]"
+                              style={{ color: 'var(--ink-3)' }}
+                            >
+                              {s.clientPhone}
+                            </div>
+                          )}
                         </button>
                       ))}
-                    {students.filter((s) => !editStudentIds.includes(s.id)).length === 0 && (
-                      <p className="text-xs text-gray-400 dark:text-zinc-500 p-2">No other students to add.</p>
+                    {students.filter((s) => !studentIds.includes(s.id)).length === 0 && (
+                      <div
+                        className="text-[12px] p-2"
+                        style={{ color: 'var(--ink-4)' }}
+                      >
+                        No other students to add.
+                      </div>
                     )}
                   </div>
                   <div className="flex justify-end">
-                    <Button variant="secondary" size="sm" onClick={() => { setEditAddStudentOpen(false); setEditAddStudentSearch(''); }}>
-                      Cancel
-                    </Button>
+                    <Btn
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        onAddStudentOpenChange(false);
+                        onAddStudentSearchChange('');
+                      }}
+                    >
+                      <IconClose size={12} /> Close
+                    </Btn>
                   </div>
                 </div>
               ) : (
                 <button
-                  onClick={() => setEditAddStudentOpen(true)}
-                  className="w-full text-sm text-blue-600 dark:text-blue-400 hover:underline py-1"
+                  type="button"
+                  onClick={() => onAddStudentOpenChange(true)}
+                  className="text-[13px] font-medium self-start py-1.5"
+                  style={{ color: 'var(--accent)' }}
                 >
                   + Add student
                 </button>
               )}
             </div>
-
-            <div>
-              <label htmlFor="editNote" className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
-                Note (optional)
-              </label>
-              <input
-                id="editNote"
-                value={editNote}
-                onChange={(e) => setEditNote(e.target.value)}
-                placeholder="e.g. Riwoo only"
-                className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm"
-              />
-            </div>
-
-            <div className="flex gap-2 justify-end">
-              <Button variant="secondary" onClick={() => { setEditBooking(null); setEditBackingExceptionId(null); }}>
-                Cancel
-              </Button>
-              <Button
-                onClick={() => {
-                  const isOneTime = !!(editBooking?.startDate && editBooking?.endDate && editBooking.startDate === editBooking.endDate);
-                  if (isOneTime || editBackingExceptionId) {
-                    handleEditSave();
-                  } else {
-                    setShowEditSaveOptions(true);
-                  }
-                }}
-                disabled={!hasEditChanges() || editStudentIds.length === 0}
-                loading={editSaving}
-              >
-                Save
-              </Button>
-            </div>
           </div>
-        )}
-        {editBooking && showEditSaveOptions && (() => {
-          const editDateObj = editDate ? parseDateString(editDate) : selectedDate;
-          const dateChanged = editDate !== selectedDateStr;
-          const oldDow = editBooking.dayOfWeek;
-          const newDow = dateChanged ? getDayOfWeekForDate(editDate) : oldDow;
+
+          <div>
+            <FieldLabel>Note (optional)</FieldLabel>
+            <input
+              type="text"
+              value={note}
+              onChange={(e) => onNoteChange(e.target.value)}
+              placeholder="e.g. Riwoo only"
+              className={paperInputClass}
+              style={paperInputStyle}
+            />
+          </div>
+
+          <div className="flex gap-2 justify-end pt-2">
+            <Btn variant="ghost" onClick={onClose}>
+              Cancel
+            </Btn>
+            <Btn
+              variant="primary"
+              onClick={() => {
+                if (isOneTime || backingExceptionId) {
+                  onSave();
+                } else {
+                  onShowSaveOptions(true);
+                }
+              }}
+              disabled={!canSave || saving}
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </Btn>
+          </div>
+        </div>
+      ) : (
+        (() => {
+          const editDateObj = date ? parseDateString(date) : selectedDate;
+          const dateChanged = date !== selectedDateStr;
+          const oldDow = booking.dayOfWeek;
+          const newDow = dateChanged ? getDayOfWeekForDate(date) : oldDow;
           const dowChanged = dateChanged && newDow !== oldDow;
           const plural = (dow: string) => dow.charAt(0).toUpperCase() + dow.slice(1) + 's';
           const futureDesc = dowChanged
@@ -1640,502 +2115,998 @@ export default function DashboardPage() {
             ? `Move only the ${formatDateShort(selectedDate)} class to ${formatDateShort(editDateObj)}`
             : `Only change the class on ${formatDateShort(selectedDate)}`;
           return (
-            <div className="space-y-3">
-              <p className="text-sm text-gray-600 dark:text-zinc-400">
+            <div className="flex flex-col gap-3">
+              <div className="text-[13px]" style={{ color: 'var(--ink-2)' }}>
                 How would you like to apply these changes?
-              </p>
+              </div>
               <button
-                onClick={() => handleEditSave('this')}
-                disabled={editSaving}
-                className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-[#444] hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
+                type="button"
+                onClick={() => onSave('this')}
+                disabled={saving}
+                className="text-left rounded-[10px] border p-3"
+                style={{ background: 'var(--bg)', borderColor: 'var(--line-2)' }}
               >
-                <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This event only</p>
-                <p className="text-xs text-gray-500 dark:text-zinc-400">{thisDesc}</p>
+                <div className="text-[13.5px] font-semibold" style={{ color: 'var(--ink)' }}>
+                  This event only
+                </div>
+                <div className="text-[12px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
+                  {thisDesc}
+                </div>
               </button>
               <button
-                onClick={() => handleEditSave('future')}
-                disabled={editSaving}
-                className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-[#444] hover:bg-gray-50 dark:hover:bg-[#2a2a2a] disabled:opacity-50"
+                type="button"
+                onClick={() => onSave('future')}
+                disabled={saving}
+                className="text-left rounded-[10px] border p-3"
+                style={{ background: 'var(--bg)', borderColor: 'var(--line-2)' }}
               >
-                <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">This and future events</p>
-                <p className="text-xs text-gray-500 dark:text-zinc-400">{futureDesc}</p>
+                <div className="text-[13.5px] font-semibold" style={{ color: 'var(--ink)' }}>
+                  This and future events
+                </div>
+                <div className="text-[12px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
+                  {futureDesc}
+                </div>
               </button>
               <div className="flex justify-end pt-1">
-                <Button variant="secondary" size="sm" onClick={() => setShowEditSaveOptions(false)}>
+                <Btn size="sm" variant="ghost" onClick={() => onShowSaveOptions(false)}>
                   Back
-                </Button>
+                </Btn>
               </div>
             </div>
           );
-        })()}
-      </Modal>
+        })()
+      )}
+    </PaperModal>
+  );
+}
 
-      {/* Mark Done confirmation modal */}
-      <Modal
-        isOpen={markDoneBooking !== null}
-        onClose={() => setMarkDoneBooking(null)}
-        title="Mark Class Done"
+// ────────────────────────────────────────────────────────────────────────────
+
+function MarkDoneModal({
+  open,
+  booking,
+  amounts,
+  onAmountsChange,
+  attending,
+  onRemoveAttendee,
+  onRestoreAttendee,
+  students,
+  wallets,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  booking: Booking | null;
+  amounts: Record<string, number>;
+  onAmountsChange: (a: Record<string, number>) => void;
+  attending: string[];
+  onRemoveAttendee: (sid: string) => void;
+  onRestoreAttendee: (sid: string) => void;
+  students: Student[];
+  wallets: Wallet[];
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  if (!booking) return null;
+  const attendingSet = new Set(attending);
+  const total = booking.studentIds.reduce((s, sid) => {
+    if (!attendingSet.has(sid)) return s;
+    return s + (Number(amounts[sid]) || 0);
+  }, 0);
+  const canConfirm = attending.length > 0;
+
+  return (
+    <PaperModal open={open} onClose={onClose} title="Mark class as done" width={480}>
+      <div
+        className="rounded-[10px] border p-3 mb-3"
+        style={{ background: 'var(--bg)', borderColor: 'var(--line)' }}
       >
-        {markDoneBooking && (
-          <div className="space-y-4">
-            <div className="bg-gray-50 dark:bg-[#1a1a1a] rounded-lg p-3">
-              <p className="font-medium text-gray-900 dark:text-zinc-100">
-                {markDoneBooking.className}
-              </p>
-              <p className="text-sm text-gray-500 dark:text-zinc-400">
-                {formatTimeDisplay(markDoneBooking.startTime)} – {formatTimeDisplay(markDoneBooking.endTime)} &middot; {markDoneBooking.locationName}
-              </p>
-            </div>
-
-            {markDoneAttendees.length > 1 ? (
-              <div className="space-y-3">
-                <p className="text-sm font-medium text-gray-700 dark:text-zinc-300">Attendance & Pricing</p>
-                {(() => {
-                  const walletCharges = new Map<string, number>();
-                  for (const a of markDoneAttendees) {
-                    if (!a.attended) continue;
-                    const w = findWalletForStudent(a.studentId);
-                    if (!w) continue;
-                    walletCharges.set(w.id, (walletCharges.get(w.id) ?? 0) + a.price);
-                  }
-                  return markDoneAttendees.map((attendee, idx) => {
-                  const attendeeWallet = findWalletForStudent(attendee.studentId);
-                  const totalCharge = attendeeWallet ? walletCharges.get(attendeeWallet.id) ?? 0 : 0;
-                  return (
-                  <div key={attendee.studentId} className="p-3 bg-gray-50 dark:bg-[#1a1a1a] rounded-lg space-y-2">
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={attendee.attended}
-                        onChange={(e) => {
-                          const updated = [...markDoneAttendees];
-                          updated[idx] = { ...updated[idx], attended: e.target.checked };
-                          setMarkDoneAttendees(updated);
-                        }}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-900 dark:text-zinc-100">
-                          {attendee.studentName}
-                        </p>
-                      </div>
-                      <div className="w-24">
-                        <input
-                          type="number"
-                          value={attendee.price}
-                          onChange={(e) => {
-                            const updated = [...markDoneAttendees];
-                            updated[idx] = { ...updated[idx], price: parseFloat(e.target.value) || 0 };
-                            setMarkDoneAttendees(updated);
-                          }}
-                          disabled={!attendee.attended}
-                          className="block w-full px-2 py-1 text-sm border border-gray-300 dark:border-zinc-500 rounded-lg bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 disabled:opacity-40"
-                          placeholder="RM"
-                        />
-                      </div>
-                    </div>
-                    {attendee.attended && (
-                      attendeeWallet ? (
-                        <p className="text-xs text-gray-400 dark:text-zinc-500 pl-7">
-                          {attendeeWallet.name}: RM {attendeeWallet.balance} → RM {attendeeWallet.balance - totalCharge}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-red-600 dark:text-red-400 pl-7">
-                          No wallet linked — create one in the Payments tab.
-                        </p>
-                      )
-                    )}
-                  </div>
-                  );
-                });
-                })()}
-              </div>
-            ) : (
-              <>
-                <Input
-                  id="markDonePrice"
-                  type="number"
-                  label="Price (RM)"
-                  value={markDonePrice.toString()}
-                  onChange={(e) => setMarkDonePrice(parseFloat(e.target.value) || 0)}
-                  min={0}
-                  step={0.01}
-                />
-
-                {(() => {
-                  const attendee = markDoneAttendees[0];
-                  const wallet = attendee ? findWalletForStudent(attendee.studentId) : null;
-                  if (wallet) {
-                    return (
-                      <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">
-                        {wallet.name}: RM {wallet.balance} → RM {wallet.balance - markDonePrice}
-                      </p>
-                    );
-                  }
-                  return (
-                    <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                      No wallet linked — create one in the Payments tab and add this student.
-                    </p>
-                  );
-                })()}
-              </>
-            )}
-
-            <div>
-              <label htmlFor="markDoneNote" className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
-                Note (optional)
-              </label>
-              <input
-                id="markDoneNote"
-                value={markDoneNote}
-                onChange={(e) => setMarkDoneNote(e.target.value)}
-                placeholder="e.g. Aaron only"
-                className="block w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg shadow-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100 text-sm"
-              />
-            </div>
-
-            <div className="flex gap-2 justify-end">
-              <Button variant="secondary" onClick={() => setMarkDoneBooking(null)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleConfirmMarkDone}
-                loading={marking === markDoneBooking.id}
-                disabled={!canConfirmMarkDone}
-              >
-                Confirm
-              </Button>
-            </div>
+        <div className="text-[14px] font-semibold" style={{ color: 'var(--ink)' }}>
+          {booking.className || 'Class'}
+        </div>
+        <div className="text-[12.5px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
+          {formatTimeDisplay(booking.startTime)}–{formatTimeDisplay(booking.endTime)} ·{' '}
+          {booking.locationName}
+        </div>
+      </div>
+      <div className="flex items-center justify-between mb-2">
+        <div
+          className="text-[11px] font-semibold uppercase"
+          style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
+        >
+          Attendees & charges
+        </div>
+        {booking.studentIds.length > 1 && (
+          <div className="text-[11.5px]" style={{ color: 'var(--ink-4)' }}>
+            {attending.length}/{booking.studentIds.length} attending
           </div>
         )}
-      </Modal>
-
-      {/* Add Lesson modal */}
-      <Modal
-        isOpen={showAddLesson}
-        onClose={() => setShowAddLesson(false)}
-        title="Add Lesson"
-      >
-        <div className="space-y-5">
-          {/* CLASS */}
-          <section>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-500 mb-2">Class</div>
-            <input
-              type="text"
-              value={lessonClassName}
-              onChange={e => setLessonClassName(e.target.value)}
-              placeholder="Class name (e.g. Tuesday swim squad)"
-              className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500"
-            />
-          </section>
-
-          {/* WHEN */}
-          <section>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-500 mb-2">When</div>
-            <div className="space-y-2">
-              <DatePicker value={lessonDate} onChange={setLessonDate} ariaLabel="Lesson date" />
-              <label className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-700/50 text-sm text-gray-700 dark:text-zinc-300">
-                <input
-                  type="checkbox"
-                  checked={lessonRepeatWeekly}
-                  onChange={e => setLessonRepeatWeekly(e.target.checked)}
-                  className="w-4 h-4 rounded accent-blue-600"
-                />
-                <span>Repeat every {lessonDayName || 'week'}</span>
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <TimePicker
-                  id="lessonStartTime"
-                  value={lessonStartTime}
-                  onChange={(newStart) => {
-                    setLessonEndTime(shiftEndTime(lessonStartTime, lessonEndTime, newStart));
-                    setLessonStartTime(newStart);
-                  }}
-                  ariaLabel="Start time"
-                />
-                <TimePicker
-                  id="lessonEndTime"
-                  value={lessonEndTime}
-                  onChange={setLessonEndTime}
-                  ariaLabel="End time"
-                  contextHalfDay={Number(lessonStartTime.split(':')[0]) >= 12 ? 'PM' : 'AM'}
-                />
-              </div>
-            </div>
-          </section>
-
-          {/* WHERE */}
-          <section>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-500 mb-2">Where</div>
-            <div className="space-y-2">
-              <select value={lessonLocationId} onChange={e => {
-                  const val = e.target.value;
-                  setLessonLocationId(val);
-                  if (val !== 'create') setLessonNewLocationName('');
+      </div>
+      {booking.studentIds.map((sid) => {
+        const s = students.find((x) => x.id === sid);
+        const w = resolveWallet(booking, sid, wallets);
+        const isAttending = attendingSet.has(sid);
+        const canRemove = booking.studentIds.length > 1;
+        return (
+          <div
+            key={sid}
+            className="flex items-center gap-2.5 py-2.5 border-t"
+            style={{
+              borderColor: 'var(--line)',
+              opacity: isAttending ? 1 : 0.5,
+            }}
+          >
+            <Avatar name={s?.clientName || ''} size={30} />
+            <div className="flex-1 min-w-0">
+              <div
+                className="text-[13px] font-medium truncate"
+                style={{
+                  color: 'var(--ink)',
+                  textDecoration: isAttending ? 'none' : 'line-through',
                 }}
-                className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100">
-                <option value="">Select location</option>
-                {locations.map(loc => (
-                  <option key={loc.id} value={loc.id}>{loc.name}</option>
-                ))}
-                <option value="create">+ Create new location</option>
-              </select>
-              {lessonLocationId === 'create' && (
-                <input
-                  type="text"
-                  value={lessonNewLocationName}
-                  onChange={e => setLessonNewLocationName(e.target.value)}
-                  placeholder="New location name (e.g. Club A pool)"
-                  className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500"
-                />
+              >
+                {s?.clientName}
+              </div>
+              {isAttending ? (
+                w && (
+                  <div className="text-[11px] mono tnum" style={{ color: 'var(--ink-3)' }}>
+                    Wallet: RM {Math.round(w.balance)}
+                  </div>
+                )
+              ) : (
+                <div className="text-[11px]" style={{ color: 'var(--ink-4)' }}>
+                  Skipped — no charge
+                </div>
               )}
             </div>
-          </section>
-
-          {/* STUDENTS */}
-          <section>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-500 mb-2">
-              Students {studentRows.length > 1 && <span className="text-gray-400 dark:text-zinc-500 font-normal normal-case">· {studentRows.length} in group</span>}
-            </div>
-            <div className="space-y-2">
-              {studentRows.map((row, i) => {
-                const isExpanded = expandedStudentRows.has(i);
-                const summary = getStudentRowSummary(row);
-                return (
-                  <div key={i} className="rounded-lg border border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#1a1a1a]">
-                    {/* Collapsed header — always visible */}
-                    <div className="p-3">
-                      <div className="flex items-center gap-2">
-                        {/* Name input + autocomplete */}
-                        <div className="flex-1 relative">
-                          <input
-                            type="text"
-                            value={row.displayName}
-                            onFocus={() => setFocusedStudentRow(i)}
-                            onBlur={() => setTimeout(() => setFocusedStudentRow(prev => (prev === i ? null : prev)), 150)}
-                            onChange={e => {
-                              const val = e.target.value;
-                              setStudentSearches(searches => {
-                                const next = [...searches];
-                                next[i] = val;
-                                return next;
-                              });
-                              updateStudentRow(i, {
-                                displayName: val,
-                                isNew: true,
-                                studentId: '',
-                                walletOption: val.trim() ? 'create' : 'none',
-                                newWalletName: val.trim() ? val : '',
-                                existingWalletId: '',
-                              });
-                            }}
-                            placeholder="Student name"
-                            className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500"
-                          />
-                          {focusedStudentRow === i && (studentSearches[i]?.trim() ?? '') && (() => {
-                            const matches = getFilteredStudentsForRow(i);
-                            if (matches.length === 0) return null;
-                            return (
-                              <div className="absolute z-10 mt-1 w-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg max-h-40 overflow-y-auto shadow-lg">
-                                {matches.map(s => (
-                                  <button
-                                    key={s.studentId}
-                                    className="w-full text-left px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 hover:bg-gray-50 dark:hover:bg-zinc-700"
-                                    onClick={() => {
-                                      const studentRecord = students.find(st => st.id === s.studentId);
-                                      const linkedWallet = wallets.find(w => w.studentIds.includes(s.studentId));
-                                      const lastPrice = getLastPriceForStudent(s.studentId);
-                                      updateStudentRow(i, {
-                                        studentId: s.studentId,
-                                        displayName: s.displayName,
-                                        phone: studentRecord?.clientPhone || '',
-                                        isNew: false,
-                                        walletOption: linkedWallet ? 'existing' : 'none',
-                                        existingWalletId: linkedWallet?.id || '',
-                                        newWalletName: '',
-                                        ...(row.price === 0 && lastPrice > 0 ? { price: lastPrice } : {}),
-                                      });
-                                      setStudentSearches(searches => {
-                                        const next = [...searches];
-                                        next[i] = '';
-                                        return next;
-                                      });
-                                      setFocusedStudentRow(null);
-                                    }}
-                                  >
-                                    {s.displayName}
-                                  </button>
-                                ))}
-                              </div>
-                            );
-                          })()}
-                        </div>
-
-                        {/* Price with RM prefix */}
-                        <div className="relative shrink-0">
-                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 dark:text-zinc-500 pointer-events-none">RM</span>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={row.price || ''}
-                            onChange={e => {
-                              const raw = e.target.value.replace(/[^0-9.]/g, '');
-                              updateStudentRow(i, { price: raw === '' ? 0 : Number(raw) });
-                            }}
-                            placeholder="0"
-                            aria-label="Price"
-                            className="w-24 pl-9 pr-2 py-2 rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm text-gray-900 dark:text-zinc-100 text-right"
-                          />
-                        </div>
-
-                        {/* Expand chevron */}
-                        <button
-                          type="button"
-                          onClick={() => toggleStudentRowExpanded(i)}
-                          aria-label={isExpanded ? 'Collapse student details' : 'Expand student details'}
-                          aria-expanded={isExpanded}
-                          className="shrink-0 p-2 rounded-md text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-700"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
-                            <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-                          </svg>
-                        </button>
-                      </div>
-                      {summary && (
-                        <div className="mt-1.5 text-xs text-gray-500 dark:text-zinc-400">
-                          {summary}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Expanded panel */}
-                    {isExpanded && (
-                      <div className="border-t border-gray-200 dark:border-[#333] bg-white/60 dark:bg-[#141414] p-3 space-y-3 rounded-b-lg">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1">Phone (optional)</label>
-                          <input
-                            type="tel"
-                            value={row.phone}
-                            onChange={e => updateStudentRow(i, { phone: e.target.value })}
-                            placeholder="+60 12 345 6789"
-                            className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1">Wallet</label>
-                          <select
-                            value={row.walletOption === 'existing' ? row.existingWalletId : row.walletOption}
-                            onChange={e => {
-                              const val = e.target.value;
-                              if (val === 'none') {
-                                updateStudentRow(i, { walletOption: 'none', existingWalletId: '', newWalletName: '' });
-                              } else if (val === 'create') {
-                                updateStudentRow(i, { walletOption: 'create', existingWalletId: '', newWalletName: row.displayName });
-                              } else {
-                                updateStudentRow(i, { walletOption: 'existing', existingWalletId: val, newWalletName: '' });
-                              }
-                            }}
-                            className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100"
-                          >
-                            <option value="none">No wallet</option>
-                            {wallets.map(w => (
-                              <option key={w.id} value={w.id}>{w.name} (RM {w.balance})</option>
-                            ))}
-                            {studentRows.flatMap((r, ri) =>
-                              ri < i && r.walletOption === 'create' && r.newWalletName.trim()
-                                ? [<option key={`pending-${ri}`} value={`pending:${ri}`}>{r.newWalletName} (new, shared)</option>]
-                                : []
-                            )}
-                            <option value="create">+ Create new wallet</option>
-                          </select>
-                        </div>
-                        {row.walletOption === 'create' && (
-                          <div>
-                            <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1">Wallet name</label>
-                            <input
-                              type="text"
-                              value={row.newWalletName}
-                              onChange={e => updateStudentRow(i, { newWalletName: e.target.value })}
-                              placeholder="e.g. Mrs. Wong"
-                              className="w-full rounded-md border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500"
-                            />
-                          </div>
-                        )}
-                        {i > 0 && (
-                          <div className="pt-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setStudentRows(rows => rows.filter((_, ri) => ri !== i));
-                                setStudentSearches(searches => searches.filter((_, ri) => ri !== i));
-                                setExpandedStudentRows(prev => {
-                                  const next = new Set<number>();
-                                  prev.forEach(idx => {
-                                    if (idx < i) next.add(idx);
-                                    else if (idx > i) next.add(idx - 1);
-                                  });
-                                  return next;
-                                });
-                              }}
-                              className="text-xs text-red-500 dark:text-red-400 hover:underline"
-                            >
-                              Remove student
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
+            {isAttending ? (
+              <>
+                <div className="flex items-center gap-1.5">
+                  <span className="mono text-[12px]" style={{ color: 'var(--ink-3)' }}>
+                    RM
+                  </span>
+                  <input
+                    type="number"
+                    value={amounts[sid] ?? 0}
+                    onChange={(e) =>
+                      onAmountsChange({ ...amounts, [sid]: Number(e.target.value) })
+                    }
+                    className="mono text-right"
+                    style={{
+                      width: 72,
+                      padding: '6px 8px',
+                      border: '1px solid var(--line-2)',
+                      borderRadius: 8,
+                      background: 'var(--panel)',
+                      color: 'var(--ink)',
+                      fontSize: 13,
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+                {canRemove && (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveAttendee(sid)}
+                    aria-label="Remove attendee"
+                    className="p-1 rounded-md"
+                    style={{ color: 'var(--ink-4)' }}
+                  >
+                    <IconClose size={14} />
+                  </button>
+                )}
+              </>
+            ) : (
               <button
                 type="button"
-                onClick={() => {
-                  setStudentRows(rows => [...rows, {
-                    studentId: '', displayName: '', phone: '', isNew: true,
-                    walletOption: 'none', existingWalletId: '', newWalletName: '', price: 0,
-                  }]);
-                  setStudentSearches(searches => [...searches, '']);
-                }}
-                className="w-full py-2 rounded-lg border border-dashed border-gray-300 dark:border-zinc-600 text-sm text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-zinc-800/50"
+                onClick={() => onRestoreAttendee(sid)}
+                className="text-[12px] font-medium"
+                style={{ color: 'var(--accent)' }}
               >
-                + Add Student
+                Undo
               </button>
-            </div>
-          </section>
+            )}
+          </div>
+        );
+      })}
+      <div
+        className="flex justify-between items-center pt-3 mt-1 border-t"
+        style={{ borderColor: 'var(--line)' }}
+      >
+        <span className="text-[12.5px]" style={{ color: 'var(--ink-3)' }}>
+          Will charge wallets
+        </span>
+        <span
+          className="mono tnum text-[16px] font-semibold"
+          style={{ color: 'var(--ink)' }}
+        >
+          RM {Math.round(total)}
+        </span>
+      </div>
+      <div className="flex gap-2 mt-4">
+        <Btn variant="ghost" full onClick={onClose} disabled={busy}>
+          Cancel
+        </Btn>
+        <Btn variant="primary" full onClick={onConfirm} disabled={busy || !canConfirm}>
+          <IconCheck size={14} /> Confirm
+        </Btn>
+      </div>
+    </PaperModal>
+  );
+}
 
-          {/* NOTES */}
-          <section>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-500 mb-2">
-              Notes <span className="normal-case text-gray-400 dark:text-zinc-600 font-normal">· optional</span>
-            </div>
-            <textarea
-              value={lessonNote}
-              onChange={e => setLessonNote(e.target.value)}
-              placeholder="Anything worth remembering about this class..."
-              className="w-full rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-500"
-              rows={2}
+// ────────────────────────────────────────────────────────────────────────────
+
+type StudentRowState = {
+  mode: 'existing' | 'new';
+  studentId: string;
+  newName: string;
+  newPhone: string;
+  walletOption: 'none' | 'existing' | 'create';
+  existingWalletId: string; // can be wallet id or `pending:<row-index>`
+  newWalletName: string;
+  price: number;
+};
+
+function makeEmptyRow(): StudentRowState {
+  return {
+    mode: 'new',
+    studentId: '',
+    newName: '',
+    newPhone: '',
+    walletOption: 'create',
+    existingWalletId: '',
+    newWalletName: '',
+    price: 0,
+  };
+}
+
+type AddLessonPrefill = {
+  className: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  locationId: string;
+  rows: StudentRowState[];
+};
+
+function AddLessonModal({
+  open,
+  onClose,
+  coachId,
+  students,
+  wallets,
+  locations,
+  defaultDate,
+  prefill,
+}: {
+  open: boolean;
+  onClose: () => void;
+  coachId: string | undefined;
+  students: Student[];
+  wallets: Wallet[];
+  locations: Location[];
+  defaultDate: string;
+  prefill?: AddLessonPrefill | null;
+}) {
+  const { showToast } = useToast();
+  const [className, setClassName] = useState('');
+  const [date, setDate] = useState(defaultDate);
+  const [startTime, setStartTime] = useState('16:00');
+  const [endTime, setEndTime] = useState('17:00');
+  const [repeat, setRepeat] = useState(false);
+  const [locationId, setLocationId] = useState('');
+  const [newLocationName, setNewLocationName] = useState('');
+  const [rows, setRows] = useState<StudentRowState[]>([makeEmptyRow()]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    if (prefill) {
+      setClassName(prefill.className);
+      setDate(prefill.date);
+      setStartTime(prefill.startTime);
+      setEndTime(prefill.endTime);
+      setRepeat(false);
+      setLocationId(prefill.locationId);
+      setNewLocationName('');
+      setRows(prefill.rows.length > 0 ? prefill.rows : [makeEmptyRow()]);
+      return;
+    }
+    setClassName('');
+    setDate(defaultDate);
+    setStartTime('16:00');
+    setEndTime('17:00');
+    setRepeat(false);
+    setLocationId('__new');
+    setNewLocationName('');
+    setRows([makeEmptyRow()]);
+  }, [open, defaultDate, prefill]);
+
+  const updateRow = (i: number, patch: Partial<StudentRowState>) =>
+    setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const addRow = () =>
+    setRows((rs) => [...rs, makeEmptyRow()]);
+  const removeRow = (i: number) =>
+    setRows((rs) => rs.filter((_, idx) => idx !== i));
+
+  const total = rows.reduce((s, r) => s + (Number(r.price) || 0), 0);
+  const creatingLocation = locationId === '__new';
+
+  const handleSave = async () => {
+    if (!coachId || !db) return;
+    if (rows.length === 0) return;
+
+    // Validate rows
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (r.mode === 'existing' && !r.studentId) {
+        showToast(`Student ${i + 1}: pick a student`, 'error');
+        return;
+      }
+      if (r.mode === 'new' && !r.newName.trim()) {
+        showToast(`Student ${i + 1}: enter a name`, 'error');
+        return;
+      }
+      if (r.walletOption === 'existing' && !r.existingWalletId) {
+        showToast(`Student ${i + 1}: pick a wallet`, 'error');
+        return;
+      }
+      if (r.walletOption === 'create' && !r.newWalletName.trim()) {
+        showToast(`Student ${i + 1}: name the new wallet`, 'error');
+        return;
+      }
+    }
+
+    if (creatingLocation && !newLocationName.trim()) {
+      showToast('Enter a name for the new location', 'error');
+      return;
+    }
+    if (!creatingLocation && !locationId) {
+      showToast('Pick a location', 'error');
+      return;
+    }
+
+    const dayOfWeek = getDayOfWeekForDate(date);
+    if (!dayOfWeek) return;
+
+    setSaving(true);
+    try {
+      const firestore = db as Firestore;
+
+      // 1. Resolve location.
+      let finalLocationId = locationId;
+      let finalLocationName = locations.find((l) => l.id === locationId)?.name || '';
+      if (creatingLocation) {
+        const newLoc = await addDoc(
+          collection(firestore, 'coaches', coachId, 'locations'),
+          {
+            name: newLocationName.trim(),
+            address: '',
+            notes: '',
+            createdAt: serverTimestamp(),
+          },
+        );
+        finalLocationId = newLoc.id;
+        finalLocationName = newLocationName.trim();
+      }
+
+      // 2. Resolve each row's studentId (create-new as needed).
+      const resolvedStudentIds: string[] = [];
+      for (const r of rows) {
+        if (r.mode === 'existing') {
+          resolvedStudentIds.push(r.studentId);
+        } else {
+          const sid = await findOrCreateStudent(
+            firestore,
+            coachId,
+            r.newName.trim(),
+            r.newPhone.trim(),
+          );
+          resolvedStudentIds.push(sid);
+        }
+      }
+
+      // 3. Plan wallets: for each row that creates a wallet, aggregate the
+      //    studentIds of every row pointing at it via `pending:<index>`.
+      const pendingWalletIds: Record<number, string> = {};
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        if (r.walletOption !== 'create') continue;
+        const sharedStudentIds = [resolvedStudentIds[i]];
+        for (let j = i + 1; j < rows.length; j++) {
+          const other = rows[j];
+          if (
+            other.walletOption === 'existing' &&
+            other.existingWalletId === `pending:${i}`
+          ) {
+            sharedStudentIds.push(resolvedStudentIds[j]);
+          }
+        }
+        const walletRef = await addDoc(
+          collection(firestore, 'coaches', coachId, 'wallets'),
+          {
+            name: r.newWalletName.trim(),
+            balance: 0,
+            studentIds: sharedStudentIds,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+        );
+        pendingWalletIds[i] = walletRef.id;
+      }
+
+      // 4. Build studentPrices + studentWallets keyed by resolved student id.
+      const studentPrices: Record<string, number> = {};
+      const studentWallets: Record<string, string> = {};
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        const sid = resolvedStudentIds[i];
+        studentPrices[sid] = Number(r.price) || 0;
+        if (r.walletOption === 'existing') {
+          if (r.existingWalletId.startsWith('pending:')) {
+            const refIdx = parseInt(r.existingWalletId.split(':')[1], 10);
+            const resolved = pendingWalletIds[refIdx];
+            if (resolved) studentWallets[sid] = resolved;
+          } else {
+            studentWallets[sid] = r.existingWalletId;
+          }
+        } else if (r.walletOption === 'create') {
+          const resolved = pendingWalletIds[i];
+          if (resolved) studentWallets[sid] = resolved;
+        }
+      }
+
+      // 5. Write booking.
+      const payload: Record<string, unknown> = {
+        locationId: finalLocationId,
+        locationName: finalLocationName,
+        dayOfWeek,
+        startTime,
+        endTime,
+        status: 'confirmed',
+        className: className.trim(),
+        notes: '',
+        studentIds: resolvedStudentIds,
+        studentPrices,
+        studentWallets,
+        startDate: date,
+        createdAt: serverTimestamp(),
+      };
+      if (!repeat) payload.endDate = date;
+      await addDoc(collection(firestore, 'coaches', coachId, 'bookings'), payload);
+
+      showToast(repeat ? 'Recurring lesson added' : 'Lesson added', 'success');
+      onClose();
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to add lesson', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <PaperModal open={open} onClose={onClose} title={prefill ? 'Duplicate lesson' : 'Add lesson'} width={560}>
+      <div className="flex flex-col gap-4">
+        <div>
+          <FieldLabel>Class name</FieldLabel>
+          <input
+            value={className}
+            onChange={(e) => setClassName(e.target.value)}
+            placeholder="e.g. Aarav private"
+            className={paperInputClass}
+            style={paperInputStyle}
+          />
+        </div>
+
+        <div>
+          <SectionLabel>When</SectionLabel>
+          <div
+            className="grid gap-2 grid-cols-2 sm:grid-cols-[1.3fr_1fr_1fr]"
+          >
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className={`${paperInputClass} mono tnum col-span-2 sm:col-span-1 min-w-0`}
+              style={paperInputStyle}
             />
-          </section>
+            <input
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              step={300}
+              className={`${paperInputClass} mono tnum min-w-0`}
+              style={paperInputStyle}
+            />
+            <input
+              type="time"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+              step={300}
+              className={`${paperInputClass} mono tnum min-w-0`}
+              style={paperInputStyle}
+            />
+          </div>
+          <label
+            className="flex items-center gap-2 text-[12.5px] mt-2 cursor-pointer"
+            style={{ color: 'var(--ink-2)' }}
+          >
+            <input
+              type="checkbox"
+              checked={repeat}
+              onChange={(e) => setRepeat(e.target.checked)}
+            />
+            Repeat weekly on this day
+          </label>
+        </div>
 
-          {/* Overlap warning */}
-          {overlapWarning && (
-            <div className="p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 text-yellow-800 dark:text-yellow-400 text-sm">
-              ⚠ {overlapWarning}
-            </div>
+        <div>
+          <SectionLabel>Where</SectionLabel>
+          <select
+            value={locationId}
+            onChange={(e) => setLocationId(e.target.value)}
+            className={paperInputClass}
+            style={paperInputStyle}
+          >
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+            <option value="__new">+ Add new location…</option>
+          </select>
+          {creatingLocation && (
+            <input
+              autoFocus
+              value={newLocationName}
+              onChange={(e) => setNewLocationName(e.target.value)}
+              placeholder="New location name (e.g. Subang Tennis Centre)"
+              className={`${paperInputClass} mt-2`}
+              style={paperInputStyle}
+            />
           )}
+        </div>
 
-          {/* Submit */}
-          <div className="flex justify-end gap-3 pt-3 border-t border-gray-200 dark:border-[#333]">
-            <button onClick={() => setShowAddLesson(false)} className="px-4 py-2 text-sm text-gray-600 dark:text-zinc-400 hover:underline">Cancel</button>
-            <Button onClick={handleCreateLesson} disabled={addingLesson}>
-              {addingLesson ? 'Creating...' : 'Create'}
-            </Button>
+        <div>
+          <SectionLabel>Students</SectionLabel>
+          <div className="flex flex-col gap-2.5">
+            {rows.map((r, i) => (
+              <StudentRow
+                key={i}
+                row={r}
+                index={i}
+                count={rows.length}
+                students={students}
+                wallets={wallets}
+                rows={rows}
+                onChange={(patch) => updateRow(i, patch)}
+                onRemove={() => removeRow(i)}
+              />
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={addRow}
+            className="w-full mt-2.5 text-[12.5px] font-medium"
+            style={{
+              padding: '8px 12px',
+              border: '1px dashed var(--line-2)',
+              borderRadius: 8,
+              background: 'transparent',
+              color: 'var(--ink-2)',
+            }}
+          >
+            + Add another student
+          </button>
+        </div>
+
+        <div
+          className="flex items-center justify-between rounded-[10px] border"
+          style={{
+            padding: '10px 12px',
+            background: 'var(--bg)',
+            borderColor: 'var(--line)',
+          }}
+        >
+          <div
+            className="text-[12px] font-medium"
+            style={{ color: 'var(--ink-3)' }}
+          >
+            Total per lesson
+          </div>
+          <div
+            className="mono tnum text-[18px] font-semibold"
+            style={{ color: 'var(--ink)' }}
+          >
+            RM {total}
           </div>
         </div>
-      </Modal>
+      </div>
 
+      <div className="flex gap-2 mt-3.5">
+        <Btn variant="ghost" full onClick={onClose} disabled={saving}>
+          Cancel
+        </Btn>
+        <Btn variant="primary" full onClick={handleSave} disabled={saving}>
+          <IconCheck size={14} /> {saving ? 'Saving…' : prefill ? 'Duplicate' : 'Add lesson'}
+        </Btn>
+      </div>
+    </PaperModal>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="text-[11px] font-semibold uppercase mb-2"
+      style={{ color: 'var(--ink-3)', letterSpacing: '0.05em' }}
+    >
+      {children}
     </div>
+  );
+}
+
+function StudentRow({
+  row,
+  index,
+  count,
+  students,
+  wallets,
+  rows,
+  onChange,
+  onRemove,
+}: {
+  row: StudentRowState;
+  index: number;
+  count: number;
+  students: Student[];
+  wallets: Wallet[];
+  rows: StudentRowState[];
+  onChange: (patch: Partial<StudentRowState>) => void;
+  onRemove: () => void;
+}) {
+  const pendingAbove = rows
+    .slice(0, index)
+    .map((r, i) => ({ r, i }))
+    .filter(({ r }) => r.walletOption === 'create' && r.newWalletName.trim());
+
+  return (
+    <div
+      className="rounded-[10px] border relative"
+      style={{
+        padding: 12,
+        background: 'var(--panel)',
+        borderColor: 'var(--line)',
+      }}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div
+          className="text-[11px] font-semibold uppercase"
+          style={{ color: 'var(--ink-3)', letterSpacing: '0.04em' }}
+        >
+          Student {index + 1}
+        </div>
+        {count > 1 && (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label="Remove student"
+            className="p-0.5"
+            style={{ color: 'var(--ink-3)' }}
+          >
+            <IconClose size={13} />
+          </button>
+        )}
+      </div>
+
+      {/* Mode toggle */}
+      <div
+        className="flex gap-1 rounded-[8px] border mb-2.5"
+        style={{
+          padding: 3,
+          background: 'var(--bg)',
+          borderColor: 'var(--line)',
+        }}
+      >
+        {(
+          [
+            { k: 'existing', label: 'Existing student' },
+            { k: 'new', label: 'New student' },
+          ] as const
+        ).map((o) => (
+          <button
+            key={o.k}
+            type="button"
+            onClick={() => onChange({ mode: o.k })}
+            className="flex-1 rounded-[6px] text-[12px] font-medium"
+            style={{
+              padding: '6px 10px',
+              background: row.mode === o.k ? 'var(--panel)' : 'transparent',
+              color: row.mode === o.k ? 'var(--ink)' : 'var(--ink-3)',
+              boxShadow: row.mode === o.k ? 'var(--shadow-sm)' : 'none',
+            }}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+
+      {row.mode === 'existing' ? (
+        <select
+          value={row.studentId}
+          onChange={(e) => onChange({ studentId: e.target.value })}
+          className={paperInputClass}
+          style={paperInputStyle}
+        >
+          <option value="">Select student…</option>
+          {students.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.clientName}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            placeholder="Name"
+            value={row.newName}
+            onChange={(e) => onChange({ newName: e.target.value })}
+            className={paperInputClass}
+            style={paperInputStyle}
+          />
+          <input
+            placeholder="Phone"
+            value={row.newPhone}
+            onChange={(e) => onChange({ newPhone: e.target.value })}
+            className={`${paperInputClass} mono`}
+            style={paperInputStyle}
+          />
+        </div>
+      )}
+
+      {/* Wallet */}
+      <div className="mt-2.5">
+        <div
+          className="text-[11px] font-medium mb-1.5"
+          style={{ color: 'var(--ink-3)' }}
+        >
+          Wallet
+        </div>
+        <div className="flex gap-1 flex-wrap">
+          {(
+            [
+              { k: 'none', label: 'No wallet' },
+              { k: 'existing', label: 'Existing' },
+              { k: 'create', label: 'Create new' },
+            ] as const
+          ).map((o) => (
+            <button
+              key={o.k}
+              type="button"
+              onClick={() => onChange({ walletOption: o.k })}
+              className="text-[11.5px] font-medium"
+              style={{
+                padding: '5px 10px',
+                borderRadius: 999,
+                border: `1px solid ${row.walletOption === o.k ? 'var(--ink)' : 'var(--line-2)'}`,
+                background: row.walletOption === o.k ? 'var(--ink)' : 'var(--panel)',
+                color: row.walletOption === o.k ? 'var(--bg)' : 'var(--ink-2)',
+              }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        {row.walletOption === 'existing' && (
+          <select
+            value={row.existingWalletId}
+            onChange={(e) => onChange({ existingWalletId: e.target.value })}
+            className={`${paperInputClass} mt-2`}
+            style={paperInputStyle}
+          >
+            <option value="">Select wallet…</option>
+            {wallets
+              .filter((w) => !w.archived)
+              .map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name} — RM {w.balance.toFixed(0)}
+                </option>
+              ))}
+            {pendingAbove.map(({ r, i }) => (
+              <option key={`p-${i}`} value={`pending:${i}`}>
+                (New) {r.newWalletName} — shared with student {i + 1}
+              </option>
+            ))}
+          </select>
+        )}
+        {row.walletOption === 'create' && (
+          <input
+            placeholder="Wallet name (e.g. Suresh family)"
+            value={row.newWalletName}
+            onChange={(e) => onChange({ newWalletName: e.target.value })}
+            className={`${paperInputClass} mt-2`}
+            style={paperInputStyle}
+          />
+        )}
+      </div>
+
+      {/* Price */}
+      <div
+        className="mt-2.5 grid items-center gap-2"
+        style={{ gridTemplateColumns: '1fr auto' }}
+      >
+        <div className="text-[12px]" style={{ color: 'var(--ink-2)' }}>
+          Price for this student
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[12px]" style={{ color: 'var(--ink-3)' }}>
+            RM
+          </span>
+          <input
+            type="number"
+            inputMode="numeric"
+            value={row.price === 0 ? '' : row.price}
+            placeholder="0"
+            onChange={(e) => onChange({ price: e.target.value === '' ? 0 : Number(e.target.value) })}
+            className={`${paperInputClass} mono tnum text-right`}
+            style={{ ...paperInputStyle, width: 90 }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Cancel-lesson scope picker
+// ────────────────────────────────────────────────────────────────────────────
+
+function CancelScopeBody({
+  ctx,
+  scope,
+  setScope,
+  cancelling,
+  onKeep,
+  onConfirm,
+}: {
+  ctx: {
+    booking: Booking;
+    dateStr: string;
+    backingExceptionId: string | null;
+    isOneTime: boolean;
+    canScope: boolean;
+  };
+  scope: 'this' | 'future';
+  setScope: (s: 'this' | 'future') => void;
+  cancelling: boolean;
+  onKeep: () => void;
+  onConfirm: () => void;
+}) {
+  const { booking, dateStr, canScope } = ctx;
+  const dateObj = parseDateString(dateStr);
+  const dateLabel = formatDateFull(dateObj);
+  const title = booking.className?.trim() || 'Lesson';
+  const timeRange = `${formatTimeDisplay(booking.startTime)}–${formatTimeDisplay(booking.endTime)}`;
+  const locationName = booking.locationName || '';
+
+  return (
+    <div className="space-y-4">
+      {/* Class info */}
+      <div
+        className="rounded-[10px] border p-3"
+        style={{ background: 'var(--bad-soft)', borderColor: 'var(--bad-soft)' }}
+      >
+        <div
+          className="text-[13.5px] font-semibold"
+          style={{ color: 'var(--ink)' }}
+        >
+          {title}
+        </div>
+        <div className="text-[12px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
+          {dateLabel} · {timeRange}
+          {locationName ? ` · ${locationName}` : ''}
+        </div>
+      </div>
+
+      {canScope && (
+        <>
+          <div
+            className="text-[10.5px] font-semibold uppercase"
+            style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
+          >
+            This is a recurring weekly lesson
+          </div>
+          <div className="space-y-2">
+            <ScopeOption
+              selected={scope === 'this'}
+              onClick={() => setScope('this')}
+              title="Cancel this date only"
+              description={`Only ${dateLabel} will be cancelled. Future weeks stay as-is.`}
+            />
+            <ScopeOption
+              selected={scope === 'future'}
+              onClick={() => setScope('future')}
+              title="Cancel all future occurrences"
+              description={`Ends the weekly lesson starting from ${dateLabel}. Past weeks are unaffected.`}
+            />
+          </div>
+        </>
+      )}
+
+      <div className="grid grid-cols-2 gap-2 pt-1">
+        <Btn variant="outline" onClick={onKeep} disabled={cancelling}>
+          Keep lesson
+        </Btn>
+        <button
+          onClick={onConfirm}
+          disabled={cancelling}
+          className="rounded-[8px] py-2 text-[13.5px] font-medium transition-colors disabled:opacity-55 flex items-center justify-center gap-1.5"
+          style={{ background: 'var(--bad)', color: '#fff' }}
+        >
+          <IconTrash size={13} />
+          {cancelling ? 'Cancelling…' : 'Cancel lesson'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ScopeOption({
+  selected,
+  onClick,
+  title,
+  description,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  title: string;
+  description: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full text-left rounded-[10px] border p-3 transition-colors"
+      style={{
+        background: selected ? 'var(--bg)' : 'var(--panel)',
+        borderColor: selected ? 'var(--ink)' : 'var(--line-2)',
+        boxShadow: selected ? 'var(--shadow-sm)' : 'none',
+      }}
+    >
+      <div className="flex items-start gap-2.5">
+        <span
+          className="mt-0.5 shrink-0 w-4 h-4 rounded-full border flex items-center justify-center"
+          style={{
+            borderColor: selected ? 'var(--ink)' : 'var(--line-2)',
+            background: 'var(--bg)',
+          }}
+        >
+          {selected && (
+            <span
+              className="w-2 h-2 rounded-full"
+              style={{ background: 'var(--ink)' }}
+            />
+          )}
+        </span>
+        <div className="min-w-0">
+          <div
+            className="text-[13.5px] font-semibold"
+            style={{ color: 'var(--ink)' }}
+          >
+            {title}
+          </div>
+          <div
+            className="text-[12px] mt-0.5 leading-snug"
+            style={{ color: 'var(--ink-3)' }}
+          >
+            {description}
+          </div>
+        </div>
+      </div>
+    </button>
   );
 }

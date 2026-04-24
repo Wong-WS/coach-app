@@ -124,11 +124,17 @@ export function useLessonLogs(coachId: string | undefined, dateFilter?: string, 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Reset state when filter params change so we don't briefly show the previous
+    // student/date/range's logs while the new subscription's first snapshot lands.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clear stale results from the prior subscription
+    setLessonLogs([]);
+
     if (!coachId || !db) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- guard branch: hydrate loading=false when no subscription will be opened
       setLoading(false);
       return;
     }
+
+    setLoading(true);
 
     const firestore = db as Firestore;
     const col = collection(firestore, 'coaches', coachId, 'lessonLogs');
@@ -149,23 +155,33 @@ export function useLessonLogs(coachId: string | undefined, dateFilter?: string, 
       q = query(col, orderBy('date', 'desc'));
     }
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const items: LessonLog[] = snapshot.docs.map((d) => ({
-        id: d.id,
-        date: d.data().date,
-        bookingId: d.data().bookingId,
-        studentId: d.data().studentId,
-        studentName: d.data().studentName,
-        locationName: d.data().locationName,
-        startTime: d.data().startTime,
-        endTime: d.data().endTime,
-        price: d.data().price ?? 0,
-        note: d.data().note ?? undefined,
-        createdAt: d.data().createdAt?.toDate() || new Date(),
-      }));
-      setLessonLogs(items);
-      setLoading(false);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const items: LessonLog[] = snapshot.docs.map((d) => ({
+          id: d.id,
+          date: d.data().date,
+          bookingId: d.data().bookingId,
+          studentId: d.data().studentId,
+          studentName: d.data().studentName,
+          locationName: d.data().locationName,
+          startTime: d.data().startTime,
+          endTime: d.data().endTime,
+          price: d.data().price ?? 0,
+          note: d.data().note ?? undefined,
+          createdAt: d.data().createdAt?.toDate() || new Date(),
+        }));
+        setLessonLogs(items);
+        setLoading(false);
+      },
+      (error) => {
+        // Without this handler, a missing composite index or rules error
+        // leaves the UI stuck on a spinner forever.
+        console.error('[useLessonLogs] snapshot error:', error);
+        setLessonLogs([]);
+        setLoading(false);
+      },
+    );
 
     return () => unsubscribe();
   }, [coachId, dateFilter, studentIdFilter, monthsBack, limitCount]);
@@ -255,9 +271,8 @@ export function useWallets(coachId: string | undefined) {
         name: d.data().name,
         balance: d.data().balance ?? 0,
         studentIds: d.data().studentIds ?? [],
-        payPerLesson: d.data().payPerLesson ?? false,
         archived: d.data().archived ?? false,
-        minLessonsPerTopUp: d.data().minLessonsPerTopUp ?? 5,
+        tabMode: d.data().tabMode ?? false,
         createdAt: d.data().createdAt?.toDate() || new Date(),
         updatedAt: d.data().updatedAt?.toDate() || new Date(),
       }));
@@ -276,12 +291,17 @@ export function useWalletTransactions(coachId: string | undefined, walletId: str
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Reset when walletId or limit changes so we don't flash the previous wallet's
+    // transactions while the new subscription's first snapshot lands.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clear stale results from the prior subscription
+    setTransactions([]);
+
     if (!coachId || !walletId || !db) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- guard branch: reset state when no subscription will be opened
-      setTransactions([]);
       setLoading(false);
       return;
     }
+
+    setLoading(true);
 
     const firestore = db as Firestore;
     const col = collection(firestore, 'coaches', coachId, 'wallets', walletId, 'transactions');

@@ -1,186 +1,252 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { collection, doc, addDoc, updateDoc, deleteDoc, getDocs, writeBatch, serverTimestamp, increment, Firestore, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  getDocs,
+  writeBatch,
+  serverTimestamp,
+  increment,
+  Firestore,
+  onSnapshot,
+  query,
+  orderBy,
+  limit,
+} from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
-import { useWallets, useWalletTransactions, useStudents, useBookings, useLessonLogs, useClassExceptions } from '@/hooks/useCoachData';
-import { Button, Input, Modal } from '@/components/ui';
+import {
+  useWallets,
+  useWalletTransactions,
+  useStudents,
+  useBookings,
+  useLessonLogs,
+  useClassExceptions,
+} from '@/hooks/useCoachData';
 import { useToast } from '@/components/ui/Toast';
-import { formatTimeDisplay } from '@/lib/time-format';
 import { getScheduledRevenueForDateRange } from '@/lib/class-schedule';
-import { isLowBalance, getWalletStatus } from '@/lib/wallet-alerts';
+import {
+  isLowBalance,
+  getWalletStatus,
+  getWalletHealth,
+} from '@/lib/wallet-alerts';
 import { useSearchParams } from 'next/navigation';
+import {
+  Btn,
+  Chip,
+  Avatar,
+  PaperModal,
+  IconPlus,
+  IconSearch,
+  IconArrowUp,
+  IconArrowDown,
+} from '@/components/paper';
 import type { Wallet, WalletTransaction, DayOfWeek } from '@/types';
 
-const TABS = ['Overview', 'Wallets', 'History'] as const;
-type Tab = typeof TABS[number];
+// ─── Shared styles ───────────────────────────────────────────────────────────
+
+const paperInputClass =
+  'w-full px-3 py-2.5 rounded-[10px] border text-[13.5px] outline-none focus:border-[color:var(--accent)]';
+const paperInputStyle: React.CSSProperties = {
+  background: 'var(--bg)',
+  borderColor: 'var(--line-2)',
+  color: 'var(--ink)',
+  boxSizing: 'border-box',
+  WebkitAppearance: 'none',
+  appearance: 'none',
+  minWidth: 0,
+};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function getWeekRange(): { start: string; end: string } {
-  const now = new Date();
-  const dayOfWeek = now.getDay();
-  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + mondayOffset);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  const fmt = (d: Date) => {
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-  };
-  return { start: fmt(monday), end: fmt(sunday) };
+function todayYMD(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function getMonthRange(): { start: string; end: string } {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1);
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const fmt = (d: Date) => {
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-  };
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   return { start: fmt(start), end: fmt(end) };
 }
 
-// Keyed by wallet.id at the call site so the draft resets naturally on switch.
-function PackageSizeInput({
-  initial,
-  onCommit,
+function getLastMonthRange(): { start: string; end: string } {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const end = new Date(now.getFullYear(), now.getMonth(), 0);
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return { start: fmt(start), end: fmt(end) };
+}
+
+function formatRM(amount: number): string {
+  return `RM ${Math.round(amount).toLocaleString('en-MY')}`;
+}
+
+// ─── Stat card ───────────────────────────────────────────────────────────────
+
+function Stat({
+  label,
+  value,
+  sub,
+  tone,
 }: {
-  initial: number;
-  onCommit: (value: number) => Promise<void> | void;
+  label: string;
+  value: string | number;
+  sub?: string;
+  tone?: 'bad' | 'warn' | 'good';
 }) {
-  const [draft, setDraft] = useState(String(initial));
+  const color =
+    tone === 'bad'
+      ? 'var(--bad)'
+      : tone === 'warn'
+        ? 'var(--warn)'
+        : tone === 'good'
+          ? 'var(--good)'
+          : 'var(--ink)';
   return (
-    <input
-      type="number"
-      min="1"
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={async () => {
-        const n = parseInt(draft, 10);
-        if (isNaN(n) || n < 1) {
-          setDraft(String(initial));
-          return;
-        }
-        if (n === initial) return;
-        try {
-          await onCommit(n);
-        } catch {
-          setDraft(String(initial));
-        }
-      }}
-      className="w-16 px-2 py-1 border border-gray-300 dark:border-zinc-500 rounded text-sm bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
-    />
+    <div
+      className="rounded-[12px] border p-3.5"
+      style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
+    >
+      <div
+        className="text-[10.5px] font-semibold uppercase"
+        style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
+      >
+        {label}
+      </div>
+      <div
+        className="mono tnum mt-1 text-[20px] sm:text-[22px] font-semibold"
+        style={{ color, letterSpacing: '-0.5px' }}
+      >
+        {value}
+      </div>
+      {sub && (
+        <div className="text-[11.5px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
+          {sub}
+        </div>
+      )}
+    </div>
   );
 }
 
-// ─── WalletListCard ──────────────────────────────────────────────────────────
-//
-// One card in the wallets grid. Owns its own `useWalletTransactions` hook so
-// the "Next payment" ask can walk transactions to recover the pre-debt balance
-// snapshot (only when balance is negative — otherwise the hook is a no-op).
+// ─── Wallet card ─────────────────────────────────────────────────────────────
 
-function WalletListCard({
-  coachId,
+function WalletCard({
   wallet,
   bookings,
   todayStr,
   linkedStudents,
+  selected,
   onClick,
 }: {
-  coachId: string;
   wallet: Wallet;
   bookings: import('@/types').Booking[];
   todayStr: string;
   linkedStudents: { id: string; clientName: string }[];
+  selected: boolean;
   onClick: () => void;
 }) {
-  const needsTxns = wallet.balance < 0;
-  const { transactions } = useWalletTransactions(coachId, needsTxns ? wallet.id : undefined, 20);
-  const { isLow, topUpMinimum: nextPayment } = getWalletStatus(wallet, bookings, todayStr, transactions);
+  const { health, rate, lessonsLeft } = getWalletHealth(wallet, bookings, todayStr);
+
+  const balanceColor =
+    health === 'owing'
+      ? 'var(--bad)'
+      : health === 'empty' || health === 'low'
+        ? 'var(--warn)'
+        : 'var(--ink)';
+
+  const subtitle =
+    linkedStudents.length === 0
+      ? 'No students linked'
+      : linkedStudents.length === 1
+        ? linkedStudents[0].clientName
+        : `${linkedStudents.length} students`;
+
+  const footer =
+    health === 'owing'
+      ? 'Owes you'
+      : health === 'tab'
+        ? 'Tab mode'
+        : health === 'inactive'
+          ? rate <= 0 ? 'No lessons scheduled' : ''
+          : health === 'empty'
+            ? "Can't cover next lesson"
+            : health === 'low'
+              ? '1 lesson left'
+              : `${lessonsLeft} lessons left`;
 
   return (
     <button
       onClick={onClick}
-      className="text-left w-full bg-white dark:bg-[#1f1f1f] border border-gray-200 dark:border-[#333333] rounded-xl p-4 hover:border-blue-400 dark:hover:border-blue-500 transition-colors"
+      className="w-full text-left rounded-[12px] border p-3.5 transition-colors"
+      style={{
+        background: 'var(--panel)',
+        borderColor: selected ? 'var(--ink)' : 'var(--line)',
+        boxShadow: selected ? 'var(--shadow-sm)' : 'none',
+      }}
     >
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
-          <span className="font-medium text-gray-900 dark:text-zinc-100 truncate">
+      <div className="flex items-center gap-2.5 mb-2.5">
+        <Avatar name={wallet.name} size={30} />
+        <div className="flex-1 min-w-0">
+          <div
+            className="text-[13.5px] font-semibold truncate"
+            style={{ color: 'var(--ink)' }}
+          >
             {wallet.name}
-          </span>
-          {isLow && (
-            <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 font-medium">
-              Running low
-            </span>
-          )}
-          {(wallet.payPerLesson ?? false) && (
-            <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-zinc-800 dark:text-zinc-400 font-medium">
-              Pay per lesson
-            </span>
-          )}
-          {(wallet.archived ?? false) && (
-            <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-zinc-500 font-medium">
-              Archived
-            </span>
-          )}
+          </div>
+          <div className="text-[11.5px] truncate" style={{ color: 'var(--ink-3)' }}>
+            {subtitle}
+          </div>
         </div>
-        {linkedStudents.length > 0 && (
-          <span className="ml-2 flex-shrink-0 text-xs bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-zinc-400 px-2 py-0.5 rounded-full">
-            {linkedStudents.length} {linkedStudents.length === 1 ? 'student' : 'students'}
-          </span>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {wallet.archived && <Chip tone="soft">Archived</Chip>}
+        </div>
       </div>
 
-      <p
-        className={`text-2xl font-bold mb-1 ${
-          wallet.balance >= 0
-            ? 'text-green-600 dark:text-green-400'
-            : 'text-red-600 dark:text-red-400'
-        }`}
-      >
-        {wallet.balance < 0 ? '-' : ''}RM {Math.abs(wallet.balance).toFixed(0)}
-      </p>
-
-      {wallet.balance < 0 ? (
-        <p className="text-xs text-red-500 dark:text-red-400">Owes you</p>
-      ) : (
-        <p className="text-xs text-gray-400 dark:text-zinc-500">&nbsp;</p>
-      )}
-
-      {isLow && nextPayment > 0 && (
-        <p className="text-xs text-red-500 dark:text-red-400 font-medium mt-1">
-          Next payment: RM {nextPayment.toFixed(0)}
-        </p>
-      )}
-
-      {linkedStudents.length > 0 && (
-        <p className="text-xs text-gray-400 dark:text-zinc-500 mt-2 truncate">
-          {linkedStudents.map((s) => s.clientName).join(', ')}
-        </p>
-      )}
+      <div className="flex items-end justify-between gap-2.5">
+        <div className="min-w-0">
+          <div
+            className="mono tnum text-[22px] font-semibold"
+            style={{ color: balanceColor, letterSpacing: '-0.6px' }}
+          >
+            {wallet.balance < 0 ? '−' : ''}RM {Math.abs(wallet.balance).toFixed(0)}
+          </div>
+          {footer && (
+            <div className="text-[11px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
+              {footer}
+            </div>
+          )}
+        </div>
+        <div className="shrink-0 flex items-center gap-1.5">
+          {health === 'owing' && <Chip tone="bad">Owing</Chip>}
+          {health === 'empty' && <Chip tone="bad">Empty</Chip>}
+          {health === 'low' && <Chip tone="warn">Low</Chip>}
+        </div>
+      </div>
     </button>
   );
 }
 
-// ─── WalletDetail ────────────────────────────────────────────────────────────
+// ─── Wallet detail panel ─────────────────────────────────────────────────────
 
-function WalletDetail({
+function WalletDetailBody({
   coachId,
   wallet,
   students,
   wallets,
   onTopUp,
   onAdjust,
+  onToggleTabMode,
+  onArchive,
   onDelete,
-  onToggleArchive,
   showToast,
 }: {
   coachId: string;
@@ -189,15 +255,16 @@ function WalletDetail({
   wallets: Wallet[];
   onTopUp: () => void;
   onAdjust: () => void;
+  onToggleTabMode: () => void;
+  onArchive: () => void;
   onDelete: () => void;
-  onToggleArchive: () => void;
   showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }) {
-  const [txnLimit, setTxnLimit] = useState(20);
+  const [txnLimit, setTxnLimit] = useState(12);
   const { transactions } = useWalletTransactions(coachId, wallet.id, txnLimit);
   const linkedStudents = students.filter((s) => wallet.studentIds.includes(s.id));
   const unlinkedStudents = students.filter(
-    (s) => !wallets.some((w) => w.studentIds.includes(s.id))
+    (s) => !wallets.some((w) => w.studentIds.includes(s.id)),
   );
   const [addingStudent, setAddingStudent] = useState(false);
 
@@ -234,8 +301,7 @@ function WalletDetail({
     setAddingStudent(true);
     try {
       const firestore = db as Firestore;
-      const walletRef = doc(firestore, 'coaches', coachId, 'wallets', wallet.id);
-      await updateDoc(walletRef, {
+      await updateDoc(doc(firestore, 'coaches', coachId, 'wallets', wallet.id), {
         studentIds: [...wallet.studentIds, studentId],
         updatedAt: serverTimestamp(),
       });
@@ -251,8 +317,7 @@ function WalletDetail({
     if (!db) return;
     try {
       const firestore = db as Firestore;
-      const walletRef = doc(firestore, 'coaches', coachId, 'wallets', wallet.id);
-      await updateDoc(walletRef, {
+      await updateDoc(doc(firestore, 'coaches', coachId, 'wallets', wallet.id), {
         studentIds: wallet.studentIds.filter((id) => id !== studentId),
         updatedAt: serverTimestamp(),
       });
@@ -263,109 +328,77 @@ function WalletDetail({
   };
 
   return (
-    <div className="space-y-6">
-      {/* Balance */}
-      <div className="text-center py-4">
-        <p className="text-sm text-gray-500 dark:text-zinc-400">Balance</p>
-        <p
-          className={`text-3xl font-bold ${
-            wallet.balance >= 0
-              ? 'text-green-600 dark:text-green-400'
-              : 'text-red-600 dark:text-red-400'
-          }`}
+    <div className="space-y-4">
+      {/* Big balance block */}
+      <div
+        className="rounded-[12px] border p-4"
+        style={{ background: 'var(--bg)', borderColor: 'var(--line)' }}
+      >
+        <div
+          className="text-[10.5px] font-semibold uppercase mb-1"
+          style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
         >
-          {wallet.balance < 0 ? '-' : ''}RM {Math.abs(wallet.balance).toFixed(0)}
-        </p>
-      </div>
-
-      {/* Action buttons */}
-      <div className="flex gap-3">
-        <Button onClick={onTopUp} className="flex-1">
-          + Top Up
-        </Button>
-        <Button variant="ghost" onClick={onAdjust} className="flex-1">
-          Adjustment
-        </Button>
-      </div>
-
-      {/* Wallet settings row */}
-      <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-gray-100 dark:border-[#333333]">
-        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-zinc-300">
-          <input
-            type="checkbox"
-            checked={wallet.payPerLesson ?? false}
-            onChange={async (e) => {
-              if (!db) return;
-              try {
-                await updateDoc(
-                  doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
-                  { payPerLesson: e.target.checked, updatedAt: serverTimestamp() }
-                );
-              } catch {
-                showToast('Failed to update', 'error');
-              }
-            }}
-            className="rounded"
-          />
-          Pay per lesson
-        </label>
-
-        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-zinc-300">
-          Package size:
-          <PackageSizeInput
-            key={wallet.id}
-            initial={wallet.minLessonsPerTopUp ?? 5}
-            onCommit={async (n) => {
-              if (!db) return;
-              try {
-                await updateDoc(
-                  doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
-                  { minLessonsPerTopUp: n, updatedAt: serverTimestamp() }
-                );
-              } catch (err) {
-                showToast('Failed to update package size', 'error');
-                throw err;
-              }
-            }}
-          />
-          lessons
-        </label>
-
-        <button
-          onClick={async () => {
-            if (!db) return;
-            try {
-              await updateDoc(
-                doc(db as Firestore, 'coaches', coachId, 'wallets', wallet.id),
-                { archived: !(wallet.archived ?? false), updatedAt: serverTimestamp() }
-              );
-              onToggleArchive();
-            } catch {
-              showToast('Failed to update', 'error');
-            }
+          Current balance
+        </div>
+        <div
+          className="mono tnum text-[30px] font-semibold"
+          style={{
+            color: wallet.balance < 0 ? 'var(--bad)' : 'var(--ink)',
+            letterSpacing: '-0.8px',
           }}
-          className="ml-auto text-sm text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-100 underline"
         >
-          {wallet.archived ? 'Unarchive' : 'Archive'}
-        </button>
+          {wallet.balance < 0 ? '−' : ''}RM {Math.abs(wallet.balance).toFixed(0)}
+        </div>
+        {wallet.tabMode && (
+          <div
+            className="text-[11px] mt-1.5"
+            style={{ color: 'var(--ink-3)' }}
+          >
+            Tab mode — pays after each lesson
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="grid grid-cols-2 gap-2">
+        <Btn variant="primary" onClick={onTopUp}>
+          <IconArrowUp size={13} /> Top up
+        </Btn>
+        <Btn variant="outline" onClick={onAdjust}>
+          Adjust
+        </Btn>
       </div>
 
       {/* Linked students */}
       <div>
-        <p className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">Linked Students</p>
+        <div
+          className="text-[10.5px] font-semibold uppercase mb-2"
+          style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
+        >
+          Linked students
+        </div>
         {linkedStudents.length === 0 ? (
-          <p className="text-sm text-gray-400 dark:text-zinc-500">No students linked yet.</p>
+          <p className="text-[12.5px]" style={{ color: 'var(--ink-3)' }}>
+            No students linked yet.
+          </p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1">
             {linkedStudents.map((s) => (
               <div
                 key={s.id}
-                className="flex items-center justify-between bg-gray-50 dark:bg-[#2a2a2a] px-3 py-2 rounded-lg"
+                className="flex items-center justify-between px-3 py-2 rounded-[8px]"
+                style={{ background: 'var(--bg)' }}
               >
-                <span className="text-sm text-gray-800 dark:text-zinc-200">{s.clientName}</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <Avatar name={s.clientName} size={22} />
+                  <span className="text-[13px] truncate" style={{ color: 'var(--ink)' }}>
+                    {s.clientName}
+                  </span>
+                </div>
                 <button
                   onClick={() => handleRemoveStudent(s.id)}
-                  className="text-xs text-red-500 hover:text-red-700"
+                  className="text-[11.5px] font-medium"
+                  style={{ color: 'var(--bad)' }}
                 >
                   Remove
                 </button>
@@ -373,17 +406,17 @@ function WalletDetail({
             ))}
           </div>
         )}
-        {/* Add student dropdown */}
         {unlinkedStudents.length > 0 && (
           <select
-            className="mt-2 w-full px-3 py-2 border border-gray-300 dark:border-zinc-500 rounded-lg text-sm bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-zinc-100"
+            className={`${paperInputClass} mt-2 text-[13px]`}
+            style={paperInputStyle}
             value=""
             onChange={(e) => {
               if (e.target.value) handleAddStudent(e.target.value);
             }}
             disabled={addingStudent}
           >
-            <option value="">+ Add student to wallet...</option>
+            <option value="">+ Add student to wallet…</option>
             {unlinkedStudents.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.clientName}
@@ -395,213 +428,233 @@ function WalletDetail({
 
       {/* Recent transactions */}
       <div>
-        <p className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">Transactions</p>
+        <div
+          className="text-[10.5px] font-semibold uppercase mb-2"
+          style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
+        >
+          Recent transactions
+        </div>
         {transactions.length === 0 ? (
-          <p className="text-sm text-gray-400 dark:text-zinc-500">No transactions yet.</p>
+          <p className="text-[12.5px]" style={{ color: 'var(--ink-3)' }}>
+            No transactions yet.
+          </p>
         ) : (
-          <div className="space-y-1 max-h-64 overflow-y-auto">
+          <div className="flex flex-col">
             {transactions.map((txn) => (
-              <div
-                key={txn.id}
-                className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50 dark:hover:bg-[#2a2a2a]"
-              >
-                <div>
-                  <p className="text-sm text-gray-800 dark:text-zinc-200">{txn.description}</p>
-                  <p className="text-xs text-gray-400 dark:text-zinc-500">{txn.date}</p>
-                </div>
-                <p
-                  className={`text-sm font-medium ${
-                    txn.amount < 0
-                      ? 'text-red-600 dark:text-red-400'
-                      : 'text-green-600 dark:text-green-400'
-                  }`}
-                >
-                  {txn.amount < 0 ? '-' : '+'}RM {Math.abs(txn.amount).toFixed(0)}
-                </p>
-              </div>
+              <TxnRow key={txn.id} txn={txn} />
             ))}
             {transactions.length >= txnLimit && (
-            <button
-              onClick={() => setTxnLimit(txnLimit + 20)}
-              className="w-full text-center py-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
-            >
-              Load more
-            </button>
+              <button
+                onClick={() => setTxnLimit(txnLimit + 12)}
+                className="w-full text-center py-2 text-[12.5px] font-medium"
+                style={{ color: 'var(--accent)' }}
+              >
+                Load more
+              </button>
             )}
           </div>
         )}
       </div>
 
       {/* Rename + Delete */}
-      <div className="pt-4 border-t border-gray-100 dark:border-[#333333] space-y-2">
+      <div
+        className="pt-3 border-t flex flex-col gap-2"
+        style={{ borderColor: 'var(--line)' }}
+      >
         {renaming ? (
           <div className="space-y-2">
-            <Input
+            <input
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
               placeholder="Wallet name"
               autoFocus
+              className={paperInputClass}
+              style={paperInputStyle}
             />
-            <div className="flex gap-2">
-              <Button
+            <div className="grid grid-cols-2 gap-2">
+              <Btn
+                variant="primary"
                 onClick={handleSaveName}
-                loading={savingName}
                 disabled={!renameValue.trim() || savingName}
-                className="flex-1"
               >
-                Save
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => { setRenaming(false); setRenameValue(wallet.name); }}
+                {savingName ? 'Saving…' : 'Save'}
+              </Btn>
+              <Btn
+                variant="outline"
+                onClick={() => {
+                  setRenaming(false);
+                  setRenameValue(wallet.name);
+                }}
                 disabled={savingName}
-                className="flex-1"
               >
                 Cancel
-              </Button>
+              </Btn>
             </div>
           </div>
         ) : (
-          <button
-            onClick={() => { setRenameValue(wallet.name); setRenaming(true); }}
-            className="w-full py-2 text-sm font-medium text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-[#2a2a2a] rounded-lg transition-colors"
+          <Btn
+            variant="ghost"
+            onClick={() => {
+              setRenameValue(wallet.name);
+              setRenaming(true);
+            }}
           >
-            Rename Wallet
-          </button>
+            Rename wallet
+          </Btn>
         )}
+        <Btn variant="ghost" onClick={onToggleTabMode}>
+          {wallet.tabMode ? 'Turn off tab mode' : 'Turn on tab mode'}
+        </Btn>
+        <Btn variant="ghost" onClick={onArchive}>
+          {wallet.archived ? 'Unarchive wallet' : 'Archive wallet'}
+        </Btn>
         <button
           onClick={onDelete}
-          className="w-full py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+          className="text-[13.5px] font-medium py-2 rounded-[8px]"
+          style={{ color: 'var(--bad)' }}
         >
-          Delete Wallet
+          Delete wallet
         </button>
       </div>
     </div>
   );
 }
 
-// ─── PaymentsPage ─────────────────────────────────────────────────────────────
+// ─── Transaction row (shared by detail panel and history tab) ────────────────
+
+function TxnRow({
+  txn,
+  subtitle,
+}: {
+  txn: WalletTransaction & { walletName?: string };
+  subtitle?: string;
+}) {
+  const positive = txn.amount > 0;
+  const sub = subtitle ?? txn.date;
+  return (
+    <div
+      className="flex items-center gap-2.5 py-2.5 border-b last:border-0"
+      style={{ borderColor: 'var(--line)' }}
+    >
+      <div
+        className="w-7 h-7 rounded-[8px] flex items-center justify-center shrink-0"
+        style={{
+          background: positive ? 'var(--good-soft)' : 'var(--line)',
+          color: positive ? 'var(--good)' : 'var(--ink-2)',
+        }}
+      >
+        {positive ? <IconArrowUp size={13} /> : <IconArrowDown size={13} />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div
+          className="text-[13px] font-medium truncate"
+          style={{ color: 'var(--ink)' }}
+        >
+          {txn.description || txn.type}
+        </div>
+        <div className="text-[11px] mono" style={{ color: 'var(--ink-3)' }}>
+          {sub}
+        </div>
+      </div>
+      <div
+        className="mono tnum text-[13px] font-medium shrink-0"
+        style={{ color: positive ? 'var(--good)' : 'var(--ink)' }}
+      >
+        {positive ? '+' : ''}RM {Math.abs(txn.amount).toFixed(0)}
+      </div>
+    </div>
+  );
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function PaymentsPage() {
   const { coach } = useAuth();
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState<Tab>('Wallets');
 
-  // Wallets + students data
   const { wallets } = useWallets(coach?.id);
   const { students } = useStudents(coach?.id);
-
-  // Overview data
   const { bookings } = useBookings(coach?.id, 'confirmed');
   const { classExceptions } = useClassExceptions(coach?.id);
-  const { lessonLogs } = useLessonLogs(coach?.id, undefined, undefined, 1);
+  const { lessonLogs } = useLessonLogs(coach?.id, undefined, undefined, 2);
 
-  // All transactions across wallets (for History tab) — global limit, not per-wallet
-  const HISTORY_PAGE_SIZE = 10;
-  const [historyLimit, setHistoryLimit] = useState(HISTORY_PAGE_SIZE);
-  const [mergedTransactions, setMergedTransactions] = useState<(WalletTransaction & { walletName: string })[]>([]);
-  const [anyWalletAtLimit, setAnyWalletAtLimit] = useState(false);
+  const walletIds = wallets.map((w) => w.id).join(',');
 
-  // Stable wallet identity — only re-run listeners when wallet IDs change
-  const walletIds = wallets.map(w => w.id).join(',');
+  // Uncapped listener for this-month top-ups (stat bar).
+  const [monthTopUps, setMonthTopUps] = useState(0);
+  const monthRange = useMemo(() => getMonthRange(), []);
 
   useEffect(() => {
-    if (!coach?.id || !db || !walletIds) return;
+    if (!coach?.id || !db || !walletIds) {
+      setMonthTopUps(0);
+      return;
+    }
     const firestore = db as Firestore;
     const unsubs: (() => void)[] = [];
-    const txnsByWallet = new Map<string, (WalletTransaction & { walletName: string })[]>();
-    const atLimitByWallet = new Map<string, boolean>();
+    const byWallet = new Map<string, number>();
 
-    // Each wallet only needs to surface its top `historyLimit` candidates —
-    // anything older than that can't be in the merged top `historyLimit`.
     for (const wallet of wallets) {
       const q = query(
         collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'),
         orderBy('createdAt', 'desc'),
-        limit(historyLimit)
+        limit(120),
       );
       const unsub = onSnapshot(q, (snap) => {
-        const items = snap.docs.map((d) => ({
-          id: d.id,
-          type: d.data().type as WalletTransaction['type'],
-          amount: d.data().amount ?? 0,
-          balanceAfter: d.data().balanceAfter ?? 0,
-          description: d.data().description ?? '',
-          studentId: d.data().studentId ?? undefined,
-          lessonLogId: d.data().lessonLogId ?? undefined,
-          date: d.data().date,
-          createdAt: d.data().createdAt?.toDate() || new Date(),
-          walletName: wallet.name,
-        }));
-        txnsByWallet.set(wallet.id, items);
-        atLimitByWallet.set(wallet.id, snap.docs.length >= historyLimit);
-        const merged = Array.from(txnsByWallet.values()).flat();
-        merged.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-        setMergedTransactions(merged);
-        setAnyWalletAtLimit(Array.from(atLimitByWallet.values()).some(v => v));
+        let sum = 0;
+        for (const d of snap.docs) {
+          const data = d.data();
+          if (data.type !== 'top-up') continue;
+          if (!data.date || data.date < monthRange.start || data.date > monthRange.end) continue;
+          sum += data.amount ?? 0;
+        }
+        byWallet.set(wallet.id, sum);
+        let total = 0;
+        for (const v of byWallet.values()) total += v;
+        setMonthTopUps(total);
       });
       unsubs.push(unsub);
     }
-
     return () => unsubs.forEach((u) => u());
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [coach?.id, walletIds, historyLimit]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coach?.id, walletIds, monthRange.start, monthRange.end]);
 
-  const allTransactions = useMemo(
-    () => mergedTransactions.slice(0, historyLimit),
-    [mergedTransactions, historyLimit],
-  );
-  const hasMoreHistory = mergedTransactions.length > historyLimit || anyWalletAtLimit;
-
-  // Wallet detail panel
+  // Wallet detail panel.
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
 
-  // Keep selectedWallet in sync with live wallet data
   useEffect(() => {
-    if (selectedWallet) {
-      const updated = wallets.find((w) => w.id === selectedWallet.id);
-      if (updated) {
-        setSelectedWallet(updated);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-sync only when the wallets list changes; including selectedWallet loops
+    if (!selectedWallet) return;
+    const updated = wallets.find((w) => w.id === selectedWallet.id);
+    if (updated && updated !== selectedWallet) setSelectedWallet(updated);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wallets]);
 
-  // Transactions for the top-up modal — only loaded when the selected wallet is
-  // negative, so getWalletStatus can walk back to the pre-debt balance snapshot.
-  const selectedWalletNegative = !!selectedWallet && selectedWallet.balance < 0;
-  const { transactions: selectedWalletTransactions } = useWalletTransactions(
-    coach?.id,
-    selectedWalletNegative ? selectedWallet!.id : undefined,
-    20
-  );
-
-  // Create wallet modal
+  // Modals.
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newWalletName, setNewWalletName] = useState('');
   const [newWalletStudentIds, setNewWalletStudentIds] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
 
-  // Top-up modal
   const [showTopUpModal, setShowTopUpModal] = useState(false);
   const [topUpAmount, setTopUpAmount] = useState('');
-  const [topUpDate, setTopUpDate] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  });
+  const [topUpDate, setTopUpDate] = useState(() => todayYMD());
   const [toppingUp, setToppingUp] = useState(false);
 
-  // Adjustment modal
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [adjType, setAdjType] = useState<'add' | 'deduct'>('add');
   const [adjAmount, setAdjAmount] = useState('');
   const [adjDescription, setAdjDescription] = useState('');
   const [adjusting, setAdjusting] = useState(false);
 
-  // Delete wallet modal
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingWallet, setDeletingWallet] = useState(false);
 
+  const [showTabModeModal, setShowTabModeModal] = useState(false);
+  const [togglingTabMode, setTogglingTabMode] = useState(false);
+
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [archivingWallet, setArchivingWallet] = useState(false);
+
+  // Filters.
   const [walletSearch, setWalletSearch] = useState('');
   const [walletDayFilter, setWalletDayFilter] = useState<
     DayOfWeek | 'all' | 'adhoc' | 'negative' | 'low'
@@ -615,34 +668,15 @@ export default function PaymentsPage() {
     }
   }, [searchParams]);
 
-  // Students not yet assigned to any wallet
-  const unassignedStudents = students.filter(
-    (s) => !wallets.some((w) => w.studentIds.includes(s.id))
-  );
-
-  // ── Overview calculations ──────────────────────────────────────────────────
-
-  const recurringBookings = useMemo(() => bookings.filter((b) => !b.endDate), [bookings]);
-
-  const weekRange = useMemo(() => getWeekRange(), []);
-  const monthRange = useMemo(() => getMonthRange(), []);
-
-  // Projected = every class actually scheduled in the period (recurring +
-  // one-off, respecting exceptions and price overrides). Changes live as you
-  // add/cancel lessons mid-week.
-  const weeklyTotal = useMemo(
-    () => getScheduledRevenueForDateRange(weekRange.start, weekRange.end, bookings, classExceptions),
-    [weekRange, bookings, classExceptions]
-  );
-  const monthlyTotal = useMemo(
-    () => getScheduledRevenueForDateRange(monthRange.start, monthRange.end, bookings, classExceptions),
-    [monthRange, bookings, classExceptions]
+  // Day map for filter pills.
+  const recurringBookings = useMemo(
+    () => bookings.filter((b) => !b.endDate),
+    [bookings],
   );
 
   const { walletDayMap, activeDays, activeWalletIds } = useMemo(() => {
     const dayMap = new Map<DayOfWeek, Set<string>>();
     const active = new Set<string>();
-
     for (const booking of recurringBookings) {
       for (const walletId of Object.values(booking.studentWallets)) {
         if (!walletId) continue;
@@ -651,9 +685,20 @@ export default function PaymentsPage() {
         dayMap.get(booking.dayOfWeek)!.add(walletId);
       }
     }
-
-    const allDays: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-    return { walletDayMap: dayMap, activeDays: allDays.filter((d) => dayMap.has(d)), activeWalletIds: active };
+    const allDays: DayOfWeek[] = [
+      'monday',
+      'tuesday',
+      'wednesday',
+      'thursday',
+      'friday',
+      'saturday',
+      'sunday',
+    ];
+    return {
+      walletDayMap: dayMap,
+      activeDays: allDays.filter((d) => dayMap.has(d)),
+      activeWalletIds: active,
+    };
   }, [recurringBookings]);
 
   const studentNameById = useMemo(() => {
@@ -662,21 +707,19 @@ export default function PaymentsPage() {
     return map;
   }, [students]);
 
-  const todayStr = useMemo(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }, []);
+  const todayStr = useMemo(() => todayYMD(), []);
 
   const lowCount = useMemo(
-    () => wallets.filter((w) => !(w.archived ?? false) && isLowBalance(w, bookings, todayStr)).length,
-    [wallets, bookings, todayStr]
+    () =>
+      wallets.filter(
+        (w) => !(w.archived ?? false) && isLowBalance(w, bookings, todayStr),
+      ).length,
+    [wallets, bookings, todayStr],
   );
 
   const filteredWallets = useMemo(() => {
     let result = wallets;
-    if (!showArchived) {
-      result = result.filter((w) => !(w.archived ?? false));
-    }
+    if (!showArchived) result = result.filter((w) => !(w.archived ?? false));
     if (walletDayFilter === 'adhoc') {
       result = result.filter((w) => !activeWalletIds.has(w.id));
     } else if (walletDayFilter === 'negative') {
@@ -687,17 +730,26 @@ export default function PaymentsPage() {
       const dayWallets = walletDayMap.get(walletDayFilter);
       result = dayWallets ? result.filter((w) => dayWallets.has(w.id)) : [];
     }
-
     const q = walletSearch.trim().toLowerCase();
     if (q) {
-      result = result.filter((w) =>
-        w.name.toLowerCase().includes(q) ||
-        w.studentIds.some((id) => studentNameById.get(id)?.toLowerCase().includes(q))
+      result = result.filter(
+        (w) =>
+          w.name.toLowerCase().includes(q) ||
+          w.studentIds.some((id) => studentNameById.get(id)?.toLowerCase().includes(q)),
       );
     }
-
     return result;
-  }, [wallets, walletDayFilter, walletDayMap, activeWalletIds, walletSearch, studentNameById, showArchived, bookings, todayStr]);
+  }, [
+    wallets,
+    walletDayFilter,
+    walletDayMap,
+    activeWalletIds,
+    walletSearch,
+    studentNameById,
+    showArchived,
+    bookings,
+    todayStr,
+  ]);
 
   useEffect(() => {
     if (
@@ -711,40 +763,65 @@ export default function PaymentsPage() {
     }
   }, [activeDays, walletDayFilter]);
 
-  const weekActual = useMemo(() => {
-    return lessonLogs
-      .filter((l) => l.date >= weekRange.start && l.date <= weekRange.end)
-      .reduce((sum, l) => sum + l.price, 0);
-  }, [lessonLogs, weekRange]);
-
-  const monthActual = useMemo(() => {
-    return lessonLogs
-      .filter((l) => l.date >= monthRange.start && l.date <= monthRange.end)
-      .reduce((sum, l) => sum + l.price, 0);
-  }, [lessonLogs, monthRange]);
-
-  const totalBalance = useMemo(
-    () => wallets.filter((w) => w.balance > 0).reduce((sum, w) => sum + w.balance, 0),
-    [wallets]
+  // Stats.
+  const lastMonthRange = useMemo(() => getLastMonthRange(), []);
+  const needsAttention = useMemo(() => {
+    let owing = 0;
+    let empty = 0;
+    let low = 0;
+    for (const w of wallets) {
+      if (w.archived) continue;
+      const { health } = getWalletHealth(w, bookings, todayStr);
+      if (health === 'owing') owing += 1;
+      else if (health === 'empty') empty += 1;
+      else if (health === 'low') low += 1;
+    }
+    return { owing, empty, low };
+  }, [wallets, bookings, todayStr]);
+  const monthActual = useMemo(
+    () =>
+      lessonLogs
+        .filter((l) => l.date >= monthRange.start && l.date <= monthRange.end)
+        .reduce((sum, l) => sum + l.price, 0),
+    [lessonLogs, monthRange],
+  );
+  const lastMonthActual = useMemo(
+    () =>
+      lessonLogs
+        .filter((l) => l.date >= lastMonthRange.start && l.date <= lastMonthRange.end)
+        .reduce((sum, l) => sum + l.price, 0),
+    [lessonLogs, lastMonthRange],
+  );
+  const monthProjected = useMemo(
+    () =>
+      getScheduledRevenueForDateRange(
+        monthRange.start,
+        monthRange.end,
+        bookings,
+        classExceptions,
+      ),
+    [monthRange, bookings, classExceptions],
   );
 
-  const totalUnpaid = useMemo(
-    () => wallets.filter((w) => w.balance < 0).reduce((sum, w) => sum + Math.abs(w.balance), 0),
-    [wallets]
-  );
+  // Top-up presets (require a rate > 0).
+  const topUpPresets = useMemo(() => {
+    if (!selectedWallet) return null;
+    const { rate } = getWalletStatus(selectedWallet, bookings, todayStr);
+    if (rate <= 0) return null;
+    return [rate, rate * 5, rate * 10];
+  }, [selectedWallet, bookings, todayStr]);
 
-  const recentLogs = useMemo(
-    () => [...lessonLogs].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10),
-    [lessonLogs]
+  const unassignedStudents = students.filter(
+    (s) => !wallets.some((w) => w.studentIds.includes(s.id)),
   );
-
-  const formatRM = (amount: number) =>
-    `RM ${amount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   if (!coach) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+        <div
+          className="animate-spin rounded-full h-8 w-8 border-b-2"
+          style={{ borderColor: 'var(--accent)' }}
+        />
       </div>
     );
   }
@@ -785,13 +862,20 @@ export default function PaymentsPage() {
     try {
       const firestore = db as Firestore;
       const walletRef = doc(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id);
-      const txnCol = collection(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id, 'transactions');
+      const txnCol = collection(
+        firestore,
+        'coaches',
+        coach.id,
+        'wallets',
+        selectedWallet.id,
+        'transactions',
+      );
       const newBalance = selectedWallet.balance + amount;
       await addDoc(txnCol, {
         type: 'top-up',
         amount,
         balanceAfter: newBalance,
-        description: `Top up`,
+        description: 'Top up',
         date: topUpDate,
         createdAt: serverTimestamp(),
       });
@@ -822,18 +906,21 @@ export default function PaymentsPage() {
     try {
       const firestore = db as Firestore;
       const walletRef = doc(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id);
-      const txnCol = collection(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id, 'transactions');
+      const txnCol = collection(
+        firestore,
+        'coaches',
+        coach.id,
+        'wallets',
+        selectedWallet.id,
+        'transactions',
+      );
       const newBalance = selectedWallet.balance + delta;
-      const today = (() => {
-        const d = new Date();
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      })();
       await addDoc(txnCol, {
         type: 'adjustment',
         amount: delta,
         balanceAfter: newBalance,
         description,
-        date: today,
+        date: todayYMD(),
         createdAt: serverTimestamp(),
       });
       await updateDoc(walletRef, {
@@ -852,14 +939,59 @@ export default function PaymentsPage() {
     }
   };
 
+  const handleToggleTabMode = async () => {
+    if (!db || !selectedWallet) return;
+    setTogglingTabMode(true);
+    try {
+      const firestore = db as Firestore;
+      const next = !(selectedWallet.tabMode ?? false);
+      await updateDoc(
+        doc(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id),
+        { tabMode: next, updatedAt: serverTimestamp() },
+      );
+      showToast(next ? 'Tab mode on' : 'Tab mode off', 'success');
+      setShowTabModeModal(false);
+    } catch {
+      showToast('Failed to update tab mode', 'error');
+    } finally {
+      setTogglingTabMode(false);
+    }
+  };
+
+  const handleToggleArchive = async () => {
+    if (!db || !selectedWallet) return;
+    setArchivingWallet(true);
+    try {
+      const firestore = db as Firestore;
+      const next = !(selectedWallet.archived ?? false);
+      await updateDoc(
+        doc(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id),
+        { archived: next, updatedAt: serverTimestamp() },
+      );
+      showToast(next ? 'Wallet archived' : 'Wallet unarchived', 'success');
+      setShowArchiveModal(false);
+      if (next) setSelectedWallet(null);
+    } catch {
+      showToast('Failed to update', 'error');
+    } finally {
+      setArchivingWallet(false);
+    }
+  };
+
   const handleDeleteWallet = async () => {
     if (!db || !selectedWallet) return;
     setDeletingWallet(true);
     try {
       const firestore = db as Firestore;
-      const txnCol = collection(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id, 'transactions');
+      const txnCol = collection(
+        firestore,
+        'coaches',
+        coach.id,
+        'wallets',
+        selectedWallet.id,
+        'transactions',
+      );
       const txnSnap = await getDocs(txnCol);
-      // Chunk into batches of 450 to stay under Firestore's 500-write batch limit
       const chunks: typeof txnSnap.docs[] = [];
       for (let i = 0; i < txnSnap.docs.length; i += 450) {
         chunks.push(txnSnap.docs.slice(i, i + 450));
@@ -882,515 +1014,433 @@ export default function PaymentsPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  return (
-    <div>
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100 mb-6">Payments</h1>
+  const selectedLinked = selectedWallet
+    ? students.filter((s) => selectedWallet.studentIds.includes(s.id))
+    : [];
 
-      {/* Tab bar */}
-      <div className="flex gap-1 mb-6 border-b border-gray-200 dark:border-[#333333]">
-        {TABS.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === tab
-                ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
-                : 'border-transparent text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-300'
-            }`}
+  return (
+    <div className="px-4 sm:px-6 py-5 sm:py-7" style={{ color: 'var(--ink)' }}>
+      {/* Header */}
+      <div className="flex items-end justify-between gap-3 mb-5">
+        <div>
+          <div
+            className="text-[11px] font-semibold uppercase"
+            style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
           >
-            {tab}
-          </button>
-        ))}
+            Payments
+          </div>
+          <div
+            className="text-[22px] sm:text-[26px] font-semibold leading-tight"
+            style={{ letterSpacing: '-0.6px' }}
+          >
+            Wallets &amp; ledger
+          </div>
+        </div>
+        <Btn variant="primary" onClick={() => setShowCreateModal(true)}>
+          <IconPlus size={14} /> New wallet
+        </Btn>
       </div>
 
-      {/* ── Overview tab ── */}
-      {activeTab === 'Overview' && (
-        <div className="space-y-6">
-          {/* Stat cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-white dark:bg-[#1f1f1f] rounded-xl border border-gray-100 dark:border-[#333333] p-4">
-              <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Total Balance</p>
-              <p className="text-xl font-bold text-green-600 dark:text-green-400">{formatRM(totalBalance)}</p>
-              <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">across {wallets.filter((w) => w.balance > 0).length} wallets</p>
-            </div>
-            <div className="bg-white dark:bg-[#1f1f1f] rounded-xl border border-gray-100 dark:border-[#333333] p-4">
-              <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Total Unpaid</p>
-              <p className={`text-xl font-bold ${totalUnpaid > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-zinc-500'}`}>
-                {formatRM(totalUnpaid)}
-              </p>
-              <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{wallets.filter((w) => w.balance < 0).length} wallets owe you</p>
-            </div>
-            <div className="bg-white dark:bg-[#1f1f1f] rounded-xl border border-gray-100 dark:border-[#333333] p-4">
-              <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">This Month (Actual)</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-zinc-100">{formatRM(monthActual)}</p>
-              <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">vs {formatRM(monthlyTotal)} projected</p>
-            </div>
-            <div className="bg-white dark:bg-[#1f1f1f] rounded-xl border border-gray-100 dark:border-[#333333] p-4">
-              <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">This Week (Actual)</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-zinc-100">{formatRM(weekActual)}</p>
-              <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">vs {formatRM(weeklyTotal)} projected</p>
-            </div>
-          </div>
+      {/* Stat row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mb-5">
+        <Stat
+          label="Needs attention"
+          value={needsAttention.owing + needsAttention.empty + needsAttention.low}
+          sub={(() => {
+            const parts: string[] = [];
+            if (needsAttention.owing > 0) parts.push(`${needsAttention.owing} owing`);
+            if (needsAttention.empty > 0) parts.push(`${needsAttention.empty} empty`);
+            if (needsAttention.low > 0) parts.push(`${needsAttention.low} low`);
+            return parts.length ? parts.join(' · ') : 'all healthy';
+          })()}
+          tone={
+            needsAttention.owing > 0 || needsAttention.empty > 0
+              ? 'bad'
+              : needsAttention.low > 0
+                ? 'warn'
+                : undefined
+          }
+        />
+        <Stat label="Last month" value={formatRM(lastMonthActual)} sub="earned" />
+        <Stat
+          label="This month"
+          value={formatRM(monthActual)}
+          sub={`of ${formatRM(monthProjected)} projected`}
+        />
+        <Stat label="Top-ups" value={formatRM(monthTopUps)} sub="this month" />
+      </div>
 
-          {/* Recent lessons */}
-          {recentLogs.length > 0 && (
-            <div className="bg-white dark:bg-[#1f1f1f] rounded-xl border border-gray-100 dark:border-[#333333]">
-              <div className="px-4 py-3 border-b border-gray-100 dark:border-[#333333]">
-                <h2 className="text-sm font-semibold text-gray-900 dark:text-zinc-100">Recent Lessons</h2>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 dark:border-[#333333]">
-                      <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-zinc-400">Date</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-zinc-400">Student</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-zinc-400 hidden sm:table-cell">Time</th>
-                      <th className="text-right px-4 py-3 font-medium text-gray-500 dark:text-zinc-400">Price</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentLogs.map((log) => (
-                      <tr key={log.id} className="border-b border-gray-50 dark:border-[#2a2a2a] last:border-0">
-                        <td className="px-4 py-3 text-gray-600 dark:text-zinc-400">{log.date}</td>
-                        <td className="px-4 py-3 text-gray-800 dark:text-zinc-200">{log.studentName}</td>
-                        <td className="px-4 py-3 text-gray-500 dark:text-zinc-500 hidden sm:table-cell">
-                          {formatTimeDisplay(log.startTime)} &ndash; {formatTimeDisplay(log.endTime)}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          {log.price > 0 ? (
-                            <span className="text-gray-900 dark:text-zinc-100 font-medium">RM {log.price}</span>
-                          ) : (
-                            <span className="text-gray-400 dark:text-zinc-500">&mdash;</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Projected income */}
-          {recurringBookings.length > 0 && (
-            <div className="bg-white dark:bg-[#1f1f1f] rounded-xl border border-gray-100 dark:border-[#333333]">
-              <div className="px-4 py-3 border-b border-gray-100 dark:border-[#333333]">
-                <h2 className="text-sm font-semibold text-gray-900 dark:text-zinc-100">Projected from Recurring Bookings</h2>
-              </div>
-              <div className="grid grid-cols-3 divide-x divide-gray-100 dark:divide-[#333333]">
-                <div className="p-4 text-center">
-                  <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Weekly</p>
-                  <p className="text-lg font-bold text-gray-900 dark:text-zinc-100">{formatRM(weeklyTotal)}</p>
+      {/* Wallets */}
+      <div>
+        {wallets.length > 0 && (
+            <div className="mb-3 flex items-center gap-2">
+              <div className="relative flex-1 min-w-0">
+                <div
+                  className="absolute left-3 top-1/2 -translate-y-1/2"
+                  style={{ color: 'var(--ink-3)' }}
+                >
+                  <IconSearch size={14} />
                 </div>
-                <div className="p-4 text-center">
-                  <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Monthly</p>
-                  <p className="text-lg font-bold text-gray-900 dark:text-zinc-100">{formatRM(monthlyTotal)}</p>
-                </div>
-                <div className="p-4 text-center">
-                  <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Annual</p>
-                  <p className="text-lg font-bold text-gray-900 dark:text-zinc-100">{formatRM(weeklyTotal * 52)}</p>
-                </div>
+                <input
+                  placeholder="Search wallet or student…"
+                  value={walletSearch}
+                  onChange={(e) => setWalletSearch(e.target.value)}
+                  className={`${paperInputClass} pl-9`}
+                  style={paperInputStyle}
+                />
               </div>
             </div>
           )}
 
-          {/* Empty state */}
-          {lessonLogs.length === 0 && wallets.length === 0 && (
-            <p className="text-gray-500 dark:text-zinc-400 text-center py-12">No data yet. Create wallets and record lessons to see your overview.</p>
-          )}
-        </div>
-      )}
-
-      {/* ── History tab ── */}
-      {activeTab === 'History' && (
-        <div>
-          {allTransactions.length === 0 ? (
-            <p className="text-gray-500 dark:text-zinc-400 text-center py-12">No transactions yet.</p>
-          ) : (
-            <div className="bg-white dark:bg-[#1f1f1f] rounded-xl border border-gray-100 dark:border-[#333333] overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 dark:border-[#333333]">
-                    <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-zinc-400">Date</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-zinc-400 hidden sm:table-cell">Wallet</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-zinc-400">Description</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-zinc-400 hidden sm:table-cell">Type</th>
-                    <th className="text-right px-4 py-3 font-medium text-gray-500 dark:text-zinc-400">Amount</th>
-                    <th className="text-right px-4 py-3 font-medium text-gray-500 dark:text-zinc-400 hidden md:table-cell">Balance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allTransactions.map((txn) => (
-                    <tr key={txn.id} className="border-b border-gray-50 dark:border-[#2a2a2a] last:border-0">
-                      <td className="px-4 py-3 text-gray-600 dark:text-zinc-400">{txn.date}</td>
-                      <td className="px-4 py-3 text-gray-800 dark:text-zinc-200 hidden sm:table-cell">{txn.walletName}</td>
-                      <td className="px-4 py-3 text-gray-800 dark:text-zinc-200">{txn.description}</td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                          txn.type === 'charge' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                          : txn.type === 'top-up' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                          : txn.type === 'refund' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                          : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                        }`}>
-                          {txn.type}
-                        </span>
-                      </td>
-                      <td className={`px-4 py-3 text-right font-medium ${txn.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-                        {txn.amount < 0 ? '-' : '+'}RM {Math.abs(txn.amount).toFixed(0)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-500 dark:text-zinc-400 hidden md:table-cell">RM {txn.balanceAfter.toFixed(0)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {hasMoreHistory && (
-              <button
-                onClick={() => setHistoryLimit(historyLimit + HISTORY_PAGE_SIZE)}
-                className="w-full text-center py-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                Load more
-              </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Wallets tab ── */}
-      {activeTab === 'Wallets' && (
-        <div className="space-y-4">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500 dark:text-zinc-400">
-              {filteredWallets.length} {filteredWallets.length === 1 ? 'wallet' : 'wallets'}
-              {(walletDayFilter !== 'all' || walletSearch.trim()) && wallets.length !== filteredWallets.length
-                ? ` (of ${wallets.length})`
-                : ''}
-            </p>
-            <Button onClick={() => setShowCreateModal(true)}>+ New Wallet</Button>
-          </div>
-
-          {wallets.length > 0 && (
-            <Input
-              id="wallet-search"
-              placeholder="Search by wallet or student name..."
-              value={walletSearch}
-              onChange={(e) => setWalletSearch(e.target.value)}
-            />
-          )}
-
+          {/* Filter pills */}
           {activeDays.length > 0 && (
-            <>
-            <div className="flex gap-2 flex-wrap">
-              <button
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <FilterPill
+                active={walletDayFilter === 'all'}
                 onClick={() => setWalletDayFilter('all')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  walletDayFilter === 'all'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 dark:bg-[#1f1f1f] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]'
-                }`}
               >
                 All
-              </button>
+              </FilterPill>
               {activeDays.map((day) => (
-                <button
+                <FilterPill
                   key={day}
+                  active={walletDayFilter === day}
                   onClick={() => setWalletDayFilter(day)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    walletDayFilter === day
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 dark:bg-[#1f1f1f] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]'
-                  }`}
                 >
                   {day.charAt(0).toUpperCase() + day.slice(1, 3)}
-                </button>
+                </FilterPill>
               ))}
-              <button
+              <FilterPill
+                active={walletDayFilter === 'adhoc'}
                 onClick={() => setWalletDayFilter('adhoc')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  walletDayFilter === 'adhoc'
-                    ? 'bg-orange-500 text-white'
-                    : 'bg-gray-100 dark:bg-[#1f1f1f] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]'
-                }`}
               >
                 Ad-hoc
-              </button>
-              <button
+              </FilterPill>
+              <FilterPill
+                active={walletDayFilter === 'negative'}
                 onClick={() => setWalletDayFilter('negative')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  walletDayFilter === 'negative'
-                    ? 'bg-red-600 text-white'
-                    : 'bg-gray-100 dark:bg-[#1f1f1f] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]'
-                }`}
+                tone="bad"
               >
                 Negative
-              </button>
-              <button
+              </FilterPill>
+              <FilterPill
+                active={walletDayFilter === 'low'}
                 onClick={() => setWalletDayFilter('low')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  walletDayFilter === 'low'
-                    ? 'bg-red-600 text-white'
-                    : 'bg-gray-100 dark:bg-[#1f1f1f] text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-[#2a2a2a]'
-                }`}
+                tone="warn"
               >
-                Running low{lowCount > 0 ? ` (${lowCount})` : ''}
-              </button>
+                Low{lowCount > 0 ? ` (${lowCount})` : ''}
+              </FilterPill>
+              <label
+                className="flex items-center gap-2 text-[12px] ml-auto"
+                style={{ color: 'var(--ink-3)' }}
+              >
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={(e) => setShowArchived(e.target.checked)}
+                  className="rounded"
+                />
+                Show archived
+              </label>
             </div>
-            <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-zinc-400">
-              <input
-                type="checkbox"
-                checked={showArchived}
-                onChange={(e) => setShowArchived(e.target.checked)}
-                className="rounded"
-              />
-              Show archived
-            </label>
-            </>
           )}
 
-          {/* Wallet cards grid */}
           {wallets.length === 0 ? (
-            <div className="text-center py-16 text-gray-400 dark:text-zinc-500">
-              <p className="text-lg font-medium mb-1">No wallets yet</p>
-              <p className="text-sm">Create a wallet to track prepaid balances for students.</p>
+            <div
+              className="rounded-[12px] border py-16 text-center"
+              style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
+            >
+              <p
+                className="text-[15px] font-semibold mb-1"
+                style={{ color: 'var(--ink)' }}
+              >
+                No wallets yet
+              </p>
+              <p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
+                Create a wallet to track prepaid balances for students.
+              </p>
             </div>
           ) : filteredWallets.length === 0 ? (
-            <div className="text-center py-12 text-gray-400 dark:text-zinc-500">
+            <div
+              className="rounded-[12px] border py-12 text-center text-[13px]"
+              style={{
+                background: 'var(--panel)',
+                borderColor: 'var(--line)',
+                color: 'var(--ink-3)',
+              }}
+            >
               {walletDayFilter === 'adhoc'
                 ? 'All wallets have recurring bookings.'
                 : walletDayFilter === 'negative'
-                ? 'No wallets in the negative.'
-                : walletDayFilter === 'low'
-                ? 'No wallets need topping up.'
-                : walletDayFilter !== 'all'
-                ? `No wallets on ${walletDayFilter.charAt(0).toUpperCase() + walletDayFilter.slice(1)}.`
-                : 'No wallets match your search.'}
+                  ? 'No wallets in the negative.'
+                  : walletDayFilter === 'low'
+                    ? 'No wallets need topping up.'
+                    : walletDayFilter !== 'all'
+                      ? `No wallets on ${walletDayFilter.charAt(0).toUpperCase() + walletDayFilter.slice(1)}.`
+                      : 'No wallets match your search.'}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {filteredWallets.map((wallet) => {
-                const linkedStudents = students.filter((s) => wallet.studentIds.includes(s.id));
+                const linked = students.filter((s) => wallet.studentIds.includes(s.id));
                 return (
-                  <WalletListCard
+                  <WalletCard
                     key={wallet.id}
-                    coachId={coach!.id}
                     wallet={wallet}
                     bookings={bookings}
                     todayStr={todayStr}
-                    linkedStudents={linkedStudents}
+                    linkedStudents={linked}
+                    selected={selectedWallet?.id === wallet.id}
                     onClick={() => setSelectedWallet(wallet)}
                   />
                 );
               })}
             </div>
-          )}
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* ── Wallet Detail Modal ── */}
-      <Modal
-        isOpen={!!selectedWallet}
+      {/* ── Wallet detail modal ── */}
+      <PaperModal
+        open={!!selectedWallet}
         onClose={() => setSelectedWallet(null)}
         title={selectedWallet?.name ?? ''}
+        width={460}
       >
         {selectedWallet && (
-          <WalletDetail
+          <WalletDetailBody
             coachId={coach.id}
             wallet={selectedWallet}
             students={students}
             wallets={wallets}
             onTopUp={() => setShowTopUpModal(true)}
             onAdjust={() => setShowAdjustModal(true)}
+            onToggleTabMode={() => setShowTabModeModal(true)}
+            onArchive={() => setShowArchiveModal(true)}
             onDelete={() => setShowDeleteModal(true)}
-            onToggleArchive={() => setSelectedWallet(null)}
             showToast={showToast}
           />
         )}
-      </Modal>
+      </PaperModal>
 
-      {/* ── Create Wallet Modal ── */}
-      <Modal
-        isOpen={showCreateModal}
+      {/* ── Create wallet modal ── */}
+      <PaperModal
+        open={showCreateModal}
         onClose={() => {
           setShowCreateModal(false);
           setNewWalletName('');
           setNewWalletStudentIds([]);
         }}
-        title="New Wallet"
+        title="New wallet"
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
-              Wallet Name
+            <label
+              className="block text-[12px] font-medium mb-1"
+              style={{ color: 'var(--ink-2)' }}
+            >
+              Wallet name
             </label>
-            <Input
+            <input
               value={newWalletName}
               onChange={(e) => setNewWalletName(e.target.value)}
               placeholder="e.g. Ahmad Family"
               autoFocus
+              className={paperInputClass}
+              style={paperInputStyle}
             />
           </div>
 
           {unassignedStudents.length > 0 && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">
-                Link Students (optional)
+              <label
+                className="block text-[12px] font-medium mb-2"
+                style={{ color: 'var(--ink-2)' }}
+              >
+                Link students (optional)
               </label>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {unassignedStudents.map((s) => (
-                  <label
-                    key={s.id}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-[#2a2a2a] cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={newWalletStudentIds.includes(s.id)}
-                      onChange={(e) => {
-                        setNewWalletStudentIds((prev) =>
-                          e.target.checked ? [...prev, s.id] : prev.filter((id) => id !== s.id)
-                        );
-                      }}
-                      className="rounded"
-                    />
-                    <span className="text-sm text-gray-800 dark:text-zinc-200">{s.clientName}</span>
-                  </label>
-                ))}
+              <div
+                className="rounded-[10px] border max-h-48 overflow-y-auto"
+                style={{ borderColor: 'var(--line)' }}
+              >
+                {unassignedStudents.map((s) => {
+                  const checked = newWalletStudentIds.includes(s.id);
+                  return (
+                    <label
+                      key={s.id}
+                      className="flex items-center gap-2 px-3 py-2 cursor-pointer border-b last:border-0"
+                      style={{ borderColor: 'var(--line)' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          setNewWalletStudentIds((prev) =>
+                            e.target.checked
+                              ? [...prev, s.id]
+                              : prev.filter((id) => id !== s.id),
+                          );
+                        }}
+                        className="rounded"
+                      />
+                      <span className="text-[13px]" style={{ color: 'var(--ink)' }}>
+                        {s.clientName}
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          <div className="flex gap-3 pt-2">
-            <Button
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <Btn
+              variant="primary"
               onClick={handleCreateWallet}
-              loading={creating}
               disabled={!newWalletName.trim() || creating}
-              className="flex-1"
             >
-              Create Wallet
-            </Button>
-            <Button
-              variant="ghost"
+              {creating ? 'Creating…' : 'Create wallet'}
+            </Btn>
+            <Btn
+              variant="outline"
               onClick={() => {
                 setShowCreateModal(false);
                 setNewWalletName('');
                 setNewWalletStudentIds([]);
               }}
-              className="flex-1"
             >
               Cancel
-            </Button>
+            </Btn>
           </div>
         </div>
-      </Modal>
+      </PaperModal>
 
-      {/* ── Top-up Modal ── */}
-      <Modal
-        isOpen={showTopUpModal}
+      {/* ── Top-up modal ── */}
+      <PaperModal
+        open={showTopUpModal}
         onClose={() => {
           setShowTopUpModal(false);
           setTopUpAmount('');
         }}
-        title={`Top Up — ${selectedWallet?.name ?? ''}`}
+        title={`Top up — ${selectedWallet?.name ?? ''}`}
       >
         <div className="space-y-4">
-          {selectedWallet && !(selectedWallet.payPerLesson ?? false) && (() => {
-            const { rate, topUpMinimum: minimum } = getWalletStatus(
-              selectedWallet,
-              bookings,
-              todayStr,
-              selectedWalletTransactions
-            );
-            const packageSize = selectedWallet.minLessonsPerTopUp ?? 5;
-            const walletAfter = selectedWallet.balance + minimum;
-            if (rate === 0) return null;
-            return (
-              <div className="bg-gray-50 dark:bg-[#2a2a2a] rounded-lg p-3 text-sm space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-zinc-400">Next lesson:</span>
-                  <span className="text-gray-900 dark:text-zinc-100">RM {rate.toFixed(0)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-zinc-400">Package size:</span>
-                  <span className="text-gray-900 dark:text-zinc-100">{packageSize} lessons</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-zinc-400">Current balance:</span>
-                  <span className="text-gray-900 dark:text-zinc-100">
-                    {selectedWallet.balance < 0 ? '-' : ''}RM {Math.abs(selectedWallet.balance).toFixed(0)}
-                  </span>
-                </div>
-                <div className="border-t border-gray-200 dark:border-[#333333] my-1" />
-                <div className="flex justify-between font-medium">
-                  <span className="text-gray-700 dark:text-zinc-300">Cash to hit {packageSize} lessons:</span>
-                  <span className="text-gray-900 dark:text-zinc-100">RM {minimum.toFixed(0)}</span>
-                </div>
-                {minimum > 0 && (
-                  <>
-                    <div className="flex justify-between text-xs text-gray-500 dark:text-zinc-400">
-                      <span>Wallet after:</span>
-                      <span>RM {walletAfter.toFixed(0)}</span>
-                    </div>
+          {selectedWallet && topUpPresets && (
+            <div>
+              <label
+                className="block text-[12px] font-medium mb-2"
+                style={{ color: 'var(--ink-2)' }}
+              >
+                Quick amounts
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {topUpPresets.map((amount, i) => {
+                  const label = i === 0 ? '1 lesson' : `${i === 1 ? 5 : 10} lessons`;
+                  const active = topUpAmount === String(amount);
+                  return (
                     <button
+                      key={i}
                       type="button"
-                      onClick={() => setTopUpAmount(String(minimum))}
-                      className="mt-2 w-full text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                      onClick={() => setTopUpAmount(String(amount))}
+                      className="rounded-[10px] border py-2 px-2 text-left transition-colors"
+                      style={{
+                        background: active ? 'var(--ink)' : 'var(--panel)',
+                        color: active ? 'var(--bg)' : 'var(--ink)',
+                        borderColor: active ? 'var(--ink)' : 'var(--line-2)',
+                      }}
                     >
-                      Fill to {packageSize} lessons (RM {minimum.toFixed(0)})
+                      <div
+                        className="text-[11px] font-medium"
+                        style={{ color: active ? 'var(--bg)' : 'var(--ink-3)' }}
+                      >
+                        {label}
+                      </div>
+                      <div className="mono tnum text-[15px] font-semibold">
+                        RM {amount.toFixed(0)}
+                      </div>
                     </button>
-                  </>
-                )}
+                  );
+                })}
               </div>
-            );
-          })()}
+            </div>
+          )}
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
+            <label
+              className="block text-[12px] font-medium mb-1"
+              style={{ color: 'var(--ink-2)' }}
+            >
               Amount (RM)
             </label>
-            <Input
+            <input
               type="number"
               min="1"
               value={topUpAmount}
               onChange={(e) => setTopUpAmount(e.target.value)}
               placeholder="0"
               autoFocus
+              className={paperInputClass}
+              style={paperInputStyle}
             />
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
+            <label
+              className="block text-[12px] font-medium mb-1"
+              style={{ color: 'var(--ink-2)' }}
+            >
               Date
             </label>
-            <Input
+            <input
               type="date"
               value={topUpDate}
               onChange={(e) => setTopUpDate(e.target.value)}
+              className={paperInputClass}
+              style={paperInputStyle}
             />
           </div>
-          <div className="flex gap-3 pt-2">
-            <Button
+
+          {selectedWallet &&
+            topUpAmount &&
+            !isNaN(parseFloat(topUpAmount)) &&
+            parseFloat(topUpAmount) > 0 && (
+              <div
+                className="rounded-[10px] border p-3 text-[12.5px] flex items-center justify-between"
+                style={{ background: 'var(--bg)', borderColor: 'var(--line)' }}
+              >
+                <span style={{ color: 'var(--ink-3)' }}>New balance</span>
+                <span
+                  className="mono tnum font-semibold"
+                  style={{ color: 'var(--ink)' }}
+                >
+                  RM {(selectedWallet.balance + parseFloat(topUpAmount)).toFixed(0)}
+                </span>
+              </div>
+            )}
+
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <Btn
+              variant="primary"
               onClick={handleTopUp}
-              loading={toppingUp}
               disabled={!topUpAmount || toppingUp}
-              className="flex-1"
             >
-              Add Funds
-            </Button>
-            <Button
-              variant="ghost"
+              {toppingUp ? 'Adding…' : 'Add funds'}
+            </Btn>
+            <Btn
+              variant="outline"
               onClick={() => {
                 setShowTopUpModal(false);
                 setTopUpAmount('');
               }}
-              className="flex-1"
             >
               Cancel
-            </Button>
+            </Btn>
           </div>
         </div>
-      </Modal>
+      </PaperModal>
 
-      {/* ── Adjustment Modal ── */}
-      <Modal
-        isOpen={showAdjustModal}
+      {/* ── Adjustment modal ── */}
+      <PaperModal
+        open={showAdjustModal}
         onClose={() => {
           setShowAdjustModal(false);
           setAdjAmount('');
@@ -1400,137 +1450,297 @@ export default function PaymentsPage() {
         title={`Adjustment — ${selectedWallet?.name ?? ''}`}
       >
         <div className="space-y-4">
-          {/* Add / Deduct toggle */}
-          <div className="flex gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => setAdjType('add')}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                adjType === 'add'
-                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-400'
-                  : 'bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-zinc-400 border border-transparent'
-              }`}
+              className="rounded-[10px] border py-2 text-[13px] font-medium transition-colors"
+              style={{
+                background:
+                  adjType === 'add' ? 'var(--good-soft)' : 'var(--panel)',
+                color: adjType === 'add' ? 'var(--good)' : 'var(--ink-2)',
+                borderColor:
+                  adjType === 'add' ? 'var(--good)' : 'var(--line-2)',
+              }}
             >
               Add
             </button>
             <button
               onClick={() => setAdjType('deduct')}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                adjType === 'deduct'
-                  ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-400'
-                  : 'bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-zinc-400 border border-transparent'
-              }`}
+              className="rounded-[10px] border py-2 text-[13px] font-medium transition-colors"
+              style={{
+                background:
+                  adjType === 'deduct' ? 'var(--bad-soft)' : 'var(--panel)',
+                color: adjType === 'deduct' ? 'var(--bad)' : 'var(--ink-2)',
+                borderColor:
+                  adjType === 'deduct' ? 'var(--bad)' : 'var(--line-2)',
+              }}
             >
               Deduct
             </button>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
+            <label
+              className="block text-[12px] font-medium mb-1"
+              style={{ color: 'var(--ink-2)' }}
+            >
               Amount (RM)
             </label>
-            <Input
+            <input
               type="number"
               min="1"
               value={adjAmount}
               onChange={(e) => setAdjAmount(e.target.value)}
               placeholder="0"
               autoFocus
+              className={paperInputClass}
+              style={paperInputStyle}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
+            <label
+              className="block text-[12px] font-medium mb-1"
+              style={{ color: 'var(--ink-2)' }}
+            >
               Description (optional)
             </label>
-            <Input
+            <input
               value={adjDescription}
               onChange={(e) => setAdjDescription(e.target.value)}
-              placeholder="e.g. Correction, missed charge..."
+              placeholder="e.g. Correction, missed charge…"
+              className={paperInputClass}
+              style={paperInputStyle}
             />
           </div>
 
-          <div className="flex gap-3 pt-2">
-            <Button
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <Btn
+              variant="primary"
               onClick={handleAdjustment}
-              loading={adjusting}
               disabled={!adjAmount || adjusting}
-              className="flex-1"
             >
-              Apply
-            </Button>
-            <Button
-              variant="ghost"
+              {adjusting ? 'Applying…' : 'Apply'}
+            </Btn>
+            <Btn
+              variant="outline"
               onClick={() => {
                 setShowAdjustModal(false);
                 setAdjAmount('');
                 setAdjDescription('');
                 setAdjType('add');
               }}
-              className="flex-1"
             >
               Cancel
-            </Button>
+            </Btn>
           </div>
         </div>
-      </Modal>
+      </PaperModal>
 
-      {/* ── Delete Wallet Confirmation Modal ── */}
-      <Modal
-        isOpen={showDeleteModal}
+      {/* ── Delete wallet modal ── */}
+      <PaperModal
+        open={showDeleteModal}
         onClose={() => !deletingWallet && setShowDeleteModal(false)}
-        title="Delete Wallet?"
+        title="Delete wallet?"
       >
-        {selectedWallet && (() => {
-          const linkedStudents = students.filter((s) => selectedWallet.studentIds.includes(s.id));
-          return (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-700 dark:text-zinc-300">
-              This will permanently delete <span className="font-medium">{selectedWallet.name}</span> and all its transaction history.
+        {selectedWallet && (
+          <div className="space-y-3">
+            <p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>
+              This will permanently delete{' '}
+              <span className="font-semibold" style={{ color: 'var(--ink)' }}>
+                {selectedWallet.name}
+              </span>{' '}
+              and all its transaction history.
             </p>
-            {linkedStudents.length > 0 && (
-              <div className="rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 px-3 py-2">
-                <p className="text-xs text-yellow-800 dark:text-yellow-300">
-                  <span className="font-semibold">
-                    {linkedStudents.length} {linkedStudents.length === 1 ? 'student' : 'students'}
-                  </span>{' '}
-                  will be unlinked: {linkedStudents.map((s) => s.clientName).join(', ')}.
-                </p>
+            {selectedLinked.length > 0 && (
+              <div
+                className="rounded-[10px] border p-3 text-[12.5px]"
+                style={{
+                  background: 'var(--warn-soft)',
+                  borderColor: 'var(--warn)',
+                  color: 'var(--warn)',
+                }}
+              >
+                <span className="font-semibold">
+                  {selectedLinked.length}{' '}
+                  {selectedLinked.length === 1 ? 'student' : 'students'}
+                </span>{' '}
+                will be unlinked: {selectedLinked.map((s) => s.clientName).join(', ')}.
               </div>
             )}
             {selectedWallet.balance !== 0 && (
-              <div className="rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 px-3 py-2">
-                <p className="text-xs text-yellow-800 dark:text-yellow-300">
-                  Warning: this wallet has a balance of{' '}
-                  <span className="font-semibold">
-                    {selectedWallet.balance < 0 ? '-' : ''}RM {Math.abs(selectedWallet.balance).toFixed(0)}
-                  </span>
-                  {selectedWallet.balance < 0 ? ' owed.' : ' remaining.'} This will be lost.
-                </p>
+              <div
+                className="rounded-[10px] border p-3 text-[12.5px]"
+                style={{
+                  background: 'var(--warn-soft)',
+                  borderColor: 'var(--warn)',
+                  color: 'var(--warn)',
+                }}
+              >
+                This wallet has a balance of{' '}
+                <span className="font-semibold">
+                  {selectedWallet.balance < 0 ? '−' : ''}RM{' '}
+                  {Math.abs(selectedWallet.balance).toFixed(0)}
+                </span>
+                {selectedWallet.balance < 0 ? ' owed' : ' remaining'} — this will be
+                lost.
               </div>
             )}
-            <div className="flex gap-3 pt-2">
-              <Button
-                variant="danger"
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
                 onClick={handleDeleteWallet}
-                loading={deletingWallet}
                 disabled={deletingWallet}
-                className="flex-1"
+                className="rounded-[8px] py-2 text-[13.5px] font-medium transition-colors disabled:opacity-55"
+                style={{ background: 'var(--bad)', color: '#fff' }}
               >
-                Delete
-              </Button>
-              <Button
-                variant="ghost"
+                {deletingWallet ? 'Deleting…' : 'Delete'}
+              </button>
+              <Btn
+                variant="outline"
                 onClick={() => setShowDeleteModal(false)}
                 disabled={deletingWallet}
-                className="flex-1"
               >
                 Cancel
-              </Button>
+              </Btn>
             </div>
           </div>
-          );
-        })()}
-      </Modal>
+        )}
+      </PaperModal>
+
+      {/* ── Tab mode confirmation ── */}
+      <PaperModal
+        open={showTabModeModal}
+        onClose={() => !togglingTabMode && setShowTabModeModal(false)}
+        title={selectedWallet?.tabMode ? 'Turn off tab mode?' : 'Turn on tab mode?'}
+      >
+        {selectedWallet && (
+          <div className="space-y-3">
+            <p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>
+              {selectedWallet.tabMode ? (
+                <>
+                  This wallet will go back to prepaid mode. Low-balance alerts
+                  will fire when the balance drops below two lessons worth.
+                </>
+              ) : (
+                <>
+                  Tab mode is for students who pay after each lesson instead of
+                  prepaying. The wallet will be excluded from low-balance alerts
+                  so it doesn&rsquo;t nag you when it sits near zero.
+                </>
+              )}
+            </p>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <Btn
+                variant="primary"
+                onClick={handleToggleTabMode}
+                disabled={togglingTabMode}
+              >
+                {togglingTabMode
+                  ? 'Saving…'
+                  : selectedWallet.tabMode
+                    ? 'Turn off'
+                    : 'Turn on'}
+              </Btn>
+              <Btn
+                variant="outline"
+                onClick={() => setShowTabModeModal(false)}
+                disabled={togglingTabMode}
+              >
+                Cancel
+              </Btn>
+            </div>
+          </div>
+        )}
+      </PaperModal>
+
+      {/* ── Archive confirmation ── */}
+      <PaperModal
+        open={showArchiveModal}
+        onClose={() => !archivingWallet && setShowArchiveModal(false)}
+        title={selectedWallet?.archived ? 'Unarchive wallet?' : 'Archive wallet?'}
+      >
+        {selectedWallet && (
+          <div className="space-y-3">
+            <p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>
+              {selectedWallet.archived ? (
+                <>
+                  <span className="font-semibold" style={{ color: 'var(--ink)' }}>
+                    {selectedWallet.name}
+                  </span>{' '}
+                  will be restored to the active wallet list.
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold" style={{ color: 'var(--ink)' }}>
+                    {selectedWallet.name}
+                  </span>{' '}
+                  will be hidden from the default view. Transactions are kept and
+                  you can unarchive anytime from the &ldquo;Show archived&rdquo;
+                  filter.
+                </>
+              )}
+            </p>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <Btn
+                variant="primary"
+                onClick={handleToggleArchive}
+                disabled={archivingWallet}
+              >
+                {archivingWallet
+                  ? 'Saving…'
+                  : selectedWallet.archived
+                    ? 'Unarchive'
+                    : 'Archive'}
+              </Btn>
+              <Btn
+                variant="outline"
+                onClick={() => setShowArchiveModal(false)}
+                disabled={archivingWallet}
+              >
+                Cancel
+              </Btn>
+            </div>
+          </div>
+        )}
+      </PaperModal>
     </div>
+  );
+}
+
+// ─── Filter pill ─────────────────────────────────────────────────────────────
+
+function FilterPill({
+  active,
+  onClick,
+  children,
+  tone = 'neutral',
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  tone?: 'neutral' | 'warn' | 'bad';
+}) {
+  // Soft tonal active states (matches Chip tones) — less harsh than solid
+  // saturated fills, in line with the Paper & Ink palette.
+  const activeStyle: React.CSSProperties =
+    tone === 'bad'
+      ? { background: 'var(--bad-soft)', color: 'var(--bad)', borderColor: 'var(--bad-soft)' }
+      : tone === 'warn'
+        ? { background: 'var(--warn-soft)', color: 'var(--warn)', borderColor: 'var(--warn-soft)' }
+        : { background: 'var(--ink)', color: 'var(--bg)', borderColor: 'var(--ink)' };
+  const inactiveStyle: React.CSSProperties = {
+    background: 'var(--panel)',
+    color: 'var(--ink-3)',
+    borderColor: 'var(--line-2)',
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-full px-3 py-1 text-[12px] font-medium border transition-colors"
+      style={active ? activeStyle : inactiveStyle}
+    >
+      {children}
+    </button>
   );
 }

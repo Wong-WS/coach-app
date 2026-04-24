@@ -1,160 +1,268 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
-import { Button } from '@/components/ui/Button';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import {
+  IconHome,
+  IconWallet,
+  IconCalendar,
+  IconUsers,
+  IconSettings,
+  IconSun,
+  IconMoon,
+  IconBell,
+  IconLogOut,
+} from '@/components/paper/Icons';
+import { Avatar } from '@/components/paper/Avatar';
+import { Btn } from '@/components/paper/Button';
 
 const navItems = [
-  { href: '/dashboard', label: 'Overview', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
-  { href: '/dashboard/payments', label: 'Payments', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
-  { href: '/dashboard/bookings', label: 'Schedule', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
-  { href: '/dashboard/students', label: 'Students', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
-  { href: '/dashboard/settings', label: 'Settings', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
-];
+  { href: '/dashboard', label: 'Overview', icon: IconHome },
+  { href: '/dashboard/payments', label: 'Payments', icon: IconWallet },
+  { href: '/dashboard/bookings', label: 'Schedule', icon: IconCalendar },
+  { href: '/dashboard/students', label: 'Students', icon: IconUsers },
+] as const;
+
+function useCoachSlug(coachId: string | undefined) {
+  const [slug, setSlug] = useState<string | null>(null);
+  useEffect(() => {
+    if (!coachId || !db) return;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'coaches', coachId));
+        if (snap.exists()) setSlug(snap.data().slug || null);
+      } catch {
+        /* noop */
+      }
+    })();
+  }, [coachId]);
+  return slug;
+}
 
 function DashboardContent({ children }: { children: React.ReactNode }) {
   const { user, coach, loading, signOut } = useAuth();
   const { isDark, toggle } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
+  const slug = useCoachSlug(coach?.id);
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.push('/login');
-    }
+    if (!loading && !user) router.push('/login');
   }, [user, loading, router]);
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center dark:bg-[#262626]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: 'var(--accent)' }} />
       </div>
     );
   }
 
-  if (!user) {
-    return null;
-  }
+  if (!user) return null;
 
   const handleSignOut = async () => {
     await signOut();
     router.push('/');
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 dark:bg-[#262626]">
-      {/* Top nav bar */}
-      <nav className="bg-white dark:bg-[#1f1f1f] border-b border-gray-200 dark:border-[#333333] fixed w-full z-30">
-        <div className="px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <Link href="/dashboard" className="text-xl font-bold text-blue-600">
-                CoachApp
-              </Link>
-            </div>
-            <div className="flex items-center gap-3">
-<span className="hidden sm:block text-sm text-gray-600 dark:text-zinc-400 truncate max-w-[140px]">{coach?.displayName || user.email}</span>
-              <button
-                onClick={toggle}
-                className="p-2 rounded-lg text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-[#303030] transition-colors"
-                aria-label="Toggle dark mode"
-              >
-                {isDark ? (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                  </svg>
-                )}
-              </button>
-              <Button variant="ghost" size="sm" onClick={handleSignOut}>
-                Sign Out
-              </Button>
-            </div>
-          </div>
-        </div>
-      </nav>
+  const displayName = coach?.displayName || user.email || 'Coach';
+  const firstName = displayName.split(' ')[0] || 'Coach';
 
-      <div className="flex pt-16">
-        {/* Sidebar */}
-        <aside className="hidden lg:flex lg:flex-shrink-0">
-          <div className="w-64 bg-white dark:bg-[#1f1f1f] border-r border-gray-200 dark:border-[#333333] min-h-[calc(100vh-4rem)]">
-            <nav className="p-4 space-y-1">
-              {navItems.map((item) => {
-                const isActive = pathname === item.href;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                        : 'text-gray-700 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-[#303030]'
-                    }`}
-                  >
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d={item.icon}
-                      />
-                    </svg>
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
+  return (
+    <div className="min-h-dvh flex flex-col" style={{ background: 'var(--bg)', color: 'var(--ink)' }}>
+      {/* Topbar (desktop) */}
+      <header
+        className="hidden lg:flex fixed top-0 inset-x-0 h-14 z-30 items-center gap-4 px-5 border-b"
+        style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
+      >
+        <Link href="/dashboard" className="flex items-center gap-2.5">
+          <div
+            className="w-[26px] h-[26px] rounded-[7px] flex items-center justify-center font-bold text-[13px]"
+            style={{ background: 'var(--ink)', color: 'var(--bg)', letterSpacing: '-0.5px' }}
+          >
+            C
           </div>
+          <div className="text-[15px] font-semibold" style={{ letterSpacing: '-0.2px' }}>Coach</div>
+          {slug && (
+            <span className="mono text-[12px]" style={{ color: 'var(--ink-3)' }}>/{slug}</span>
+          )}
+        </Link>
+        <div className="flex-1" />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggle}
+            aria-label="Toggle theme"
+            className="p-1.5 rounded-lg border"
+            style={{ background: 'var(--panel)', borderColor: 'var(--line)', color: 'var(--ink-2)' }}
+          >
+            {isDark ? <IconSun size={16} /> : <IconMoon size={16} />}
+          </button>
+          <button
+            aria-label="Notifications"
+            className="p-1.5 rounded-lg border"
+            style={{ background: 'var(--panel)', borderColor: 'var(--line)', color: 'var(--ink-2)' }}
+          >
+            <IconBell size={16} />
+          </button>
+          <div className="w-px h-[22px] mx-1" style={{ background: 'var(--line)' }} />
+          <Avatar name={displayName} size={28} />
+          <span className="text-[13px]" style={{ color: 'var(--ink-2)' }}>{displayName}</span>
+        </div>
+      </header>
+
+      {/* Topbar (mobile) */}
+      <header
+        className="lg:hidden sticky top-0 z-30 flex items-center justify-between px-5 py-3 border-b"
+        style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
+      >
+        <div className="flex items-center gap-2">
+          <div
+            className="w-[26px] h-[26px] rounded-[7px] flex items-center justify-center font-bold text-[13px]"
+            style={{ background: 'var(--ink)', color: 'var(--bg)', letterSpacing: '-0.5px' }}
+          >
+            C
+          </div>
+          <div className="text-[15px] font-semibold" style={{ letterSpacing: '-0.2px' }}>Hi, {firstName}</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggle}
+            aria-label="Toggle theme"
+            className="p-1.5 rounded-lg border"
+            style={{ background: 'var(--panel)', borderColor: 'var(--line)', color: 'var(--ink-2)' }}
+          >
+            {isDark ? <IconSun size={15} /> : <IconMoon size={15} />}
+          </button>
+          <Avatar name={displayName} size={30} />
+        </div>
+      </header>
+
+      <div className="flex flex-1 min-h-0 lg:pt-14">
+        {/* Sidebar (desktop) */}
+        <aside
+          className="hidden lg:flex flex-col w-[212px] flex-shrink-0 border-r p-3 gap-0.5"
+          style={{
+            background: 'var(--panel)',
+            borderColor: 'var(--line)',
+            height: 'calc(100dvh - 56px)',
+            position: 'sticky',
+            top: 56,
+          }}
+        >
+          <div
+            className="px-2.5 pt-1.5 pb-2 text-[10.5px] font-semibold uppercase"
+            style={{ color: 'var(--ink-4)', letterSpacing: '0.08em' }}
+          >
+            Coach
+          </div>
+          {navItems.map((item) => {
+            const isActive = item.href === '/dashboard' ? pathname === '/dashboard' : pathname?.startsWith(item.href);
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13.5px] font-medium transition-colors"
+                style={{
+                  background: isActive ? 'var(--line)' : 'transparent',
+                  color: isActive ? 'var(--ink)' : 'var(--ink-2)',
+                }}
+              >
+                <span style={{ color: isActive ? 'var(--ink)' : 'var(--ink-3)' }}>
+                  <Icon size={17} />
+                </span>
+                {item.label}
+              </Link>
+            );
+          })}
+          <div className="flex-1" />
+
+          {slug && (
+            <div
+              className="m-1 p-3 rounded-[10px] border border-dashed"
+              style={{ borderColor: 'var(--line-2)', background: 'var(--bg)' }}
+            >
+              <div className="text-[11px] font-medium mb-1" style={{ color: 'var(--ink-3)' }}>Public page</div>
+              <div
+                className="mono text-[12px] mb-2 break-all leading-tight"
+                style={{ color: 'var(--ink-2)' }}
+              >
+                coach-simplify.com/{slug}
+              </div>
+              <Btn size="sm" variant="outline" full onClick={() => navigator.clipboard?.writeText(`https://coach-simplify.com/${slug}`)}>
+                Copy link
+              </Btn>
+            </div>
+          )}
+          <Link
+            href="/dashboard/settings"
+            className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13.5px] font-medium transition-colors"
+            style={{
+              background: pathname?.startsWith('/dashboard/settings') ? 'var(--line)' : 'transparent',
+              color: pathname?.startsWith('/dashboard/settings') ? 'var(--ink)' : 'var(--ink-2)',
+            }}
+          >
+            <span style={{ color: pathname?.startsWith('/dashboard/settings') ? 'var(--ink)' : 'var(--ink-3)' }}>
+              <IconSettings size={17} />
+            </span>
+            Settings
+          </Link>
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13.5px] font-medium text-left"
+            style={{ color: 'var(--ink-3)', background: 'transparent' }}
+          >
+            <IconLogOut size={17} /> Sign out
+          </button>
         </aside>
 
-        {/* Mobile bottom nav */}
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#1f1f1f] border-t border-gray-200 dark:border-[#333333] z-30">
-          <div className="flex justify-around py-2">
-            {navItems.map((item) => {
-              const isActive = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex flex-col items-center gap-1 p-2 ${
-                    isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-zinc-400'
-                  }`}
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
-                  </svg>
-                  <span className="text-xs">{item.label}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
-
         {/* Main content */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8 min-w-0">
-          {children}
-        </main>
+        <main className="flex-1 min-w-0 pb-20 lg:pb-0">{children}</main>
       </div>
+
+      {/* Mobile bottom tab bar */}
+      <nav
+        className="lg:hidden fixed bottom-0 inset-x-0 z-30 flex px-1.5 pt-2 pb-safe border-t"
+        style={{
+          background: 'var(--panel)',
+          borderColor: 'var(--line)',
+          paddingBottom: 'max(env(safe-area-inset-bottom), 10px)',
+        }}
+      >
+        {navItems.map((item) => {
+          const isActive = item.href === '/dashboard' ? pathname === '/dashboard' : pathname?.startsWith(item.href);
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="flex-1 flex flex-col items-center gap-1 py-1.5"
+              style={{ color: isActive ? 'var(--ink)' : 'var(--ink-3)' }}
+            >
+              <Icon size={20} />
+              <span className="text-[10px] font-medium">{item.label}</span>
+            </Link>
+          );
+        })}
+        <Link
+          href="/dashboard/settings"
+          className="flex-1 flex flex-col items-center gap-1 py-1.5"
+          style={{ color: pathname?.startsWith('/dashboard/settings') ? 'var(--ink)' : 'var(--ink-3)' }}
+        >
+          <IconSettings size={20} />
+          <span className="text-[10px] font-medium">Settings</span>
+        </Link>
+      </nav>
     </div>
   );
 }
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
       <DashboardContent>{children}</DashboardContent>
