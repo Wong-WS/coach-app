@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { fetchPortalData, type PortalPayload } from '@/lib/portal-data';
-import { formatDateShort, parseDateString } from '@/lib/date-format';
+import ChargesList from './ChargesList';
+import TopUpsList from './TopUpsList';
 
 export const dynamic = 'force-dynamic';
 
@@ -89,7 +90,7 @@ export default async function PortalPage({
         )}
       </div>
 
-      {/* Top-up suggestion (only when status is empty/owing AND we have a signal) */}
+      {/* Top-up suggestion (only when coach has set usual AND status is empty/owing) */}
       {suggestion && (
         <div
           className="rounded-[12px] border p-4"
@@ -121,47 +122,11 @@ export default async function PortalPage({
         >
           Recent lessons
         </div>
-        <div
-          className="rounded-[12px] border divide-y"
-          style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
-        >
-          {charges.length === 0 ? (
-            <div className="px-3 py-4 text-[12.5px]" style={{ color: 'var(--ink-3)' }}>
-              No lessons yet.
-            </div>
-          ) : (
-            charges.map((c, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2.5 px-3 py-2.5"
-                style={{ borderColor: 'var(--line)' }}
-              >
-                <div className="flex-1 min-w-0">
-                  <div
-                    className="text-[13px] font-medium truncate"
-                    style={{ color: 'var(--ink)' }}
-                  >
-                    {c.studentName || 'Lesson'}
-                  </div>
-                  <div className="text-[11px] mono" style={{ color: 'var(--ink-3)' }}>
-                    {formatDateShort(parseDateString(c.date))}
-                  </div>
-                </div>
-                <div className="text-right shrink-0">
-                  <div
-                    className="mono tnum text-[13px] font-medium"
-                    style={{ color: 'var(--ink)' }}
-                  >
-                    −RM {c.amount.toFixed(0)}
-                  </div>
-                  <div className="mono text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
-                    bal {formatRM(c.balanceAfter)}
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+        <ChargesList
+          token={token}
+          initial={charges.items}
+          initialHasMore={charges.hasMore}
+        />
       </section>
 
       {/* Top-up history */}
@@ -172,47 +137,11 @@ export default async function PortalPage({
         >
           Top-ups
         </div>
-        <div
-          className="rounded-[12px] border divide-y"
-          style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
-        >
-          {topUps.length === 0 ? (
-            <div className="px-3 py-4 text-[12.5px]" style={{ color: 'var(--ink-3)' }}>
-              No top-ups yet.
-            </div>
-          ) : (
-            topUps.map((t, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2.5 px-3 py-2.5"
-                style={{ borderColor: 'var(--line)' }}
-              >
-                <div className="flex-1 min-w-0">
-                  <div
-                    className="text-[13px] font-medium"
-                    style={{ color: 'var(--ink)' }}
-                  >
-                    Top-up
-                  </div>
-                  <div className="text-[11px] mono" style={{ color: 'var(--ink-3)' }}>
-                    {formatDateShort(parseDateString(t.date))}
-                  </div>
-                </div>
-                <div className="text-right shrink-0">
-                  <div
-                    className="mono tnum text-[13px] font-medium"
-                    style={{ color: 'var(--good)' }}
-                  >
-                    +RM {t.amount.toFixed(0)}
-                  </div>
-                  <div className="mono text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
-                    bal {formatRM(t.balanceAfter)}
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+        <TopUpsList
+          token={token}
+          initial={topUps.items}
+          initialHasMore={topUps.hasMore}
+        />
       </section>
 
       {/* Footer */}
