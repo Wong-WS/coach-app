@@ -1,13 +1,8 @@
 import { notFound } from 'next/navigation';
 import { fetchPortalData, type PortalPayload } from '@/lib/portal-data';
+import { formatDateShort, parseDateString } from '@/lib/date-format';
 
 export const dynamic = 'force-dynamic';
-
-function formatShortDate(iso: string): string {
-  // "2026-04-24" → "24 Apr"
-  const d = new Date(iso + 'T00:00:00');
-  return d.toLocaleDateString('en-MY', { day: 'numeric', month: 'short' });
-}
 
 function formatRM(n: number): string {
   const abs = Math.abs(n).toFixed(0);
@@ -149,7 +144,7 @@ export default async function PortalPage({
                     {c.studentName || 'Lesson'}
                   </div>
                   <div className="text-[11px] mono" style={{ color: 'var(--ink-3)' }}>
-                    {formatShortDate(c.date)}
+                    {formatDateShort(parseDateString(c.date))}
                   </div>
                 </div>
                 <div className="text-right shrink-0">
@@ -200,7 +195,7 @@ export default async function PortalPage({
                     Top-up
                   </div>
                   <div className="text-[11px] mono" style={{ color: 'var(--ink-3)' }}>
-                    {formatShortDate(t.date)}
+                    {formatDateShort(parseDateString(t.date))}
                   </div>
                 </div>
                 <div className="text-right shrink-0">
