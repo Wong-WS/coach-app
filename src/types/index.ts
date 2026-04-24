@@ -88,6 +88,7 @@ export interface Wallet {
   studentIds: string[];
   archived?: boolean;           // default false. hides from default list, disables alerts.
   tabMode?: boolean;            // default false. student pays after each lesson; wallet sits near zero, skip Low alerts.
+  portalToken?: string;         // 10-char nanoid, set once when coach shares portal link
   createdAt: Date;
   updatedAt: Date;
 }

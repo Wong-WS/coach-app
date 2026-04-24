@@ -37,5 +37,14 @@ service cloud.firestore {
         }
       }
     }
+
+    match /walletPortalTokens/{token} {
+      // Coaches can create token docs pointing to their own coachId.
+      // Tokens are immutable once created. No deletes (orphans are harmless).
+      // No client-side reads — the portal reads via Admin SDK on the server.
+      allow create: if request.auth != null
+                    && request.resource.data.coachId == request.auth.uid;
+      allow read, update, delete: if false;
+    }
   }
 }

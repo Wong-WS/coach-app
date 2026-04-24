@@ -273,6 +273,7 @@ export function useWallets(coachId: string | undefined) {
         studentIds: d.data().studentIds ?? [],
         archived: d.data().archived ?? false,
         tabMode: d.data().tabMode ?? false,
+        portalToken: d.data().portalToken ?? undefined,
         createdAt: d.data().createdAt?.toDate() || new Date(),
         updatedAt: d.data().updatedAt?.toDate() || new Date(),
       }));
