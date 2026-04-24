@@ -274,6 +274,7 @@ export function useWallets(coachId: string | undefined) {
         archived: d.data().archived ?? false,
         tabMode: d.data().tabMode ?? false,
         portalToken: d.data().portalToken ?? undefined,
+        usualTopUp: d.data().usualTopUp ?? undefined,
         createdAt: d.data().createdAt?.toDate() || new Date(),
         updatedAt: d.data().updatedAt?.toDate() || new Date(),
       }));

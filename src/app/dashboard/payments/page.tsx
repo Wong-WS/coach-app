@@ -12,6 +12,7 @@ import {
   serverTimestamp,
   setDoc,
   increment,
+  deleteField,
   Firestore,
   onSnapshot,
   query,
@@ -276,6 +277,36 @@ function WalletDetailBody({
   const [renameValue, setRenameValue] = useState(wallet.name);
   const [savingName, setSavingName] = useState(false);
 
+  const [editingTopUp, setEditingTopUp] = useState(false);
+  const [topUpValue, setTopUpValue] = useState(
+    wallet.usualTopUp != null ? String(wallet.usualTopUp) : '',
+  );
+  const [savingTopUp, setSavingTopUp] = useState(false);
+
+  const handleSaveTopUp = async () => {
+    if (!db) return;
+    setSavingTopUp(true);
+    try {
+      const firestore = db as Firestore;
+      const trimmed = topUpValue.trim();
+      const parsed = trimmed === '' ? null : parseInt(trimmed, 10);
+      if (parsed !== null && (isNaN(parsed) || parsed < 0)) {
+        showToast('Enter a whole number (0 or more)', 'error');
+        return;
+      }
+      await updateDoc(doc(firestore, 'coaches', coachId, 'wallets', wallet.id), {
+        usualTopUp: parsed === null ? deleteField() : parsed,
+        updatedAt: serverTimestamp(),
+      });
+      showToast('Usual top-up saved', 'success');
+      setEditingTopUp(false);
+    } catch {
+      showToast('Failed to save usual top-up', 'error');
+    } finally {
+      setSavingTopUp(false);
+    }
+  };
+
   const handleSaveName = async () => {
     if (!db) return;
     const name = renameValue.trim();
@@ -393,6 +424,67 @@ function WalletDetailBody({
           </div>
         )}
       </div>
+
+      {/* Usual top-up */}
+      {editingTopUp ? (
+        <div className="space-y-2">
+          <div className="text-[10.5px] font-semibold uppercase" style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}>
+            Usual top-up (RM)
+          </div>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={topUpValue}
+            onChange={(e) => setTopUpValue(e.target.value)}
+            placeholder="e.g. 500"
+            autoFocus
+            className={paperInputClass}
+            style={paperInputStyle}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <Btn
+              variant="primary"
+              onClick={handleSaveTopUp}
+              disabled={savingTopUp}
+            >
+              {savingTopUp ? 'Saving…' : 'Save'}
+            </Btn>
+            <Btn
+              variant="outline"
+              onClick={() => {
+                setEditingTopUp(false);
+                setTopUpValue(wallet.usualTopUp != null ? String(wallet.usualTopUp) : '');
+              }}
+              disabled={savingTopUp}
+            >
+              Cancel
+            </Btn>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between">
+          {wallet.usualTopUp != null ? (
+            <span className="text-[13px]" style={{ color: 'var(--ink-2)' }}>
+              Usual top-up: RM {wallet.usualTopUp}
+            </span>
+          ) : (
+            <span className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
+              No usual top-up set
+            </span>
+          )}
+          <button
+            onClick={() => {
+              setTopUpValue(wallet.usualTopUp != null ? String(wallet.usualTopUp) : '');
+              setEditingTopUp(true);
+            }}
+            className="text-[12px] font-medium"
+            style={{ color: 'var(--accent)' }}
+          >
+            {wallet.usualTopUp != null ? 'Edit' : 'Set'}
+          </button>
+        </div>
+      )}
 
       {/* Actions */}
       <div className="grid grid-cols-2 gap-2">

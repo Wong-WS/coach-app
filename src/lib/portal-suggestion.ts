@@ -1,19 +1,18 @@
 /**
  * Compute the suggested top-up amount for a wallet portal.
  *
- * Strategy: anchor on the parent's most recent top-up amount ("usual"), then
- * suggest the difference needed to get back to that level. Matches the
- * "parent usually tops up RM 500" mental model.
+ * `usualTopUp` is the coach-set default for this wallet. When unset (null),
+ * the caller passes null and no suggestion is computed.
  *
- * Returns null when there's no signal to anchor on (no prior top-ups) or when
- * the suggestion rounds to 0 (wallet already at or above usual).
+ * Returns null when there's no anchor (coach hasn't set one) or when the
+ * suggestion rounds to 0 (wallet already at or above usual).
  *
  * Examples:
  *   usual=500, balance=23   → { usual: 500, amount: 477 }
  *   usual=500, balance=-30  → { usual: 500, amount: 530 }
  *   usual=500, balance=500  → null (already topped up)
  *   usual=500, balance=600  → null (over-topped-up)
- *   usual=null, balance=20  → null (no prior top-up signal)
+ *   usual=null, balance=20  → null (no usual set)
  */
 export function getSuggestedTopUp(
   usualTopUp: number | null,

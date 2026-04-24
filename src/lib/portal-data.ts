@@ -62,6 +62,7 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
     archived: false,
     tabMode: (wd.tabMode as boolean) ?? false,
     portalToken: (wd.portalToken as string) ?? undefined,
+    usualTopUp: typeof wd.usualTopUp === 'number' ? wd.usualTopUp : undefined,
     createdAt: wd.createdAt?.toDate?.() ?? new Date(),
     updatedAt: wd.updatedAt?.toDate?.() ?? new Date(),
   };
@@ -153,10 +154,11 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
   const displayCharges = charges.slice(0, 20);
   const displayTopUps = topUps.slice(0, 10);
 
-  // 8. Suggestion — only meaningful when balance can't cover next lesson
-  const usualTopUp = topUps.length > 0 ? topUps[0].amount : null;
-  const showSuggestion = health === 'empty' || health === 'owing';
-  const suggestion = showSuggestion ? getSuggestedTopUp(usualTopUp, wallet.balance) : null;
+  // 8. Suggestion — only when coach has set usualTopUp and balance is insufficient
+  const suggestion =
+    (health === 'empty' || health === 'owing')
+      ? getSuggestedTopUp(wallet.usualTopUp ?? null, wallet.balance)
+      : null;
 
   return {
     coach: { displayName },

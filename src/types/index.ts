@@ -89,6 +89,7 @@ export interface Wallet {
   archived?: boolean;           // default false. hides from default list, disables alerts.
   tabMode?: boolean;            // default false. student pays after each lesson; wallet sits near zero, skip Low alerts.
   portalToken?: string;         // 10-char nanoid, set once when coach shares portal link
+  usualTopUp?: number;          // coach-set default top-up, in whole RM
   createdAt: Date;
   updatedAt: Date;
 }
