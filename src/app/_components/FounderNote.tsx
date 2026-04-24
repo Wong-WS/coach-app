@@ -3,7 +3,10 @@ import { Avatar } from '@/components/paper';
 
 export function FounderNote() {
   return (
-    <section className="mx-auto max-w-3xl px-6 py-20">
+    <section
+      className="mx-auto max-w-3xl px-6 py-20"
+      aria-label="A note from the founder"
+    >
       <div
         className="rounded-[14px] border p-8 md:p-10"
         style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
