@@ -16,9 +16,25 @@ const jetbrainsMono = JetBrains_Mono({
   weight: ["400", "500"],
 });
 
+const TITLE = "CoachSimplify — Run your coaching business, not your spreadsheet";
+const DESCRIPTION =
+  "Scheduling, wallets, and student tracking for independent coaches. Free during early access.";
+
 export const metadata: Metadata = {
-  title: "CoachSimplify — Run your coaching business, not your spreadsheet",
-  description: "Scheduling, wallets, and student tracking for independent coaches. 7-day free trial.",
+  title: TITLE,
+  description: DESCRIPTION,
+  openGraph: {
+    title: TITLE,
+    description: DESCRIPTION,
+    siteName: "CoachSimplify",
+    type: "website",
+    locale: "en_MY",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: TITLE,
+    description: DESCRIPTION,
+  },
 };
 
 export default function RootLayout({
