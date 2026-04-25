@@ -43,11 +43,13 @@ export function FounderNote() {
           className="mt-4 text-[18px] md:text-[19px] leading-relaxed"
           style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}
         >
-          Then &ldquo;time to pay for the next 5&rdquo; when they ran out.
-          Multiply that by every student, every week. One day I marked a lesson
-          done that didn&rsquo;t happen — and I realised I was the bottleneck.
-          So I built this for myself. Now I tap once, and the student sees it
-          in their own portal.
+          Then when it&rsquo;s time to pay again, I have to make sure I write
+          the rate correctly — not every student pays the same. One day I
+          marked a lesson done that didn&rsquo;t happen. Another time I
+          accidentally overcharged a student and they had to call me out on my
+          mistake. I don&rsquo;t want that to happen anymore — that&rsquo;s why
+          I built this app. Now it keeps everything in place: the lesson log,
+          every student&rsquo;s pricing, the next top-up amount. Everything.
         </p>
         <div className="mt-6 flex items-center gap-3">
           <Avatar name="Wei Siang" size={36} />
