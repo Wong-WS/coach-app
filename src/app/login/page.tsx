@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
-import { Button, Input } from '@/components/ui';
-import { useToast } from '@/components/ui/Toast';
+import { Btn } from '@/components/paper';
 import { GoogleButton } from '@/components/ui/GoogleButton';
+import { useToast } from '@/components/ui/Toast';
 
 function LoginForm() {
   const [email, setEmail] = useState('');
@@ -54,26 +54,64 @@ function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:bg-none dark:bg-[#262626] flex items-center justify-center px-4">
-      <div className="bg-white dark:bg-[#1f1f1f] rounded-xl shadow-lg p-8 w-full max-w-md">
-        <div className="text-center mb-8">
-          <Link href="/" className="text-2xl font-bold text-blue-600">
-            CoachApp
+    <div
+      className="min-h-screen flex items-center justify-center px-4 py-12"
+      style={{ background: 'var(--bg)', color: 'var(--ink)' }}
+    >
+      <div
+        className="w-full max-w-md rounded-[14px] border p-8"
+        style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
+      >
+        <div className="text-center">
+          <Link href="/" className="inline-flex items-center gap-2.5">
+            <div
+              className="w-[26px] h-[26px] rounded-[7px] flex items-center justify-center font-bold text-[13px]"
+              style={{
+                background: 'var(--ink)',
+                color: 'var(--bg)',
+                letterSpacing: '-0.5px',
+              }}
+            >
+              C
+            </div>
+            <span
+              className="text-[15px] font-semibold"
+              style={{ color: 'var(--ink)', letterSpacing: '-0.2px' }}
+            >
+              CoachSimplify
+            </span>
           </Link>
-          <h1 className="text-2xl font-semibold text-gray-900 dark:text-zinc-100 mt-4">Welcome back</h1>
-          <p className="text-gray-600 dark:text-zinc-400 mt-2">Sign in to your account</p>
+          <h1
+            className="mt-6 text-[22px] md:text-[24px] font-semibold"
+            style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
+          >
+            Welcome back
+          </h1>
+          <p
+            className="mt-1.5 text-[13px]"
+            style={{ color: 'var(--ink-3)' }}
+          >
+            Sign in to your coaching workspace.
+          </p>
         </div>
 
-        <GoogleButton onClick={handleGoogle} loading={googleLoading} label="Continue with Google" />
+        <div className="mt-7">
+          <GoogleButton onClick={handleGoogle} loading={googleLoading} label="Continue with Google" />
+        </div>
 
-        <div className="flex items-center gap-3 my-6">
-          <div className="flex-1 h-px bg-gray-200 dark:bg-zinc-700" />
-          <span className="text-xs uppercase tracking-wider text-gray-400 dark:text-zinc-500">or</span>
-          <div className="flex-1 h-px bg-gray-200 dark:bg-zinc-700" />
+        <div className="my-6 flex items-center gap-3">
+          <div className="flex-1 h-px" style={{ background: 'var(--line)' }} />
+          <span
+            className="text-[10.5px] font-semibold uppercase tracking-[0.12em]"
+            style={{ color: 'var(--ink-4)' }}
+          >
+            or
+          </span>
+          <div className="flex-1 h-px" style={{ background: 'var(--line)' }} />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
+          <PaperField
             id="email"
             type="email"
             label="Email"
@@ -82,29 +120,73 @@ function LoginForm() {
             placeholder="you@example.com"
             required
           />
-
-          <Input
+          <PaperField
             id="password"
             type="password"
             label="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter your password"
+            placeholder="Your password"
             required
           />
 
-          <Button type="submit" className="w-full" loading={loading}>
-            Sign In
-          </Button>
+          <Btn type="submit" variant="primary" size="lg" full disabled={loading}>
+            {loading ? 'Signing in…' : 'Sign in'}
+          </Btn>
         </form>
 
-        <p className="text-center text-gray-600 dark:text-zinc-400 mt-6">
-          Don&apos;t have an account?{' '}
-          <Link href="/signup" className="text-blue-600 hover:underline font-medium">
+        <p
+          className="mt-6 text-center text-[13px]"
+          style={{ color: 'var(--ink-2)' }}
+        >
+          Don&rsquo;t have an account?{' '}
+          <Link
+            href="/signup"
+            className="font-semibold underline underline-offset-2"
+            style={{ color: 'var(--ink)' }}
+          >
             Sign up
           </Link>
         </p>
       </div>
+    </div>
+  );
+}
+
+interface PaperFieldProps {
+  id: string;
+  type: string;
+  label: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  placeholder?: string;
+  required?: boolean;
+}
+
+function PaperField({ id, type, label, value, onChange, placeholder, required }: PaperFieldProps) {
+  return (
+    <div>
+      <label
+        htmlFor={id}
+        className="block text-[13px] font-medium mb-1.5"
+        style={{ color: 'var(--ink-2)' }}
+      >
+        {label}
+      </label>
+      <input
+        id={id}
+        type={type}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        required={required}
+        className="block w-full rounded-[8px] border px-3 py-2.5 text-[14px] outline-none transition-colors focus:border-[var(--ink)]"
+        style={{
+          background: 'var(--bg)',
+          borderColor: 'var(--line-2)',
+          color: 'var(--ink)',
+        }}
+      />
     </div>
   );
 }

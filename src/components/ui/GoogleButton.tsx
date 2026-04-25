@@ -12,7 +12,12 @@ export function GoogleButton({ onClick, loading, label = 'Continue with Google' 
       type="button"
       onClick={onClick}
       disabled={loading}
-      className="w-full inline-flex items-center justify-center gap-3 px-4 py-2.5 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-[#262626] text-sm font-medium text-gray-700 dark:text-zinc-100 hover:bg-gray-50 dark:hover:bg-[#2e2e2e] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+      className="w-full inline-flex items-center justify-center gap-3 rounded-[8px] border px-4 py-2.5 text-[14px] font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+      style={{
+        background: 'var(--panel)',
+        borderColor: 'var(--line-2)',
+        color: 'var(--ink)',
+      }}
     >
       <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
         <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4" />
