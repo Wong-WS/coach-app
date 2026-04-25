@@ -195,67 +195,145 @@ export default function Home() {
         <FounderNote />
       </div>
 
-      {/* Pricing */}
+      {/* Pricing — teaser (free during beta) */}
       <div
-        className="border-t"
+        className="relative border-t"
         style={{ borderColor: 'var(--line)' }}
       >
-        <PricingSection />
+        <div
+          aria-hidden="true"
+          inert
+          style={{
+            filter: 'blur(8px)',
+            opacity: 0.5,
+            pointerEvents: 'none',
+            userSelect: 'none',
+          }}
+        >
+          <PricingSection />
+        </div>
+        <div className="absolute inset-0 flex items-center justify-center px-6">
+          <div
+            className="rounded-[14px] border px-6 py-5 text-center max-w-md"
+            style={{
+              background: 'var(--panel)',
+              borderColor: 'var(--line)',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            }}
+          >
+            <Chip tone="good">Coming soon</Chip>
+            <h3
+              className="mt-3 text-[18px] md:text-[20px] font-semibold"
+              style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}
+            >
+              Pricing arrives when we launch paid plans
+            </h3>
+            <p
+              className="mt-1.5 text-[13.5px] leading-relaxed"
+              style={{ color: 'var(--ink-2)' }}
+            >
+              Free during early access — no card required.
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* FAQ */}
+      {/* FAQ — teaser (free during beta) */}
       <section
         id="faq"
-        className="scroll-mt-16 border-t"
+        className="relative scroll-mt-16 border-t"
         style={{ borderColor: 'var(--line)' }}
       >
-        <div className="mx-auto max-w-3xl px-6 py-20">
-          <h2
-            className="text-[30px] md:text-[36px] font-semibold"
-            style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
-          >
-            Frequently asked questions
-          </h2>
-          <div className="mt-10 space-y-2">
-            {[
-              {
-                q: 'Do I need a card to sign up?',
-                a: "No. CoachSimplify is free to use while we’re in early access. No card, no trial period, no cancellation. When we launch paid plans, early-access coaches will have 14 days to decide.",
-              },
-              {
-                q: 'Can I cancel anytime?',
-                a: 'Yes. One click from your settings. No cancellation fees, no contract.',
-              },
-              {
-                q: 'Is my data safe?',
-                a: 'Your data is stored on Google Firebase with encryption at rest and in transit. Only you can access your coaching data.',
-              },
-            ].map((f) => (
-              <details
-                key={f.q}
-                className="group rounded-[10px] border p-5"
-                style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
-              >
-                <summary
-                  className="flex cursor-pointer items-center justify-between gap-4 text-[14px] font-semibold [&::-webkit-details-marker]:hidden"
-                  style={{ color: 'var(--ink)' }}
+        <div
+          aria-hidden="true"
+          inert
+          style={{
+            filter: 'blur(8px)',
+            opacity: 0.5,
+            pointerEvents: 'none',
+            userSelect: 'none',
+          }}
+        >
+          <div className="mx-auto max-w-3xl px-6 py-20">
+            <h2
+              className="text-[30px] md:text-[36px] font-semibold"
+              style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
+            >
+              Frequently asked questions
+            </h2>
+            <div className="mt-10 space-y-2">
+              {[
+                {
+                  q: 'Do I need a card to sign up?',
+                  a: "No. CoachSimplify is free to use while we’re in early access. No card, no trial period, no cancellation. When we launch paid plans, early-access coaches will have 14 days to decide.",
+                },
+                {
+                  q: 'Can I cancel anytime?',
+                  a: 'Yes. One click from your settings. No cancellation fees, no contract.',
+                },
+                {
+                  q: 'Is my data safe?',
+                  a: 'Your data is stored on Google Firebase with encryption at rest and in transit. Only you can access your coaching data.',
+                },
+              ].map((f) => (
+                <details
+                  key={f.q}
+                  className="group rounded-[10px] border p-5"
+                  style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
                 >
-                  {f.q}
-                  <span
-                    className="transition-transform group-open:rotate-45"
-                    style={{ color: 'var(--ink-3)' }}
+                  <summary
+                    className="flex cursor-pointer items-center justify-between gap-4 text-[14px] font-semibold [&::-webkit-details-marker]:hidden"
+                    style={{ color: 'var(--ink)' }}
                   >
-                    <IconPlus size={16} />
-                  </span>
-                </summary>
-                <p
-                  className="mt-3 text-[14px] leading-relaxed"
-                  style={{ color: 'var(--ink-2)' }}
-                >
-                  {f.a}
-                </p>
-              </details>
-            ))}
+                    {f.q}
+                    <span
+                      className="transition-transform group-open:rotate-45"
+                      style={{ color: 'var(--ink-3)' }}
+                    >
+                      <IconPlus size={16} />
+                    </span>
+                  </summary>
+                  <p
+                    className="mt-3 text-[14px] leading-relaxed"
+                    style={{ color: 'var(--ink-2)' }}
+                  >
+                    {f.a}
+                  </p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="absolute inset-0 flex items-center justify-center px-6">
+          <div
+            className="rounded-[14px] border px-6 py-5 text-center max-w-md"
+            style={{
+              background: 'var(--panel)',
+              borderColor: 'var(--line)',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            }}
+          >
+            <Chip tone="good">Coming soon</Chip>
+            <h3
+              className="mt-3 text-[18px] md:text-[20px] font-semibold"
+              style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}
+            >
+              Full FAQ closer to public launch
+            </h3>
+            <p
+              className="mt-1.5 text-[13.5px] leading-relaxed"
+              style={{ color: 'var(--ink-2)' }}
+            >
+              Got a question? Just{' '}
+              <a
+                href="mailto:weisiangwong@gmail.com"
+                className="underline underline-offset-2"
+                style={{ color: 'var(--ink)' }}
+              >
+                email me
+              </a>
+              .
+            </p>
           </div>
         </div>
       </section>
