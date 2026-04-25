@@ -343,29 +343,24 @@ export default function Home() {
         className="border-t"
         style={{ borderColor: 'var(--line)' }}
       >
-        <div className="mx-auto max-w-6xl px-6 py-20">
-          <div
-            className="rounded-[14px] p-10 md:p-14 text-center"
-            style={{ background: 'var(--ink)', color: 'var(--bg)' }}
+        <div className="mx-auto max-w-3xl px-6 py-20 text-center">
+          <h2
+            className="text-[30px] md:text-[36px] font-semibold"
+            style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}
           >
-            <h2
-              className="text-[28px] md:text-[36px] font-semibold"
-              style={{ letterSpacing: '-0.02em' }}
-            >
-              Your weekly admin, gone by Sunday night.
-            </h2>
-            <p
-              className="mx-auto mt-3 max-w-md text-[15px] leading-relaxed"
-              style={{ color: 'var(--ink-4)' }}
-            >
-              Free during early access. Set up in under 10 minutes.
-            </p>
-            <Link
-              href="/signup"
-              className="mt-7 inline-flex items-center justify-center rounded-[8px] px-5 py-3 text-[14px] font-semibold transition-colors"
-              style={{ background: 'var(--bg)', color: 'var(--ink)' }}
-            >
-              Start free →
+            Less typing. More teaching.
+          </h2>
+          <p
+            className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed"
+            style={{ color: 'var(--ink-2)' }}
+          >
+            Free during early access. Set up in under 10 minutes.
+          </p>
+          <div className="mt-7 flex justify-center">
+            <Link href="/signup">
+              <Btn variant="primary" size="lg">
+                Start free →
+              </Btn>
             </Link>
           </div>
         </div>
