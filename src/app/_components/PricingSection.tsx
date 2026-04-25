@@ -57,7 +57,7 @@ const PLANS: Plan[] = [
       { label: 'Reschedule or cancel single sessions' },
       { label: 'Lesson history & notes' },
       { label: 'Bulk mark-as-done for group classes' },
-      { label: 'Students & parents portal', soon: true },
+      { label: 'Students & parents portal' },
       { label: 'Income dashboard with projections' },
       { label: 'Priority human support' },
     ],

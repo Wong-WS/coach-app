@@ -21,10 +21,33 @@ export function FounderNote() {
           className="mt-4 text-[18px] md:text-[19px] leading-relaxed"
           style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}
         >
-          I coach on weekends and spent every Sunday buried in a spreadsheet —
-          who paid, who&rsquo;s on which package, who&rsquo;s coming next week.
-          Nobody was going to build this for me, so I built it for myself. Now
-          it runs my coaching business while I&rsquo;m on the court.
+          I teach swimming. After every lesson I&rsquo;d update each
+          student&rsquo;s WhatsApp with their package:
+        </p>
+        <pre
+          className="mono mt-4 rounded-[10px] border p-4 text-[13px] leading-relaxed whitespace-pre-wrap"
+          style={{
+            background: 'var(--bg)',
+            borderColor: 'var(--line)',
+            color: 'var(--ink-2)',
+          }}
+        >
+{`swimming lessons
+1. 25/4
+2.
+3.
+4.
+5.`}
+        </pre>
+        <p
+          className="mt-4 text-[18px] md:text-[19px] leading-relaxed"
+          style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}
+        >
+          Then &ldquo;time to pay for the next 5&rdquo; when they ran out.
+          Multiply that by every student, every week. One day I marked a lesson
+          done that didn&rsquo;t happen — and I realised I was the bottleneck.
+          So I built this for myself. Now I tap once, and the student sees it
+          in their own portal.
         </p>
         <div className="mt-6 flex items-center gap-3">
           <Avatar name="Wei Siang" size={36} />

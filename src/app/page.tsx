@@ -95,8 +95,8 @@ export default function Home() {
               style={{ color: 'var(--ink-2)' }}
             >
               Schedule recurring classes, track student wallets, and get paid —
-              without the WhatsApp chaos. Made for coaches who&rsquo;d rather be
-              on the court.
+              without the WhatsApp chaos. Made for independent coaches
+              who&rsquo;d rather be teaching than typing.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
               <Link href="/signup">
@@ -144,17 +144,17 @@ export default function Home() {
               {
                 icon: <IconCalendar size={18} />,
                 t: 'Recurring schedule',
-                d: 'Define a weekly class once. Every Tuesday after that runs on rails — including reschedules and one-off cancellations.',
-              },
-              {
-                icon: <IconWallet size={18} />,
-                t: 'Wallet-based billing',
-                d: 'Top up a student (or family) once. Each lesson auto-charges the wallet. No monthly invoicing, no payment reminders.',
+                d: 'Your Tuesday 5pm with Aiden. Your Saturday squad. Set them up once — every week after that runs itself, including the reschedules and one-off cancellations that actually happen.',
               },
               {
                 icon: <IconCheck size={18} sw={2} />,
                 t: 'Mark-as-done',
-                d: 'Tap once. Lesson logged, wallet charged, history updated. Works on the court, from your phone.',
+                d: 'Class finished? Tap once. Lesson logged, wallet charged, history saved. No more typing "1. 25/4, 2., 3., 4., 5." in every student’s WhatsApp after every session.',
+              },
+              {
+                icon: <IconWallet size={18} />,
+                t: 'A portal for every wallet',
+                d: 'Each student gets a private link. Parents see their balance, every charge, every top-up — in real time. They stop asking "how much do I owe?", you stop guessing whether you billed them right.',
               },
             ].map((f) => (
               <div
