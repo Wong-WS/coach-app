@@ -1512,7 +1512,7 @@ function ClassCard({
             </Chip>
           )}
           {isGroup && <Chip tone="accent">Group · {effectiveIds.length}</Chip>}
-          {anyLow && !isDone && <Chip tone="bad">Low wallet</Chip>}
+          {anyLow && !isDone && <Chip tone="warn">Low wallet</Chip>}
         </div>
         <div
           className="flex items-center gap-2.5 text-[12.5px] flex-wrap"
