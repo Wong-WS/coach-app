@@ -146,6 +146,10 @@ export default function DashboardPage() {
 
   const doneCount = todaysClasses.filter((c) => doneByBookingId.has(c.id)).length;
   const totalCount = todaysClasses.length;
+  const remainingClasses = useMemo(
+    () => todaysClasses.filter((c) => !doneByBookingId.has(c.id)),
+    [todaysClasses, doneByBookingId],
+  );
   const todayRevenue = lessonLogs.reduce((s, l) => s + l.price, 0);
   const expectedRevenue =
     todaysClasses.reduce((s, c) => {
@@ -195,6 +199,10 @@ export default function DashboardPage() {
       }
     | null
   >(null);
+
+  // Bulk mark-all-done confirmation popup state.
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkRunning, setBulkRunning] = useState(false);
 
   // Cancel-lesson scope picker state.
   const [cancelCtx, setCancelCtx] = useState<
@@ -332,6 +340,108 @@ export default function DashboardPage() {
       showToast('Failed to mark class as done', 'error');
     } finally {
       setMarkingDone(false);
+    }
+  };
+
+  const handleConfirmMarkAllDone = async () => {
+    if (!coach || !db) return;
+    if (remainingClasses.length === 0) return;
+    setBulkRunning(true);
+
+    const walletImpacts = new Map<string, { wallet: Wallet; charge: number }>();
+    let lessonsLogged = 0;
+
+    try {
+      const firestore = db as Firestore;
+      const batch = writeBatch(firestore);
+
+      for (const booking of remainingClasses) {
+        for (const studentId of booking.studentIds) {
+          const price = booking.studentPrices[studentId] ?? 0;
+          const studentName = students.find((s) => s.id === studentId)?.clientName ?? '';
+
+          const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
+          batch.set(logRef, {
+            date: selectedDateStr,
+            bookingId: booking.id,
+            studentId,
+            studentName,
+            locationName: booking.locationName,
+            startTime: booking.startTime,
+            endTime: booking.endTime,
+            price,
+            createdAt: serverTimestamp(),
+          });
+          lessonsLogged += 1;
+
+          const wallet = resolveWallet(booking, studentId, wallets);
+          if (wallet && price > 0) {
+            const existing = walletImpacts.get(wallet.id);
+            if (existing) existing.charge += price;
+            else walletImpacts.set(wallet.id, { wallet, charge: price });
+
+            const newBalance = wallet.balance - price;
+            const txnRef = doc(
+              collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'),
+            );
+            batch.set(txnRef, {
+              type: 'charge',
+              amount: -price,
+              balanceAfter: newBalance,
+              description: `Lesson — ${studentName} (${booking.startTime})`,
+              studentId,
+              lessonLogId: logRef.id,
+              date: selectedDateStr,
+              createdAt: serverTimestamp(),
+            });
+            batch.update(doc(firestore, 'coaches', coach.id, 'wallets', wallet.id), {
+              balance: increment(-price),
+              updatedAt: serverTimestamp(),
+            });
+          }
+
+          batch.update(doc(firestore, 'coaches', coach.id, 'students', studentId), {
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
+      await batch.commit();
+
+      setBulkConfirmOpen(false);
+      const classCount = remainingClasses.length;
+      showToast(
+        `Marked ${classCount} ${classCount === 1 ? 'class' : 'classes'} done (${lessonsLogged} ${
+          lessonsLogged === 1 ? 'lesson' : 'lessons'
+        })`,
+        'success',
+      );
+
+      const depleted: Array<{
+        name: string;
+        newBalance: number;
+        status: 'owing' | 'empty';
+      }> = [];
+      for (const { wallet, charge } of walletImpacts.values()) {
+        if (wallet.tabMode) continue;
+        const rate = getNextLessonCost(wallet, bookings);
+        if (rate <= 0) continue;
+        const prevBalance = wallet.balance;
+        const newBalance = prevBalance - charge;
+        if (prevBalance >= rate && newBalance < rate) {
+          depleted.push({
+            name: wallet.name,
+            newBalance,
+            status: newBalance < 0 ? 'owing' : 'empty',
+          });
+        }
+      }
+      if (depleted.length > 0) setDepletedAlert({ wallets: depleted });
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to mark classes done', 'error');
+    } finally {
+      setBulkRunning(false);
     }
   };
 
@@ -742,8 +852,15 @@ export default function DashboardPage() {
               title="Classes"
               trailing={
                 totalCount > 0 && (
-                  <div className="text-[12px] tnum" style={{ color: 'var(--ink-3)' }}>
-                    {doneCount}/{totalCount} done
+                  <div className="flex items-center gap-3">
+                    <div className="text-[12px] tnum" style={{ color: 'var(--ink-3)' }}>
+                      {doneCount}/{totalCount} done
+                    </div>
+                    {isToday && remainingClasses.length > 0 && (
+                      <Btn size="sm" variant="outline" onClick={() => setBulkConfirmOpen(true)}>
+                        <IconCheck size={13} /> Mark all done
+                      </Btn>
+                    )}
                   </div>
                 )
               }
@@ -831,8 +948,15 @@ export default function DashboardPage() {
           title="Classes"
           trailing={
             totalCount > 0 && (
-              <div className="text-[12px] tnum" style={{ color: 'var(--ink-3)' }}>
-                {doneCount}/{totalCount} done
+              <div className="flex items-center gap-2.5">
+                <div className="text-[12px] tnum" style={{ color: 'var(--ink-3)' }}>
+                  {doneCount}/{totalCount} done
+                </div>
+                {isToday && remainingClasses.length > 0 && (
+                  <Btn size="sm" variant="outline" onClick={() => setBulkConfirmOpen(true)}>
+                    <IconCheck size={13} /> Mark all done
+                  </Btn>
+                )}
               </div>
             )
           }
@@ -910,6 +1034,87 @@ export default function DashboardPage() {
         onClose={closeMarkDone}
         onConfirm={handleConfirmMarkDone}
       />
+
+      <PaperModal
+        open={bulkConfirmOpen}
+        onClose={() => !bulkRunning && setBulkConfirmOpen(false)}
+        title={`Mark ${remainingClasses.length} ${
+          remainingClasses.length === 1 ? 'class' : 'classes'
+        } done?`}
+        width={480}
+      >
+        <div className="space-y-4">
+          <div
+            className="rounded-[10px] border p-3 text-[13px]"
+            style={{
+              background: 'var(--warn-soft)',
+              borderColor: 'var(--warn)',
+              color: 'var(--ink)',
+            }}
+          >
+            Double-check this list — make sure none of these classes were actually
+            cancelled today. Once marked done, wallets will be charged.
+          </div>
+
+          <div
+            className="rounded-[10px] border divide-y"
+            style={{ background: 'var(--bg)', borderColor: 'var(--line)' }}
+          >
+            {remainingClasses.map((c) => {
+              const total = getBookingTotal(c);
+              const studentCount = c.studentIds.length;
+              return (
+                <div
+                  key={c.id}
+                  className="flex items-center gap-3 px-3 py-2.5"
+                  style={{ borderColor: 'var(--line)' }}
+                >
+                  <div
+                    className="mono tnum text-[12.5px] w-14 shrink-0"
+                    style={{ color: 'var(--ink-2)' }}
+                  >
+                    {fmtTimeShort(c.startTime)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className="text-[13.5px] font-medium truncate"
+                      style={{ color: 'var(--ink)' }}
+                    >
+                      {c.className || 'Class'}
+                    </div>
+                    <div className="text-[12px]" style={{ color: 'var(--ink-3)' }}>
+                      {studentCount} {studentCount === 1 ? 'student' : 'students'}
+                    </div>
+                  </div>
+                  <div
+                    className="mono tnum text-[13px] shrink-0"
+                    style={{ color: 'var(--ink-2)' }}
+                  >
+                    RM {Math.round(total)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex gap-2 justify-end">
+            <Btn
+              variant="outline"
+              onClick={() => setBulkConfirmOpen(false)}
+              disabled={bulkRunning}
+            >
+              Cancel
+            </Btn>
+            <Btn
+              variant="primary"
+              onClick={handleConfirmMarkAllDone}
+              disabled={bulkRunning || remainingClasses.length === 0}
+            >
+              {bulkRunning ? 'Marking…' : 'Mark all done'}
+            </Btn>
+          </div>
+        </div>
+      </PaperModal>
 
       <PaperModal
         open={!!depletedAlert}
