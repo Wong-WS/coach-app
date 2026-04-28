@@ -37,6 +37,7 @@
 - ✅ (2026-04-28) **Consider migrating component primitives to shadcn/ui** — decided against shadcn; went with the hand-rolled Paper & Ink design system in `src/components/paper/` instead.
 - WhatsApp/SMS notifications
 - Custom domains
+- (2026-04-28) **Continue component extraction for `payments/page.tsx` (1887 lines) and `students/page.tsx` (1193 lines)** — same pattern as the dashboard refactor (commits `5e1520f`..`fb97f30` on main). Pull modals/forms into `src/app/payments/_components/` and `src/app/students/_components/`. Pick up next time you feel friction in those files. Reference: `src/app/dashboard/_components/` for the established pattern (each modal lifts state via props rather than closing over parent state).
 - ✅ (2026-03-24) Production guardrails: prevent marking done for future dates
 - ✅ (2026-04-16) Production guardrails: restrict prepaid package editing — no longer relevant, UI migrated to wallet system, prepaid fields no longer exposed
 - ✅ (2026-04-16) Production guardrails: lesson log deletion safeguards — confirmation modal added, wallet refund on delete works
