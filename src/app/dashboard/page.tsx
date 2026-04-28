@@ -2182,10 +2182,10 @@ function AddLessonModal({
     setStartTime('16:00');
     setEndTime('17:00');
     setRepeat(false);
-    setLocationId('__new');
+    setLocationId(locations[0]?.id ?? '__new');
     setNewLocationName('');
     setRows([makeEmptyRow()]);
-  }, [open, defaultDate, prefill]);
+  }, [open, defaultDate, prefill, locations]);
 
   const updateRow = (i: number, patch: Partial<StudentRowState>) =>
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -2408,19 +2408,30 @@ function AddLessonModal({
 
         <div>
           <SectionLabel>Where</SectionLabel>
-          <select
-            value={locationId}
-            onChange={(e) => setLocationId(e.target.value)}
-            className={paperInputClass}
-            style={paperInputStyle}
-          >
-            {locations.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-            <option value="__new">+ Add new location…</option>
-          </select>
+          <div className="relative">
+            <select
+              value={locationId}
+              onChange={(e) => setLocationId(e.target.value)}
+              className={`${paperInputClass} cursor-pointer`}
+              style={{ ...paperInputStyle, paddingRight: '2.25rem' }}
+            >
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+              <option value="__new">+ Add new location…</option>
+            </select>
+            <svg
+              className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4"
+              style={{ color: 'var(--ink-3)' }}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
           {creatingLocation && (
             <input
               autoFocus
