@@ -8,8 +8,8 @@
 
 1. ✅ (2026-04-28) **Payment–lesson log coupling is fragile** — old derived counters (credit, pendingPayment, prepaidUsed) fully removed by 2026-04-16 wallet system. Lesson delete flow had regressed to non-atomic sequential awaits in `students/page.tsx` (commit 79de2a6) — restored to `writeBatch` so refund txn + balance bump + lessonLog delete now commit atomically. Wallet ledger and balance counter can no longer desync.
 
-2. (2026-03-23) **Giant page components** — `dashboard/page.tsx` and `students/page.tsx` are doing too much. Should we extract modal flows into separate components/hooks? What's the right split?
-   - (2026-04-28) **Pilot shipped:** extracted `EditClassModal` + `FieldLabel` from `dashboard/page.tsx` into `src/app/dashboard/_components/`. Page dropped 3317 → 2874 lines (-443). Smoke-tested live, no regressions. Pattern works — remaining modals (`MarkDoneModal`, `AddLessonModal`, 3 inline confirm modals) can be extracted in follow-ups. Minor known dup: `paperInputClass`/`paperInputStyle` exist in both files until more modals migrate.
+2. (2026-03-23) **Giant page components** — `dashboard/page.tsx` and `students/page.tsx` are doing too much.
+   - (2026-04-28) **Dashboard fully refactored:** extracted 6 components into `src/app/dashboard/_components/` (`FieldLabel`, `EditClassModal`, `AddLessonModal`, `MarkDoneModal`, `BulkMarkDoneConfirmModal`, `DepletedWalletAlert`). `dashboard/page.tsx` dropped 3317 → 1929 lines (-1388, -42%). Each modal lifts its state via props rather than closing over parent state. Skipped the 16-line cancel-scope wrapper (already calls standalone `CancelScopeBody`, not worth a pass). Remaining presentational helpers (`DesktopHero`, `WeekStrip`, `ClassCard`, `StatCard`, `LowWalletsCard`, etc.) still inline — extract later if friction warrants it. `payments/page.tsx` (1887) and `students/page.tsx` (1193) still untouched.
 
 3. (2026-03-23) **No pagination on Firestore queries** — all hooks (`useBookings`, `useStudents`, `useLessonLogs`, etc.) load entire collections into memory with no limits. Fine for now with one coach, but won't scale. When should we add pagination, and which collections first?
 
