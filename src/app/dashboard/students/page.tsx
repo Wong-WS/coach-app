@@ -5,8 +5,6 @@ import {
   collection,
   doc,
   updateDoc,
-  addDoc,
-  deleteDoc,
   writeBatch,
   serverTimestamp,
   increment,
@@ -636,7 +634,10 @@ function DeleteLessonModal({
     try {
       const firestore = db as Firestore;
 
-      // Reverse any wallet transaction tied to this lesson.
+      // Find the wallet transaction tied to this lesson, if any.
+      let matchedWalletId: string | null = null;
+      let matchedTxn: { amount: number; description: string; studentId?: string } | null = null;
+      let matchedNewBalance = 0;
       for (const walletDoc of wallets) {
         const txnQuery = query(
           collection(
@@ -651,44 +652,54 @@ function DeleteLessonModal({
         );
         const txnSnap = await getDocs(txnQuery);
         if (!txnSnap.empty) {
-          const originalTxn = txnSnap.docs[0].data();
-          const refundAmount = Math.abs(originalTxn.amount);
-          const newBalance = walletDoc.balance + refundAmount;
-          const now = new Date();
-          const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-          await addDoc(
-            collection(
-              firestore,
-              'coaches',
-              coachId,
-              'wallets',
-              walletDoc.id,
-              'transactions',
-            ),
-            {
-              type: 'refund',
-              amount: refundAmount,
-              balanceAfter: newBalance,
-              description: `Reversed: ${originalTxn.description}`,
-              studentId: originalTxn.studentId,
-              date: dateStr,
-              createdAt: serverTimestamp(),
-            },
-          );
-          await updateDoc(
-            doc(firestore, 'coaches', coachId, 'wallets', walletDoc.id),
-            {
-              balance: increment(refundAmount),
-              updatedAt: serverTimestamp(),
-            },
-          );
+          const originalTxn = txnSnap.docs[0].data() as {
+            amount: number;
+            description: string;
+            studentId?: string;
+          };
+          matchedWalletId = walletDoc.id;
+          matchedTxn = originalTxn;
+          matchedNewBalance = walletDoc.balance + Math.abs(originalTxn.amount);
           break;
         }
       }
 
-      await deleteDoc(
-        doc(firestore, 'coaches', coachId, 'lessonLogs', logId),
-      );
+      // Atomically delete the lesson log + post refund + bump wallet balance.
+      const batch = writeBatch(firestore);
+      batch.delete(doc(firestore, 'coaches', coachId, 'lessonLogs', logId));
+      if (matchedWalletId && matchedTxn) {
+        const refundAmount = Math.abs(matchedTxn.amount);
+        const now = new Date();
+        const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const newTxnRef = doc(
+          collection(
+            firestore,
+            'coaches',
+            coachId,
+            'wallets',
+            matchedWalletId,
+            'transactions',
+          ),
+        );
+        batch.set(newTxnRef, {
+          type: 'refund',
+          amount: refundAmount,
+          balanceAfter: matchedNewBalance,
+          description: `Reversed: ${matchedTxn.description}`,
+          studentId: matchedTxn.studentId,
+          date: dateStr,
+          createdAt: serverTimestamp(),
+        });
+        batch.update(
+          doc(firestore, 'coaches', coachId, 'wallets', matchedWalletId),
+          {
+            balance: increment(refundAmount),
+            updatedAt: serverTimestamp(),
+          },
+        );
+      }
+      await batch.commit();
+
       showToast('Lesson deleted', 'success');
       onClose();
     } catch (error) {

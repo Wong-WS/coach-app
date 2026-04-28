@@ -6,7 +6,7 @@
 
 ## Architecture Questions
 
-1. (2026-03-23) **Payment–lesson log coupling is fragile** — credit, pendingPayment, and prepaidUsed are derived counters on the student doc, updated incrementally on each mark-as-done / delete. Deleting and re-adding lessons can desync these values (e.g., credit lost). Need a more robust approach — e.g., recompute totals from lessonLogs + payments on the fly, or link payments directly to lesson logs, so the source of truth is always the raw records rather than mutable counters.
+1. ✅ (2026-04-28) **Payment–lesson log coupling is fragile** — old derived counters (credit, pendingPayment, prepaidUsed) fully removed by 2026-04-16 wallet system. Lesson delete flow had regressed to non-atomic sequential awaits in `students/page.tsx` (commit 79de2a6) — restored to `writeBatch` so refund txn + balance bump + lessonLog delete now commit atomically. Wallet ledger and balance counter can no longer desync.
 
 2. (2026-03-23) **Giant page components** — `dashboard/page.tsx` (1646 lines, 48 useState) and `students/page.tsx` (1592 lines, 46 useState) are doing too much. Should we extract modal flows into separate components/hooks? What's the right split?
 
@@ -26,15 +26,15 @@
 
 ## Next Session
 
-- (2026-04-17) **Add Vercel domains to Firebase Authorized Domains** — Google sign-in will fail on prod/preview URLs until done. Path: Firebase Console → Authentication → Settings tab → Authorized domains → Add: `coach-app-ashen-delta.vercel.app` + the redesign branch preview URL. Without this, Google sign-in throws `auth/unauthorized-domain`.
+- ✅ (2026-04-28) **Add Vercel domains to Firebase Authorized Domains** — done. Google sign-in works on prod/preview URLs.
 - ✅ (2026-03-24) Edge case: Woojin + 3 kids class — 4 kids as one student record, one parent pays for all. Holiday scenario (2 kids away) handled by adjusting price on mark-as-done. Switching to pay-per-lesson now clears pending balance. Renamed "due" → "unpaid" labels.
 
 ## Ideas (not urgent)
 
 - (2026-04-20) **Rework auth flow** — current email/password + Google coexistence has a silent footgun: if a user signs up with unverified email/password and later signs in with Google (same email), Firebase's account-takeover protection *drops* the password provider and leaves a Google-only account. User's data/UID are preserved but password login stops working with no warning. Options being considered: (a) Google-only; (b) magic-link only (email, no password); (c) keep email/password but also offer magic-link as a fallback. Until this is decided, consider adding `sendEmailVerification` at signup so the password provider can't be silently replaced.
 - ✅ (2026-03-25) Run full E2E bug hunt using Chrome MCP — fixed 12 UI/UX bugs, wrote 65 unit tests, fixed prepaidUsed increment bug for non-package students
-- (2026-03-23) UI/UX design overhaul — revisit the overall app design
-- (2026-04-17) **Consider migrating component primitives to shadcn/ui** — user likes the look. Would replace the hand-rolled Button/Input/Select/Modal in `src/components/ui/` with shadcn's copy-paste components (Radix primitives + Tailwind). Good pairing with the react-day-picker popover we're adding now. Weight the refactor cost against visual polish + accessibility gains before doing it.
+- ✅ (2026-04-28) UI/UX design overhaul — full Paper & Ink redesign shipped across dashboard, portal, auth, and landing.
+- ✅ (2026-04-28) **Consider migrating component primitives to shadcn/ui** — decided against shadcn; went with the hand-rolled Paper & Ink design system in `src/components/paper/` instead.
 - WhatsApp/SMS notifications
 - Custom domains
 - ✅ (2026-03-24) Production guardrails: prevent marking done for future dates
