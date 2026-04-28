@@ -63,6 +63,8 @@ import {
 import { EditClassModal } from './_components/EditClassModal';
 import { AddLessonModal, type StudentRowState, type AddLessonPrefill } from './_components/AddLessonModal';
 import { MarkDoneModal } from './_components/MarkDoneModal';
+import { BulkMarkDoneConfirmModal } from './_components/BulkMarkDoneConfirmModal';
+import { DepletedWalletAlert, type DepletedAlert } from './_components/DepletedWalletAlert';
 
 const SHORT_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 
@@ -189,16 +191,7 @@ export default function DashboardPage() {
   const [markingDone, setMarkingDone] = useState(false);
 
   // Wallet-depletion popup shown when a mark-done charge empties a wallet.
-  const [depletedAlert, setDepletedAlert] = useState<
-    | {
-        wallets: Array<{
-          name: string;
-          newBalance: number;
-          status: 'owing' | 'empty';
-        }>;
-      }
-    | null
-  >(null);
+  const [depletedAlert, setDepletedAlert] = useState<DepletedAlert | null>(null);
 
   // Bulk mark-all-done confirmation popup state.
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
@@ -1035,142 +1028,18 @@ export default function DashboardPage() {
         onConfirm={handleConfirmMarkDone}
       />
 
-      <PaperModal
+      <BulkMarkDoneConfirmModal
         open={bulkConfirmOpen}
-        onClose={() => !bulkRunning && setBulkConfirmOpen(false)}
-        title={`Mark ${remainingClasses.length} ${
-          remainingClasses.length === 1 ? 'class' : 'classes'
-        } done?`}
-        width={480}
-      >
-        <div className="space-y-4">
-          <div
-            className="rounded-[10px] border p-3 text-[13px]"
-            style={{
-              background: 'var(--warn-soft)',
-              borderColor: 'var(--warn)',
-              color: 'var(--ink)',
-            }}
-          >
-            Double-check this list — make sure none of these classes were actually
-            cancelled today. Once marked done, wallets will be charged.
-          </div>
+        running={bulkRunning}
+        classes={remainingClasses}
+        onCancel={() => setBulkConfirmOpen(false)}
+        onConfirm={handleConfirmMarkAllDone}
+      />
 
-          <div
-            className="rounded-[10px] border divide-y"
-            style={{ background: 'var(--bg)', borderColor: 'var(--line)' }}
-          >
-            {remainingClasses.map((c) => {
-              const total = getBookingTotal(c);
-              const studentCount = c.studentIds.length;
-              return (
-                <div
-                  key={c.id}
-                  className="flex items-center gap-3 px-3 py-2.5"
-                  style={{ borderColor: 'var(--line)' }}
-                >
-                  <div
-                    className="mono tnum text-[12.5px] w-14 shrink-0"
-                    style={{ color: 'var(--ink-2)' }}
-                  >
-                    {fmtTimeShort(c.startTime)}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div
-                      className="text-[13.5px] font-medium truncate"
-                      style={{ color: 'var(--ink)' }}
-                    >
-                      {c.className || 'Class'}
-                    </div>
-                    <div className="text-[12px]" style={{ color: 'var(--ink-3)' }}>
-                      {studentCount} {studentCount === 1 ? 'student' : 'students'}
-                    </div>
-                  </div>
-                  <div
-                    className="mono tnum text-[13px] shrink-0"
-                    style={{ color: 'var(--ink-2)' }}
-                  >
-                    RM {Math.round(total)}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="flex gap-2 justify-end">
-            <Btn
-              variant="outline"
-              onClick={() => setBulkConfirmOpen(false)}
-              disabled={bulkRunning}
-            >
-              Cancel
-            </Btn>
-            <Btn
-              variant="primary"
-              onClick={handleConfirmMarkAllDone}
-              disabled={bulkRunning || remainingClasses.length === 0}
-            >
-              {bulkRunning ? 'Marking…' : 'Mark all done'}
-            </Btn>
-          </div>
-        </div>
-      </PaperModal>
-
-      <PaperModal
-        open={!!depletedAlert}
+      <DepletedWalletAlert
+        alert={depletedAlert}
         onClose={() => setDepletedAlert(null)}
-        title={
-          depletedAlert && depletedAlert.wallets.length > 1
-            ? 'Wallets need top-up'
-            : 'Wallet needs top-up'
-        }
-      >
-        {depletedAlert && (
-          <div className="space-y-3">
-            <p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>
-              {depletedAlert.wallets.length > 1
-                ? "These wallets can't cover the next lesson after this charge:"
-                : "This wallet can't cover the next lesson after this charge:"}
-            </p>
-            <div className="space-y-2">
-              {depletedAlert.wallets.map((w, i) => {
-                const isOwing = w.status === 'owing';
-                return (
-                  <div
-                    key={i}
-                    className="rounded-[10px] border p-3"
-                    style={{
-                      background: isOwing ? 'var(--bad-soft)' : 'var(--warn-soft)',
-                      borderColor: isOwing ? 'var(--bad)' : 'var(--warn)',
-                    }}
-                  >
-                    <div
-                      className="text-[13.5px] font-semibold"
-                      style={{ color: 'var(--ink)' }}
-                    >
-                      {w.name}
-                    </div>
-                    <div
-                      className="mono tnum text-[12.5px] mt-0.5"
-                      style={{ color: isOwing ? 'var(--bad)' : 'var(--warn)' }}
-                    >
-                      {isOwing
-                        ? `Now owes RM ${Math.abs(w.newBalance).toFixed(0)}`
-                        : `Balance RM ${w.newBalance.toFixed(0)} — below next lesson`}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <Btn
-              variant="primary"
-              onClick={() => setDepletedAlert(null)}
-            >
-              Got it
-            </Btn>
-          </div>
-        )}
-      </PaperModal>
+      />
 
       <PaperModal
         open={!!cancelCtx}
