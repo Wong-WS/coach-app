@@ -14,7 +14,7 @@
 
 4. (2026-03-23) **ClassExceptions grow unbounded** — every single-date cancellation or reschedule creates a `classException` doc that's never cleaned up. A coach cancelling one class per week = 52 docs/year per booking. Should we add a cleanup strategy or TTL?
 
-5. (2026-03-23) **No global error boundary** — errors are handled per-action with try/catch + toast. An unhandled error in any component crashes the whole app. Should we add `error.tsx` files and/or a global error boundary?
+5. ✅ (2026-04-28) **No global error boundary** — added `error.tsx` at root, `/dashboard`, and `/portal/[token]`. Unhandled errors now show a Paper & Ink fallback card with "Try again" + escape link instead of a white screen. Logs to console with error digest for debugging.
 
 6. (2026-03-23) **Client-side Firebase on every page** — Firebase SDK bundles on all pages even public ones that only use API routes. Should we lazy-load or tree-shake it for public pages?
 
@@ -31,7 +31,6 @@
 
 ## Ideas (not urgent)
 
-- (2026-04-20) **Rework auth flow** — current email/password + Google coexistence has a silent footgun: if a user signs up with unverified email/password and later signs in with Google (same email), Firebase's account-takeover protection *drops* the password provider and leaves a Google-only account. User's data/UID are preserved but password login stops working with no warning. Options being considered: (a) Google-only; (b) magic-link only (email, no password); (c) keep email/password but also offer magic-link as a fallback. Until this is decided, consider adding `sendEmailVerification` at signup so the password provider can't be silently replaced.
 - ✅ (2026-03-25) Run full E2E bug hunt using Chrome MCP — fixed 12 UI/UX bugs, wrote 65 unit tests, fixed prepaidUsed increment bug for non-package students
 - ✅ (2026-04-28) UI/UX design overhaul — full Paper & Ink redesign shipped across dashboard, portal, auth, and landing.
 - ✅ (2026-04-28) **Consider migrating component primitives to shadcn/ui** — decided against shadcn; went with the hand-rolled Paper & Ink design system in `src/components/paper/` instead.
