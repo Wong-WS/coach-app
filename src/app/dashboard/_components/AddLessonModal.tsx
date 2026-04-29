@@ -134,7 +134,10 @@ export function AddLessonModal({
   const creatingLocation = locationId === '__new';
 
   const handleSave = async () => {
-    if (!coachId || !db) return;
+    if (!coachId || !db) {
+      showToast('Account still loading — refresh the page and try again', 'error');
+      return;
+    }
     if (rows.length === 0) return;
 
     // Validate rows

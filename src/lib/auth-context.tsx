@@ -32,9 +32,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [coach, setCoach] = useState<Coach | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchCoach = async (uid: string): Promise<Coach | null> => {
+  const ensureCoach = async (user: User): Promise<Coach | null> => {
     if (!db) return null;
-    const coachDoc = await getDoc(doc(db, 'coaches', uid));
+    const coachRef = doc(db, 'coaches', user.uid);
+    const coachDoc = await getDoc(coachRef);
     if (coachDoc.exists()) {
       const data = coachDoc.data();
       return {
@@ -42,12 +43,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         displayName: data.displayName,
       };
     }
-    return null;
+    const fallbackName =
+      user.displayName || user.email?.split('@')[0] || 'Coach';
+    await setDoc(coachRef, {
+      displayName: fallbackName,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return { id: user.uid, displayName: fallbackName };
   };
 
   const refreshCoach = async () => {
     if (user) {
-      const coachData = await fetchCoach(user.uid);
+      const coachData = await ensureCoach(user);
       setCoach(coachData);
     }
   };
@@ -62,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
       if (user) {
-        const coachData = await fetchCoach(user.uid);
+        const coachData = await ensureCoach(user);
         setCoach(coachData);
       } else {
         setCoach(null);
@@ -92,24 +100,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithGoogle = async () => {
-    if (!auth || !db) throw new Error('Firebase not initialized');
-
+    if (!auth) throw new Error('Firebase not initialized');
     const provider = new GoogleAuthProvider();
-    const result = await signInWithPopup(auth, provider);
-    const { uid, displayName, email } = result.user;
-
-    const coachRef = doc(db, 'coaches', uid);
-    const existing = await getDoc(coachRef);
-    if (existing.exists()) return;
-
-    await setDoc(coachRef, {
-      displayName: displayName || email?.split('@')[0] || 'Coach',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-
-    const created = await fetchCoach(uid);
-    setCoach(created);
+    await signInWithPopup(auth, provider);
   };
 
   const signOut = async () => {
