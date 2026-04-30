@@ -315,7 +315,7 @@ export default function DashboardPage() {
       }> = [];
       for (const { wallet, charge } of walletImpacts.values()) {
         if (wallet.tabMode) continue;
-        const rate = getNextLessonCost(wallet, bookings);
+        const rate = getNextLessonCost(wallet, bookings, todayStr);
         if (rate <= 0) continue;
         const prevBalance = wallet.balance;
         const newBalance = prevBalance - charge;
@@ -417,7 +417,7 @@ export default function DashboardPage() {
       }> = [];
       for (const { wallet, charge } of walletImpacts.values()) {
         if (wallet.tabMode) continue;
-        const rate = getNextLessonCost(wallet, bookings);
+        const rate = getNextLessonCost(wallet, bookings, todayStr);
         if (rate <= 0) continue;
         const prevBalance = wallet.balance;
         const newBalance = prevBalance - charge;

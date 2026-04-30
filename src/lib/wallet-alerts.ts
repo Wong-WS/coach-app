@@ -2,12 +2,20 @@ import type { Booking, Wallet } from '@/types';
 
 /**
  * One "lesson-round" cost for this wallet: for each student using this wallet
- * across all bookings, take the max price they pay in any of their bookings,
- * then sum those per-student maxes.
+ * across all bookings still active on `today`, take the max price they pay in
+ * any of those bookings, then sum those per-student maxes.
+ *
+ * Ended bookings (endDate < today) are skipped — otherwise stale prices from
+ * one-off lessons or "this and future" splits leak into the rate forever.
  */
-export function getNextLessonCost(wallet: Wallet, bookings: Booking[]): number {
+export function getNextLessonCost(
+  wallet: Wallet,
+  bookings: Booking[],
+  today: string,
+): number {
   const studentMax: Record<string, number> = {};
   for (const b of bookings) {
+    if (b.endDate && b.endDate < today) continue;
     for (const studentId of b.studentIds) {
       if (b.studentWallets?.[studentId] !== wallet.id) continue;
       const price = b.studentPrices?.[studentId] ?? 0;
@@ -51,7 +59,7 @@ export function isLowBalance(wallet: Wallet, bookings: Booking[], today: string)
   if (wallet.archived) return false;
   if (wallet.tabMode) return false;
   if (!hasActiveBooking(wallet, bookings, today)) return false;
-  return wallet.balance < getNextLessonCost(wallet, bookings) * 2;
+  return wallet.balance < getNextLessonCost(wallet, bookings, today) * 2;
 }
 
 /**
@@ -65,7 +73,7 @@ export function getWalletStatus(
   if (wallet.archived) {
     return { rate: 0, isLow: false };
   }
-  const rate = getNextLessonCost(wallet, bookings);
+  const rate = getNextLessonCost(wallet, bookings, today);
   if (wallet.tabMode) {
     return { rate, isLow: false };
   }
@@ -97,7 +105,7 @@ export function getWalletHealth(
   today: string,
 ): { health: WalletHealth; rate: number; lessonsLeft: number } {
   if (wallet.archived) return { health: 'inactive', rate: 0, lessonsLeft: 0 };
-  const rate = getNextLessonCost(wallet, bookings);
+  const rate = getNextLessonCost(wallet, bookings, today);
   const lessonsLeft = rate > 0 ? Math.floor(wallet.balance / rate) : 0;
   if (wallet.tabMode) return { health: 'tab', rate, lessonsLeft };
   if (!hasActiveBooking(wallet, bookings, today))

@@ -40,9 +40,11 @@ function makeBooking(overrides: Partial<Booking> = {}): Booking {
 }
 
 describe('getNextLessonCost', () => {
+  const today = '2026-04-30';
+
   it('returns 0 when no bookings reference the wallet', () => {
     const wallet = makeWallet();
-    expect(getNextLessonCost(wallet, [])).toBe(0);
+    expect(getNextLessonCost(wallet, [], today)).toBe(0);
   });
 
   it('sums prices for students in this wallet (single booking)', () => {
@@ -52,7 +54,7 @@ describe('getNextLessonCost', () => {
       studentPrices: { s1: 60, s2: 60 },
       studentWallets: { s1: 'w1', s2: 'w1' },
     });
-    expect(getNextLessonCost(wallet, [booking])).toBe(120);
+    expect(getNextLessonCost(wallet, [booking], today)).toBe(120);
   });
 
   it('excludes students in the same booking who use a different wallet', () => {
@@ -62,20 +64,49 @@ describe('getNextLessonCost', () => {
       studentPrices: { s1: 60, s2: 60 },
       studentWallets: { s1: 'w1', s2: 'w2' },
     });
-    expect(getNextLessonCost(wallet, [booking])).toBe(60);
+    expect(getNextLessonCost(wallet, [booking], today)).toBe(60);
   });
 
   it('takes max across multiple bookings (worst-case single day)', () => {
     const wallet = makeWallet({ id: 'w1' });
     const b1 = makeBooking({ id: 'b1', studentPrices: { s1: 100 }, studentWallets: { s1: 'w1' } });
     const b2 = makeBooking({ id: 'b2', studentPrices: { s1: 140 }, studentWallets: { s1: 'w1' } });
-    expect(getNextLessonCost(wallet, [b1, b2])).toBe(140);
+    expect(getNextLessonCost(wallet, [b1, b2], today)).toBe(140);
   });
 
   it('ignores bookings that do not reference the wallet', () => {
     const wallet = makeWallet({ id: 'w1' });
     const other = makeBooking({ studentWallets: { s1: 'w2' } });
-    expect(getNextLessonCost(wallet, [other])).toBe(0);
+    expect(getNextLessonCost(wallet, [other], today)).toBe(0);
+  });
+
+  it('skips ended bookings so stale prices do not leak into the rate', () => {
+    // Repro: group lesson [s1, s2] @ 70/70 was edited to a solo for s1 @ 120
+    // via "this and future". The old booking is capped with endDate < today
+    // but stays status=confirmed in Firestore. Without the endDate filter,
+    // s2's 70 from the ended booking would still count, giving 120 + 70 = 190.
+    const wallet = makeWallet({ id: 'w1', studentIds: ['s1', 's2'] });
+    const ended = makeBooking({
+      id: 'ended',
+      studentIds: ['s1', 's2'],
+      studentPrices: { s1: 70, s2: 70 },
+      studentWallets: { s1: 'w1', s2: 'w1' },
+      endDate: '2026-04-23',
+    });
+    const active = makeBooking({
+      id: 'active',
+      studentIds: ['s1'],
+      studentPrices: { s1: 120 },
+      studentWallets: { s1: 'w1' },
+      startDate: '2026-04-30',
+    });
+    expect(getNextLessonCost(wallet, [ended, active], today)).toBe(120);
+  });
+
+  it('still counts a booking ending today', () => {
+    const wallet = makeWallet({ id: 'w1' });
+    const b = makeBooking({ studentPrices: { s1: 80 }, endDate: today });
+    expect(getNextLessonCost(wallet, [b], today)).toBe(80);
   });
 });
 
