@@ -161,6 +161,32 @@ function WalletCard({
 }) {
   const { health, rate, lessonsLeft } = getWalletHealth(wallet, bookings, todayStr);
 
+  // TEMP DEBUG — diagnose inflated rate. Remove after diagnosis.
+  if (health === 'empty' || health === 'low') {
+    const contributing = bookings
+      .filter((b) => !(b.endDate && b.endDate < todayStr))
+      .filter((b) => b.studentIds.some((sid) => b.studentWallets?.[sid] === wallet.id))
+      .map((b) => ({
+        id: b.id,
+        className: b.className,
+        dayOfWeek: b.dayOfWeek,
+        startDate: b.startDate,
+        endDate: b.endDate,
+        studentIds: b.studentIds,
+        studentPrices: b.studentPrices,
+        studentWallets: b.studentWallets,
+      }));
+    console.log('[wallet-debug]', {
+      wallet: wallet.name,
+      walletId: wallet.id,
+      balance: wallet.balance,
+      health,
+      rate,
+      todayStr,
+      contributing,
+    });
+  }
+
   const balanceColor =
     health === 'owing'
       ? 'var(--bad)'
