@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   collection,
   addDoc,
@@ -9,7 +9,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useToast } from '@/components/ui/Toast';
-import type { Student, Wallet, Location } from '@/types';
+import type { Student, Wallet, Location, Booking } from '@/types';
 import {
   getDayOfWeekForDate,
 } from '@/lib/class-schedule';
@@ -77,6 +77,7 @@ export function AddLessonModal({
   students,
   wallets,
   locations,
+  bookings,
   defaultDate,
   prefill,
 }: {
@@ -86,6 +87,7 @@ export function AddLessonModal({
   students: Student[];
   wallets: Wallet[];
   locations: Location[];
+  bookings: Booking[];
   defaultDate: string;
   prefill?: AddLessonPrefill | null;
 }) {
@@ -129,6 +131,59 @@ export function AddLessonModal({
     setRows((rs) => [...rs, makeEmptyRow()]);
   const removeRow = (i: number) =>
     setRows((rs) => rs.filter((_, idx) => idx !== i));
+
+  // studentId -> defaults derived from existing wallets & past bookings.
+  // Wallet: first non-archived wallet that has the student in studentIds.
+  // Price: most recent studentPrices[sid] from bookings (sorted by createdAt desc).
+  const studentDefaults = useMemo(() => {
+    const map = new Map<string, { walletId: string | null; price: number }>();
+
+    const walletByStudent = new Map<string, string>();
+    for (const w of wallets) {
+      if (w.archived) continue;
+      for (const sid of w.studentIds || []) {
+        if (!walletByStudent.has(sid)) walletByStudent.set(sid, w.id);
+      }
+    }
+
+    const sortedBookings = [...bookings].sort(
+      (a, b) => (b.createdAt?.getTime?.() ?? 0) - (a.createdAt?.getTime?.() ?? 0),
+    );
+    const priceByStudent = new Map<string, number>();
+    for (const b of sortedBookings) {
+      if (!b.studentPrices) continue;
+      for (const [sid, price] of Object.entries(b.studentPrices)) {
+        if (!priceByStudent.has(sid) && typeof price === 'number') {
+          priceByStudent.set(sid, price);
+        }
+      }
+    }
+
+    for (const s of students) {
+      map.set(s.id, {
+        walletId: walletByStudent.get(s.id) ?? null,
+        price: priceByStudent.get(s.id) ?? 0,
+      });
+    }
+    return map;
+  }, [students, wallets, bookings]);
+
+  const handlePickStudent = (i: number, studentId: string) => {
+    if (!studentId) {
+      updateRow(i, { studentId: '' });
+      return;
+    }
+    const d = studentDefaults.get(studentId);
+    const patch: Partial<StudentRowState> = { studentId, price: d?.price ?? 0 };
+    if (d?.walletId) {
+      patch.walletOption = 'existing';
+      patch.existingWalletId = d.walletId;
+    } else {
+      patch.walletOption = 'none';
+      patch.existingWalletId = '';
+    }
+    updateRow(i, patch);
+  };
 
   const total = rows.reduce((s, r) => s + (Number(r.price) || 0), 0);
   const creatingLocation = locationId === '__new';
@@ -396,6 +451,7 @@ export function AddLessonModal({
                 wallets={wallets}
                 rows={rows}
                 onChange={(patch) => updateRow(i, patch)}
+                onPickStudent={(sid) => handlePickStudent(i, sid)}
                 onRemove={() => removeRow(i)}
               />
             ))}
@@ -471,6 +527,7 @@ function StudentRow({
   wallets,
   rows,
   onChange,
+  onPickStudent,
   onRemove,
 }: {
   row: StudentRowState;
@@ -480,6 +537,7 @@ function StudentRow({
   wallets: Wallet[];
   rows: StudentRowState[];
   onChange: (patch: Partial<StudentRowState>) => void;
+  onPickStudent: (studentId: string) => void;
   onRemove: () => void;
 }) {
   const pendingAbove = rows
@@ -551,7 +609,7 @@ function StudentRow({
       {row.mode === 'existing' ? (
         <select
           value={row.studentId}
-          onChange={(e) => onChange({ studentId: e.target.value })}
+          onChange={(e) => onPickStudent(e.target.value)}
           className={paperInputClass}
           style={paperInputStyle}
         >

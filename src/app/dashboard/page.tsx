@@ -1122,6 +1122,7 @@ export default function DashboardPage() {
         students={students}
         wallets={wallets}
         locations={locations}
+        bookings={bookings}
         defaultDate={selectedDateStr}
         prefill={duplicatePrefill}
       />
