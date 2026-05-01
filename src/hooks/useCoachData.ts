@@ -123,18 +123,24 @@ export function useLessonLogs(coachId: string | undefined, dateFilter?: string, 
   const [lessonLogs, setLessonLogs] = useState<LessonLog[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Reset state when filter params change so we don't briefly show the previous
-    // student/date/range's logs while the new subscription's first snapshot lands.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- clear stale results from the prior subscription
+  // Sync stale state during render when filter changes. Without this, the first
+  // render after a date change still has the previous date's logs (and shows
+  // recurring classes briefly as "not done"). React's recommended pattern for
+  // resetting state on prop change.
+  const filterKey = `${coachId ?? ''}|${dateFilter ?? ''}|${studentIdFilter ?? ''}|${monthsBack ?? ''}|${limitCount ?? ''}`;
+  const [trackedFilter, setTrackedFilter] = useState(filterKey);
+  if (trackedFilter !== filterKey) {
+    setTrackedFilter(filterKey);
     setLessonLogs([]);
+    setLoading(true);
+  }
 
+  useEffect(() => {
     if (!coachId || !db) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- guard branch: hydrate loading=false when no subscription will be opened
       setLoading(false);
       return;
     }
-
-    setLoading(true);
 
     const firestore = db as Firestore;
     const col = collection(firestore, 'coaches', coachId, 'lessonLogs');
@@ -292,18 +298,22 @@ export function useWalletTransactions(coachId: string | undefined, walletId: str
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Reset when walletId or limit changes so we don't flash the previous wallet's
-    // transactions while the new subscription's first snapshot lands.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- clear stale results from the prior subscription
+  // Render-time sync so the first render after a wallet/limit change doesn't
+  // briefly show the previous wallet's transactions.
+  const filterKey = `${coachId ?? ''}|${walletId ?? ''}|${limitCount ?? ''}`;
+  const [trackedFilter, setTrackedFilter] = useState(filterKey);
+  if (trackedFilter !== filterKey) {
+    setTrackedFilter(filterKey);
     setTransactions([]);
+    setLoading(true);
+  }
 
+  useEffect(() => {
     if (!coachId || !walletId || !db) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- guard branch: hydrate loading=false when no subscription will be opened
       setLoading(false);
       return;
     }
-
-    setLoading(true);
 
     const firestore = db as Firestore;
     const col = collection(firestore, 'coaches', coachId, 'wallets', walletId, 'transactions');
