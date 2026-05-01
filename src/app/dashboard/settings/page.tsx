@@ -10,6 +10,7 @@ import {
   getDocs,
   query,
   serverTimestamp,
+  updateDoc,
   where,
   writeBatch,
 } from 'firebase/firestore';
@@ -60,12 +61,16 @@ function Eyebrow({ children, tone }: { children: React.ReactNode; tone?: 'bad' }
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const { coach, user } = useAuth();
+  const { coach, user, refreshCoach } = useAuth();
   const { showToast } = useToast();
   const { locations } = useLocations(coach?.id);
 
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetting, setResetting] = useState(false);
+
+  const [showEditName, setShowEditName] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [savingName, setSavingName] = useState(false);
 
   const [showAddLocation, setShowAddLocation] = useState(false);
   const [newLocationName, setNewLocationName] = useState('');
@@ -168,6 +173,35 @@ export default function SettingsPage() {
     }
   };
 
+  const openEditName = () => {
+    setEditName(coach?.displayName ?? '');
+    setShowEditName(true);
+  };
+
+  const handleSaveName = async () => {
+    if (!coach || !db) return;
+    const name = editName.trim();
+    if (!name || name === coach.displayName) {
+      setShowEditName(false);
+      return;
+    }
+    setSavingName(true);
+    try {
+      const firestore = db as Firestore;
+      await updateDoc(doc(firestore, 'coaches', coach.id), {
+        displayName: name,
+        updatedAt: serverTimestamp(),
+      });
+      await refreshCoach();
+      showToast('Name updated', 'success');
+      setShowEditName(false);
+    } catch {
+      showToast('Failed to update name', 'error');
+    } finally {
+      setSavingName(false);
+    }
+  };
+
   const handleReset = async () => {
     if (!coach) return;
     setResetting(true);
@@ -231,11 +265,21 @@ export default function SettingsPage() {
             >
               Name
             </div>
-            <div
-              className="text-[13.5px] font-medium truncate"
-              style={{ color: 'var(--ink)' }}
-            >
-              {coach?.displayName ?? '—'}
+            <div className="flex items-center gap-1 min-w-0">
+              <div
+                className="text-[13.5px] font-medium truncate"
+                style={{ color: 'var(--ink)' }}
+              >
+                {coach?.displayName ?? '—'}
+              </div>
+              <button
+                onClick={openEditName}
+                className="p-1.5 rounded-[8px] transition-colors hover:bg-[var(--line)] shrink-0"
+                style={{ color: 'var(--ink-3)' }}
+                aria-label="Edit name"
+              >
+                <IconEdit size={14} />
+              </button>
             </div>
           </div>
           <div
@@ -392,6 +436,54 @@ export default function SettingsPage() {
           </button>
         </div>
       </section>
+
+      {/* ── Edit name modal ── */}
+      <PaperModal
+        open={showEditName}
+        onClose={() => !savingName && setShowEditName(false)}
+        title="Edit name"
+      >
+        <div className="space-y-4">
+          <div>
+            <label
+              className="block text-[11.5px] font-semibold uppercase mb-1.5"
+              style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
+            >
+              Name
+            </label>
+            <input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              placeholder="e.g. Coach Wei"
+              autoFocus
+              className={paperInputClass}
+              style={paperInputStyle}
+            />
+            <p className="text-[11.5px] mt-2" style={{ color: 'var(--ink-3)' }}>
+              How your name appears in the dashboard. Doesn&apos;t change your
+              login email or Google account.
+            </p>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Btn
+              variant="ghost"
+              full
+              onClick={() => setShowEditName(false)}
+              disabled={savingName}
+            >
+              Cancel
+            </Btn>
+            <Btn
+              variant="primary"
+              full
+              onClick={handleSaveName}
+              disabled={!editName.trim() || savingName}
+            >
+              {savingName ? 'Saving…' : 'Save'}
+            </Btn>
+          </div>
+        </div>
+      </PaperModal>
 
       {/* ── Add location modal ── */}
       <PaperModal
