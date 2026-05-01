@@ -1603,6 +1603,7 @@ function ClassCard({
         padding: compact ? 14 : 16,
         gap: compact ? 12 : 16,
         opacity: doneLoading ? 1 : isDone ? 0.72 : 1,
+        transition: 'opacity 180ms ease-out',
       }}
     >
       {/* Time column */}
@@ -1662,9 +1663,11 @@ function ClassCard({
             {cls.className || 'Untitled class'}
           </div>
           {isDone && (
-            <Chip tone="good">
-              <IconCheck size={11} /> Done
-            </Chip>
+            <span className="fade-in inline-flex">
+              <Chip tone="good">
+                <IconCheck size={11} /> Done
+              </Chip>
+            </span>
           )}
           {isGroup && <Chip tone="accent">Group · {effectiveIds.length}</Chip>}
           {anyLow && !isDone && !doneLoading && <Chip tone="warn">Low wallet</Chip>}
@@ -1685,16 +1688,25 @@ function ClassCard({
             </span>
           )}
         </div>
-        {!compact && !doneLoading && (
-          <div className="flex gap-2 mt-1.5">
-            {!isDone ? (
-              <Btn size="sm" variant="primary" onClick={onMarkDone}>
-                <IconCheck size={13} /> Mark done
-              </Btn>
+        {!compact && (
+          <div className="flex gap-2 mt-1.5" style={{ minHeight: 28 }}>
+            {doneLoading ? (
+              <div
+                className="rounded-[8px] animate-pulse"
+                style={{ width: 110, height: 26, background: 'var(--line)' }}
+              />
+            ) : !isDone ? (
+              <span className="fade-in inline-flex">
+                <Btn size="sm" variant="primary" onClick={onMarkDone}>
+                  <IconCheck size={13} /> Mark done
+                </Btn>
+              </span>
             ) : (
-              <Btn size="sm" variant="ghost" onClick={onUndo}>
-                <IconUndo size={13} /> Undo
-              </Btn>
+              <span className="fade-in inline-flex">
+                <Btn size="sm" variant="ghost" onClick={onUndo}>
+                  <IconUndo size={13} /> Undo
+                </Btn>
+              </span>
             )}
           </div>
         )}
@@ -1712,20 +1724,33 @@ function ClassCard({
         >
           RM {Math.round(total)}
         </div>
-        {doneLoading ? null : isDone ? (
-          compact ? (
-            <Btn size="sm" variant="ghost" onClick={onUndo}>
-              <IconUndo size={12} />
-            </Btn>
-          ) : null
-        ) : (
-          <ClassActionsMenu
-            onMarkDone={onMarkDone}
-            onEdit={onEdit}
-            onDuplicate={onDuplicate}
-            onCancel={onCancel}
-          />
-        )}
+        <div style={{ minHeight: compact ? 28 : 28, minWidth: 28 }} className="flex items-end">
+          {doneLoading ? (
+            compact ? (
+              <div
+                className="rounded-[8px] animate-pulse"
+                style={{ width: 32, height: 26, background: 'var(--line)' }}
+              />
+            ) : null
+          ) : isDone ? (
+            compact ? (
+              <span className="fade-in inline-flex">
+                <Btn size="sm" variant="ghost" onClick={onUndo}>
+                  <IconUndo size={12} />
+                </Btn>
+              </span>
+            ) : null
+          ) : (
+            <span className="fade-in inline-flex">
+              <ClassActionsMenu
+                onMarkDone={onMarkDone}
+                onEdit={onEdit}
+                onDuplicate={onDuplicate}
+                onCancel={onCancel}
+              />
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

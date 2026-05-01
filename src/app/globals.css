@@ -124,10 +124,15 @@ body {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
 }
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
 @layer utilities {
   .paper-backdrop-in { animation: paperBackdropIn 0.15s ease-out; }
   .paper-sheet-in { animation: paperDialogIn 0.16s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .fade-in { animation: fadeIn 0.18s ease-out; }
   .paper-sheet { width: 100%; max-width: 100%; }
   @media (max-width: 639.99px) {
     .paper-sheet-in { animation: paperSheetSlideUp 0.24s cubic-bezier(0.2, 0.8, 0.2, 1); }
