@@ -63,7 +63,7 @@ function Eyebrow({ children, tone }: { children: React.ReactNode; tone?: 'bad' }
 export default function SettingsPage() {
   const { coach, user, refreshCoach } = useAuth();
   const { showToast } = useToast();
-  const { locations } = useLocations(coach?.id);
+  const { locations, loading: locationsLoading } = useLocations(coach?.id);
 
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -320,7 +320,29 @@ export default function SettingsPage() {
           from the picker — past lessons keep their location name.
         </p>
 
-        {locations.length === 0 ? (
+        {locationsLoading && locations.length === 0 ? (
+          <div className="flex flex-col gap-2">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="flex items-center gap-3 px-3.5 py-3 rounded-[12px] border animate-pulse"
+                style={{
+                  background: 'var(--panel)',
+                  borderColor: 'var(--line)',
+                }}
+              >
+                <div
+                  className="shrink-0 rounded-full"
+                  style={{ width: 30, height: 30, background: 'var(--line)' }}
+                />
+                <div
+                  className="h-3 rounded-[4px] flex-1"
+                  style={{ background: 'var(--line)', maxWidth: 180 }}
+                />
+              </div>
+            ))}
+          </div>
+        ) : locations.length === 0 ? (
           <div
             className="rounded-[12px] border py-10 text-center"
             style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}

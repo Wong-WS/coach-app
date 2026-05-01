@@ -135,8 +135,11 @@ export default function DashboardPage() {
   const selectedDateStr = useMemo(() => ymd(selectedDate), [selectedDate]);
   const todayStr = useMemo(() => ymd(new Date()), []);
 
-  const { classExceptions } = useClassExceptions(coach?.id, selectedDateStr);
-  const { lessonLogs } = useLessonLogs(coach?.id, selectedDateStr);
+  const { classExceptions, loading: classExceptionsLoading } = useClassExceptions(coach?.id, selectedDateStr);
+  const { lessonLogs, loading: lessonLogsLoading } = useLessonLogs(coach?.id, selectedDateStr);
+  // Until both date-scoped queries land, doneByBookingId is unreliable and
+  // would flash cards as "not done" before flipping to done.
+  const doneStateLoading = lessonLogsLoading || classExceptionsLoading;
 
   const todaysClasses = useMemo(
     () => getClassesForDate(selectedDateStr, bookings, classExceptions),
@@ -869,6 +872,7 @@ export default function DashboardPage() {
           firstName={firstName}
           totalCount={totalCount}
           doneCount={doneCount}
+          doneStateLoading={doneStateLoading}
           earliest={todaysClasses[0]?.startTime}
           onToday={() => setSelectedDate(new Date())}
           onAdd={() => setShowAdd(true)}
@@ -890,10 +894,12 @@ export default function DashboardPage() {
               trailing={
                 totalCount > 0 && (
                   <div className="flex items-center gap-3">
-                    <div className="text-[12px] tnum" style={{ color: 'var(--ink-3)' }}>
-                      {doneCount}/{totalCount} done
-                    </div>
-                    {isToday && remainingClasses.length > 0 && (
+                    {!doneStateLoading && (
+                      <div className="text-[12px] tnum" style={{ color: 'var(--ink-3)' }}>
+                        {doneCount}/{totalCount} done
+                      </div>
+                    )}
+                    {isToday && !doneStateLoading && remainingClasses.length > 0 && (
                       <Btn size="sm" variant="outline" onClick={() => setBulkConfirmOpen(true)}>
                         <IconCheck size={13} /> Mark all done
                       </Btn>
@@ -929,6 +935,7 @@ export default function DashboardPage() {
                     !!getBackingException(c.id, selectedDateStr, classExceptions)
                   }
                   isDone={doneByBookingId.has(c.id)}
+                  doneLoading={doneStateLoading}
                   doneTotal={doneByBookingId.get(c.id) ?? 0}
                   attendedIds={doneStudentsByBookingId.get(c.id)}
                   onMarkDone={() => openMarkDone(c)}
@@ -951,8 +958,8 @@ export default function DashboardPage() {
           <div className="flex flex-col gap-3.5">
             <StatCard
               label={isToday ? 'Earned today' : `Earned ${formatDateShort(selectedDate)}`}
-              value={`RM ${Math.round(todayRevenue)}`}
-              sub={`of RM ${Math.round(expectedRevenue)} expected`}
+              value={doneStateLoading ? '—' : `RM ${Math.round(todayRevenue)}`}
+              sub={doneStateLoading ? ' ' : `of RM ${Math.round(expectedRevenue)} expected`}
             />
             <LowWalletsCard wallets={lowWallets} />
             <QuickActionsCard
@@ -991,10 +998,12 @@ export default function DashboardPage() {
           trailing={
             totalCount > 0 && (
               <div className="flex items-center gap-2.5">
-                <div className="text-[12px] tnum" style={{ color: 'var(--ink-3)' }}>
-                  {doneCount}/{totalCount} done
-                </div>
-                {isToday && remainingClasses.length > 0 && (
+                {!doneStateLoading && (
+                  <div className="text-[12px] tnum" style={{ color: 'var(--ink-3)' }}>
+                    {doneCount}/{totalCount} done
+                  </div>
+                )}
+                {isToday && !doneStateLoading && remainingClasses.length > 0 && (
                   <Btn size="sm" variant="outline" onClick={() => setBulkConfirmOpen(true)}>
                     <IconCheck size={13} /> Mark all done
                   </Btn>
@@ -1030,6 +1039,7 @@ export default function DashboardPage() {
                 !!getBackingException(c.id, selectedDateStr, classExceptions)
               }
               isDone={doneByBookingId.has(c.id)}
+              doneLoading={doneStateLoading}
               doneTotal={doneByBookingId.get(c.id) ?? 0}
               attendedIds={doneStudentsByBookingId.get(c.id)}
               onMarkDone={() => openMarkDone(c)}
@@ -1052,8 +1062,8 @@ export default function DashboardPage() {
         <div className="mt-4 grid grid-cols-2 gap-3">
           <StatCard
             label={isToday ? 'Earned today' : `Earned ${formatDateShort(selectedDate)}`}
-            value={`RM ${Math.round(todayRevenue)}`}
-            sub={`of RM ${Math.round(expectedRevenue)}`}
+            value={doneStateLoading ? '—' : `RM ${Math.round(todayRevenue)}`}
+            sub={doneStateLoading ? ' ' : `of RM ${Math.round(expectedRevenue)}`}
           />
           <StatCard
             label="Low wallets"
@@ -1227,6 +1237,7 @@ function DesktopHero({
   firstName,
   totalCount,
   doneCount,
+  doneStateLoading,
   earliest,
   onToday,
   onAdd,
@@ -1236,6 +1247,7 @@ function DesktopHero({
   firstName: string;
   totalCount: number;
   doneCount: number;
+  doneStateLoading: boolean;
   earliest: string | undefined;
   onToday: () => void;
   onAdd: () => void;
@@ -1262,7 +1274,7 @@ function DesktopHero({
               <b style={{ color: 'var(--ink)' }}>
                 {totalCount} {totalCount === 1 ? 'class' : 'classes'}
               </b>
-              {doneCount > 0 && <> · {doneCount} done</>}
+              {!doneStateLoading && doneCount > 0 && <> · {doneCount} done</>}
               {earliest && (
                 <>
                   . Earliest at <b style={{ color: 'var(--ink)' }}>{formatTimeDisplay(earliest)}</b>.
@@ -1534,6 +1546,7 @@ function ClassCard({
   todayStr,
   hasBackingException,
   isDone,
+  doneLoading = false,
   doneTotal,
   attendedIds,
   onMarkDone,
@@ -1552,6 +1565,7 @@ function ClassCard({
   todayStr: string;
   hasBackingException: boolean;
   isDone: boolean;
+  doneLoading?: boolean;
   doneTotal: number;
   attendedIds?: string[];
   onMarkDone: () => void;
@@ -1588,7 +1602,7 @@ function ClassCard({
         borderColor: 'var(--line)',
         padding: compact ? 14 : 16,
         gap: compact ? 12 : 16,
-        opacity: isDone ? 0.72 : 1,
+        opacity: doneLoading ? 1 : isDone ? 0.72 : 1,
       }}
     >
       {/* Time column */}
@@ -1653,7 +1667,7 @@ function ClassCard({
             </Chip>
           )}
           {isGroup && <Chip tone="accent">Group · {effectiveIds.length}</Chip>}
-          {anyLow && !isDone && <Chip tone="warn">Low wallet</Chip>}
+          {anyLow && !isDone && !doneLoading && <Chip tone="warn">Low wallet</Chip>}
         </div>
         <div
           className="flex items-center gap-2.5 text-[12.5px] flex-wrap"
@@ -1671,7 +1685,7 @@ function ClassCard({
             </span>
           )}
         </div>
-        {!compact && (
+        {!compact && !doneLoading && (
           <div className="flex gap-2 mt-1.5">
             {!isDone ? (
               <Btn size="sm" variant="primary" onClick={onMarkDone}>
@@ -1698,7 +1712,7 @@ function ClassCard({
         >
           RM {Math.round(total)}
         </div>
-        {isDone ? (
+        {doneLoading ? null : isDone ? (
           compact ? (
             <Btn size="sm" variant="ghost" onClick={onUndo}>
               <IconUndo size={12} />

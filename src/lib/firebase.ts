@@ -1,6 +1,12 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, Firestore } from 'firebase/firestore';
+import {
+  Firestore,
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -17,9 +23,24 @@ let auth: Auth | undefined;
 let db: Firestore | undefined;
 
 if (typeof window !== 'undefined' && firebaseConfig.apiKey) {
-  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+  const isFirstInit = getApps().length === 0;
+  app = isFirstInit ? initializeApp(firebaseConfig) : getApps()[0];
   auth = getAuth(app);
-  db = getFirestore(app);
+
+  if (isFirstInit) {
+    try {
+      db = initializeFirestore(app, {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        }),
+      });
+    } catch {
+      // Browsers without IndexedDB (private mode in some) fall back to in-memory.
+      db = getFirestore(app);
+    }
+  } else {
+    db = getFirestore(app);
+  }
 }
 
 export { auth, db };

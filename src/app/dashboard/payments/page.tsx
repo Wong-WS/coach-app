@@ -276,7 +276,7 @@ function WalletDetailBody({
   showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }) {
   const [txnLimit, setTxnLimit] = useState(12);
-  const { transactions } = useWalletTransactions(coachId, wallet.id, txnLimit);
+  const { transactions, loading: transactionsLoading } = useWalletTransactions(coachId, wallet.id, txnLimit);
   const linkedStudents = students.filter((s) => wallet.studentIds.includes(s.id));
   const unlinkedStudents = students.filter(
     (s) => !wallets.some((w) => w.studentIds.includes(s.id)),
@@ -585,7 +585,17 @@ function WalletDetailBody({
         >
           Recent transactions
         </div>
-        {transactions.length === 0 ? (
+        {transactionsLoading && transactions.length === 0 ? (
+          <div className="flex flex-col gap-1.5">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-9 rounded-[6px] animate-pulse"
+                style={{ background: 'var(--line)' }}
+              />
+            ))}
+          </div>
+        ) : transactions.length === 0 ? (
           <p className="text-[12.5px]" style={{ color: 'var(--ink-3)' }}>
             No transactions yet.
           </p>
@@ -723,7 +733,7 @@ export default function PaymentsPage() {
   const { coach } = useAuth();
   const { showToast } = useToast();
 
-  const { wallets } = useWallets(coach?.id);
+  const { wallets, loading: walletsLoading } = useWallets(coach?.id);
   const { students } = useStudents(coach?.id);
   const { bookings } = useBookings(coach?.id, 'confirmed');
   const { classExceptions } = useClassExceptions(coach?.id);
@@ -1314,7 +1324,34 @@ export default function PaymentsPage() {
             </div>
           )}
 
-          {wallets.length === 0 ? (
+          {walletsLoading && wallets.length === 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="rounded-[12px] border p-4 animate-pulse"
+                  style={{
+                    background: 'var(--panel)',
+                    borderColor: 'var(--line)',
+                    minHeight: 140,
+                  }}
+                >
+                  <div
+                    className="h-3 rounded-[4px] mb-3"
+                    style={{ background: 'var(--line)', maxWidth: 120 }}
+                  />
+                  <div
+                    className="h-6 rounded-[4px] mb-3"
+                    style={{ background: 'var(--line)', maxWidth: 90 }}
+                  />
+                  <div
+                    className="h-3 rounded-[4px]"
+                    style={{ background: 'var(--line)', maxWidth: 160 }}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : wallets.length === 0 ? (
             <div
               className="rounded-[12px] border py-16 text-center"
               style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
