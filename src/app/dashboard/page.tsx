@@ -27,7 +27,7 @@ import {
   useLocations,
 } from '@/hooks/useCoachData';
 import { useToast } from '@/components/ui/Toast';
-import type { Booking, ClassException, Student, Wallet } from '@/types';
+import type { Booking, ClassException, LessonLog, Student, Wallet } from '@/types';
 import {
   getClassesForDate,
   getBookingTotal,
@@ -85,6 +85,28 @@ function weekStartMon(d: Date): Date {
   const day = d.getDay();
   const delta = day === 0 ? -6 : 1 - day;
   return addDays(d, delta);
+}
+
+// Build a completedLogs array that includes synthetic stubs for bookings just
+// marked done. The Firestore snapshot hasn't refreshed React state yet, so the
+// rate calc would otherwise count those classes as upcoming.
+function makeCompletedLogsWithPending(
+  existing: LessonLog[],
+  pending: { date: string; bookingId: string }[],
+): LessonLog[] {
+  const stubs: LessonLog[] = pending.map((p, i) => ({
+    id: `pending-${i}`,
+    date: p.date,
+    bookingId: p.bookingId,
+    studentId: '',
+    studentName: '',
+    locationName: '',
+    startTime: '',
+    endTime: '',
+    price: 0,
+    createdAt: new Date(),
+  }));
+  return [...existing, ...stubs];
 }
 
 function fmtTimeShort(t: string): string {
@@ -162,9 +184,9 @@ export default function DashboardPage() {
 
   const lowWallets = useMemo(() => {
     return wallets
-      .filter((w) => isLowBalance(w, bookings, todayStr))
+      .filter((w) => isLowBalance(w, bookings, classExceptions, lessonLogs, todayStr))
       .sort((a, b) => a.balance - b.balance);
-  }, [wallets, bookings, todayStr]);
+  }, [wallets, bookings, classExceptions, lessonLogs, todayStr]);
 
   const weekDays = useMemo(() => {
     const start = weekStartMon(selectedDate);
@@ -308,6 +330,12 @@ export default function DashboardPage() {
       // After the commit, collect wallets that just crossed below next-lesson
       // cost. "Can cover next" = balance >= rate (or rate == 0). Skip tab-mode
       // wallets. Show a popup listing any wallets that need attention.
+      // Augment lessonLogs with the just-marked-done booking so the rate calc
+      // correctly skips it (snapshot hasn't refreshed React state yet).
+      const completedWithJustDone = makeCompletedLogsWithPending(
+        lessonLogs,
+        [{ date: selectedDateStr, bookingId: booking.id }],
+      );
       const depleted: Array<{
         name: string;
         newBalance: number;
@@ -315,7 +343,13 @@ export default function DashboardPage() {
       }> = [];
       for (const { wallet, charge } of walletImpacts.values()) {
         if (wallet.tabMode) continue;
-        const rate = getNextLessonCost(wallet, bookings, todayStr);
+        const rate = getNextLessonCost(
+          wallet,
+          bookings,
+          classExceptions,
+          completedWithJustDone,
+          todayStr,
+        );
         if (rate <= 0) continue;
         const prevBalance = wallet.balance;
         const newBalance = prevBalance - charge;
@@ -410,6 +444,10 @@ export default function DashboardPage() {
         'success',
       );
 
+      const completedWithJustDone = makeCompletedLogsWithPending(
+        lessonLogs,
+        remainingClasses.map((b) => ({ date: selectedDateStr, bookingId: b.id })),
+      );
       const depleted: Array<{
         name: string;
         newBalance: number;
@@ -417,7 +455,13 @@ export default function DashboardPage() {
       }> = [];
       for (const { wallet, charge } of walletImpacts.values()) {
         if (wallet.tabMode) continue;
-        const rate = getNextLessonCost(wallet, bookings, todayStr);
+        const rate = getNextLessonCost(
+          wallet,
+          bookings,
+          classExceptions,
+          completedWithJustDone,
+          todayStr,
+        );
         if (rate <= 0) continue;
         const prevBalance = wallet.balance;
         const newBalance = prevBalance - charge;
@@ -878,6 +922,8 @@ export default function DashboardPage() {
                   students={students}
                   wallets={wallets}
                   bookings={bookings}
+                  exceptions={classExceptions}
+                  completedLogs={lessonLogs}
                   todayStr={todayStr}
                   isDone={doneByBookingId.has(c.id)}
                   doneTotal={doneByBookingId.get(c.id) ?? 0}
@@ -974,6 +1020,8 @@ export default function DashboardPage() {
               students={students}
               wallets={wallets}
               bookings={bookings}
+              exceptions={classExceptions}
+              completedLogs={lessonLogs}
               todayStr={todayStr}
               isDone={doneByBookingId.has(c.id)}
               doneTotal={doneByBookingId.get(c.id) ?? 0}
@@ -1474,6 +1522,8 @@ function ClassCard({
   students,
   wallets,
   bookings,
+  exceptions,
+  completedLogs,
   todayStr,
   isDone,
   doneTotal,
@@ -1489,6 +1539,8 @@ function ClassCard({
   students: Student[];
   wallets: Wallet[];
   bookings: Booking[];
+  exceptions: ClassException[];
+  completedLogs: LessonLog[];
   todayStr: string;
   isDone: boolean;
   doneTotal: number;
@@ -1509,7 +1561,9 @@ function ClassCard({
   const walletsFor = cls.studentIds
     .map((sid) => resolveWallet(cls, sid, wallets))
     .filter((w): w is Wallet => !!w);
-  const anyLow = walletsFor.some((w) => isLowBalance(w, bookings, todayStr));
+  const anyLow = walletsFor.some((w) =>
+    isLowBalance(w, bookings, exceptions, completedLogs, todayStr),
+  );
   const duration = minutesBetween(cls.startTime, cls.endTime);
   const isRecurring = !cls.startDate || !cls.endDate || cls.startDate !== cls.endDate;
 

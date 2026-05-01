@@ -4,8 +4,9 @@ import {
   hasActiveBooking,
   isLowBalance,
   getWalletStatus,
+  getWalletHealth,
 } from '@/lib/wallet-alerts';
-import type { Booking, Wallet } from '@/types';
+import type { Booking, ClassException, LessonLog, Wallet } from '@/types';
 
 function makeWallet(overrides: Partial<Wallet> = {}): Wallet {
   return {
@@ -39,74 +40,145 @@ function makeBooking(overrides: Partial<Booking> = {}): Booking {
   };
 }
 
-describe('getNextLessonCost', () => {
-  const today = '2026-04-30';
+function makeLog(overrides: Partial<LessonLog> = {}): LessonLog {
+  return {
+    id: 'log1',
+    date: '2026-04-30',
+    bookingId: 'b1',
+    studentId: 's1',
+    studentName: 'Test Student',
+    locationName: 'Court A',
+    startTime: '10:00',
+    endTime: '11:00',
+    price: 60,
+    createdAt: new Date(),
+    ...overrides,
+  };
+}
 
+// 2026-04-30 is a Thursday. 2026-05-04 is a Monday. Use these consistently
+// so booking dayOfWeek matching works across cases.
+const TODAY = '2026-04-30';
+const NEXT_MONDAY = '2026-05-04';
+
+describe('getNextLessonCost', () => {
   it('returns 0 when no bookings reference the wallet', () => {
     const wallet = makeWallet();
-    expect(getNextLessonCost(wallet, [], today)).toBe(0);
+    expect(getNextLessonCost(wallet, [], [], [], TODAY)).toBe(0);
   });
 
-  it('sums prices for students in this wallet (single booking)', () => {
+  it('returns the cost of the next chronological lesson (single weekly group)', () => {
     const wallet = makeWallet({ id: 'w1', studentIds: ['s1', 's2'] });
+    // Monday weekly group, both kids on this wallet at 70 each.
     const booking = makeBooking({
+      dayOfWeek: 'monday',
       studentIds: ['s1', 's2'],
-      studentPrices: { s1: 60, s2: 60 },
+      studentPrices: { s1: 70, s2: 70 },
       studentWallets: { s1: 'w1', s2: 'w1' },
     });
-    expect(getNextLessonCost(wallet, [booking], today)).toBe(120);
+    expect(getNextLessonCost(wallet, [booking], [], [], TODAY)).toBe(140);
   });
 
-  it('excludes students in the same booking who use a different wallet', () => {
+  it('skips a class already marked done and uses the next one', () => {
+    // Today (Thu): one-time solo override at 120, already marked done.
+    // Sat: weekly group at 70/70 = 140 → that's the next chronological lesson.
+    const wallet = makeWallet({ id: 'w1', studentIds: ['s1', 's2'] });
+    const todaySolo = makeBooking({
+      id: 'today',
+      dayOfWeek: 'thursday',
+      studentIds: ['s1'],
+      studentPrices: { s1: 120 },
+      studentWallets: { s1: 'w1' },
+      startDate: TODAY,
+      endDate: TODAY,
+    });
+    const satGroup = makeBooking({
+      id: 'sat',
+      dayOfWeek: 'saturday',
+      studentIds: ['s1', 's2'],
+      studentPrices: { s1: 70, s2: 70 },
+      studentWallets: { s1: 'w1', s2: 'w1' },
+    });
+    const log = makeLog({ date: TODAY, bookingId: 'today' });
+    expect(getNextLessonCost(wallet, [todaySolo, satGroup], [], [log], TODAY)).toBe(140);
+  });
+
+  it('counts today as the next lesson if it is not yet marked done', () => {
+    const wallet = makeWallet({ id: 'w1', studentIds: ['s1'] });
+    const todaySolo = makeBooking({
+      id: 'today',
+      dayOfWeek: 'thursday',
+      studentIds: ['s1'],
+      studentPrices: { s1: 120 },
+      studentWallets: { s1: 'w1' },
+      startDate: TODAY,
+      endDate: TODAY,
+    });
+    expect(getNextLessonCost(wallet, [todaySolo], [], [], TODAY)).toBe(120);
+  });
+
+  it('respects per-date "this only" exception overrides via getClassesForDate', () => {
+    // Recurring Thursday group at 70/70 = 140; "this only" exception today
+    // makes it Tawoo solo at 120. Next-lesson cost today should be 120.
+    const wallet = makeWallet({ id: 'w1', studentIds: ['s1', 's2'] });
+    const recurring = makeBooking({
+      id: 'rec',
+      dayOfWeek: 'thursday',
+      studentIds: ['s1', 's2'],
+      studentPrices: { s1: 70, s2: 70 },
+      studentWallets: { s1: 'w1', s2: 'w1' },
+    });
+    const exception: ClassException = {
+      id: 'ex1',
+      bookingId: 'rec',
+      originalDate: TODAY,
+      type: 'rescheduled',
+      newDate: TODAY,
+      newStudentIds: ['s1'],
+      newStudentPrices: { s1: 120 },
+      newStudentWallets: { s1: 'w1' },
+      createdAt: new Date(),
+    };
+    expect(getNextLessonCost(wallet, [recurring], [exception], [], TODAY)).toBe(120);
+  });
+
+  it('returns the chronological next, not the most expensive', () => {
+    // Wallet covers two students with separate solo bookings:
+    //   s1 on Mon at 100, s2 on Wed at 120.
+    // Today Mon: next = Mon at 100 (NOT 120 just because it is higher).
+    const wallet = makeWallet({ id: 'w1', studentIds: ['s1', 's2'] });
+    const monSolo = makeBooking({
+      id: 'mon',
+      dayOfWeek: 'monday',
+      studentIds: ['s1'],
+      studentPrices: { s1: 100 },
+      studentWallets: { s1: 'w1' },
+    });
+    const wedSolo = makeBooking({
+      id: 'wed',
+      dayOfWeek: 'wednesday',
+      studentIds: ['s2'],
+      studentPrices: { s2: 120 },
+      studentWallets: { s2: 'w1' },
+    });
+    expect(getNextLessonCost(wallet, [monSolo, wedSolo], [], [], NEXT_MONDAY)).toBe(100);
+  });
+
+  it('returns 0 when all bookings are ended', () => {
+    const wallet = makeWallet({ id: 'w1' });
+    const ended = makeBooking({ endDate: '2026-03-01' });
+    expect(getNextLessonCost(wallet, [ended], [], [], TODAY)).toBe(0);
+  });
+
+  it('ignores students in the same booking who use a different wallet', () => {
     const wallet = makeWallet({ id: 'w1', studentIds: ['s1'] });
     const booking = makeBooking({
+      dayOfWeek: 'thursday',
       studentIds: ['s1', 's2'],
       studentPrices: { s1: 60, s2: 60 },
       studentWallets: { s1: 'w1', s2: 'w2' },
     });
-    expect(getNextLessonCost(wallet, [booking], today)).toBe(60);
-  });
-
-  it('takes max across multiple bookings (worst-case single day)', () => {
-    const wallet = makeWallet({ id: 'w1' });
-    const b1 = makeBooking({ id: 'b1', studentPrices: { s1: 100 }, studentWallets: { s1: 'w1' } });
-    const b2 = makeBooking({ id: 'b2', studentPrices: { s1: 140 }, studentWallets: { s1: 'w1' } });
-    expect(getNextLessonCost(wallet, [b1, b2], today)).toBe(140);
-  });
-
-  it('ignores bookings that do not reference the wallet', () => {
-    const wallet = makeWallet({ id: 'w1' });
-    const other = makeBooking({ studentWallets: { s1: 'w2' } });
-    expect(getNextLessonCost(wallet, [other], today)).toBe(0);
-  });
-
-  it('skips ended bookings so stale prices do not leak into the rate', () => {
-    // Repro: group lesson [s1, s2] @ 70/70 was edited to a solo for s1 @ 120
-    // via "this and future". The old booking is capped with endDate < today
-    // but stays status=confirmed in Firestore. Without the endDate filter,
-    // s2's 70 from the ended booking would still count, giving 120 + 70 = 190.
-    const wallet = makeWallet({ id: 'w1', studentIds: ['s1', 's2'] });
-    const ended = makeBooking({
-      id: 'ended',
-      studentIds: ['s1', 's2'],
-      studentPrices: { s1: 70, s2: 70 },
-      studentWallets: { s1: 'w1', s2: 'w1' },
-      endDate: '2026-04-23',
-    });
-    const active = makeBooking({
-      id: 'active',
-      studentIds: ['s1'],
-      studentPrices: { s1: 120 },
-      studentWallets: { s1: 'w1' },
-      startDate: '2026-04-30',
-    });
-    expect(getNextLessonCost(wallet, [ended, active], today)).toBe(120);
-  });
-
-  it('still counts a booking ending today', () => {
-    const wallet = makeWallet({ id: 'w1' });
-    const b = makeBooking({ studentPrices: { s1: 80 }, endDate: today });
-    expect(getNextLessonCost(wallet, [b], today)).toBe(80);
+    expect(getNextLessonCost(wallet, [booking], [], [], TODAY)).toBe(60);
   });
 });
 
@@ -149,70 +221,143 @@ describe('hasActiveBooking', () => {
 });
 
 describe('isLowBalance', () => {
-  const today = '2026-04-18';
-  const booking = makeBooking();
-
-  it('fires when balance < 2x next lesson cost and all gating rules pass', () => {
-    const wallet = makeWallet({ balance: 20 });
-    expect(isLowBalance(wallet, [booking], today)).toBe(true);
+  // Thursday group at 70 each → next lesson is 140.
+  const groupBooking = makeBooking({
+    dayOfWeek: 'thursday',
+    studentIds: ['s1', 's2'],
+    studentPrices: { s1: 70, s2: 70 },
+    studentWallets: { s1: 'w1', s2: 'w1' },
   });
 
-  it('fires when balance covers exactly 1 lesson (< 2 lessons)', () => {
-    const wallet = makeWallet({ balance: 60 });
-    expect(isLowBalance(wallet, [booking], today)).toBe(true);
+  it('fires when balance < 2x next lesson cost', () => {
+    const wallet = makeWallet({ id: 'w1', studentIds: ['s1', 's2'], balance: 200 });
+    expect(isLowBalance(wallet, [groupBooking], [], [], TODAY)).toBe(true);
   });
 
   it('does not fire when balance covers 2+ lessons', () => {
-    const wallet = makeWallet({ balance: 120 });
-    expect(isLowBalance(wallet, [booking], today)).toBe(false);
+    const wallet = makeWallet({ id: 'w1', studentIds: ['s1', 's2'], balance: 300 });
+    expect(isLowBalance(wallet, [groupBooking], [], [], TODAY)).toBe(false);
   });
 
   it('does not fire for archived wallets', () => {
-    const wallet = makeWallet({ balance: 0, archived: true });
-    expect(isLowBalance(wallet, [booking], today)).toBe(false);
+    const wallet = makeWallet({ id: 'w1', balance: 0, archived: true });
+    expect(isLowBalance(wallet, [groupBooking], [], [], TODAY)).toBe(false);
   });
 
   it('does not fire when wallet has no active bookings', () => {
-    const wallet = makeWallet({ balance: 0 });
+    const wallet = makeWallet({ id: 'w1', balance: 0 });
     const ended = makeBooking({ endDate: '2026-03-01' });
-    expect(isLowBalance(wallet, [ended], today)).toBe(false);
+    expect(isLowBalance(wallet, [ended], [], [], TODAY)).toBe(false);
   });
 
-  it('does not fire for orphan wallet (no bookings at all)', () => {
-    const wallet = makeWallet({ balance: -100 });
-    expect(isLowBalance(wallet, [], today)).toBe(false);
+  it('does not fire for tab-mode wallets', () => {
+    const wallet = makeWallet({ id: 'w1', balance: 0, tabMode: true });
+    expect(isLowBalance(wallet, [groupBooking], [], [], TODAY)).toBe(false);
+  });
+});
+
+describe('getWalletHealth', () => {
+  const groupBooking = makeBooking({
+    dayOfWeek: 'thursday',
+    studentIds: ['s1', 's2'],
+    studentPrices: { s1: 70, s2: 70 },
+    studentWallets: { s1: 'w1', s2: 'w1' },
   });
 
-  it('does not fire for tab-mode wallets, even at zero or negative', () => {
-    const zero = makeWallet({ balance: 0, tabMode: true });
-    expect(isLowBalance(zero, [booking], today)).toBe(false);
-    const negative = makeWallet({ balance: -100, tabMode: true });
-    expect(isLowBalance(negative, [booking], today)).toBe(false);
+  it('regression: today\'s edited solo (already done) does not inflate next-lesson cost', () => {
+    // Reproduces the original bug:
+    //   - Wallet covers Tawoo (s1) and Riwoo (s2)
+    //   - Today (Thu): one-time solo for Tawoo at 120, already marked done
+    //   - Saturday: weekly group at 70/70 = 140
+    //   - Wallet at 160 after the 120 charge
+    //   - Old algo summed per-student maxes → 120 + 70 = 190 → "empty"
+    //   - New algo: today done → next is Sat at 140 → 160 ≥ 140 → "low"
+    const wallet = makeWallet({
+      id: 'w1',
+      studentIds: ['s1', 's2'],
+      balance: 160,
+    });
+    const todaySolo = makeBooking({
+      id: 'today',
+      dayOfWeek: 'thursday',
+      studentIds: ['s1'],
+      studentPrices: { s1: 120 },
+      studentWallets: { s1: 'w1' },
+      startDate: TODAY,
+      endDate: TODAY,
+    });
+    const satGroup = makeBooking({
+      id: 'sat',
+      dayOfWeek: 'saturday',
+      studentIds: ['s1', 's2'],
+      studentPrices: { s1: 70, s2: 70 },
+      studentWallets: { s1: 'w1', s2: 'w1' },
+    });
+    const log = makeLog({ date: TODAY, bookingId: 'today' });
+    const result = getWalletHealth(
+      wallet,
+      [todaySolo, satGroup],
+      [],
+      [log],
+      TODAY,
+    );
+    expect(result.rate).toBe(140);
+    expect(result.health).toBe('low');
+    expect(result.lessonsLeft).toBe(1);
+  });
+
+  it('reports empty when balance < next lesson cost', () => {
+    const wallet = makeWallet({ id: 'w1', studentIds: ['s1', 's2'], balance: 100 });
+    const result = getWalletHealth(wallet, [groupBooking], [], [], TODAY);
+    expect(result.health).toBe('empty');
+    expect(result.rate).toBe(140);
+  });
+
+  it('reports owing when balance < 0 even with high rate', () => {
+    const wallet = makeWallet({ id: 'w1', studentIds: ['s1', 's2'], balance: -50 });
+    const result = getWalletHealth(wallet, [groupBooking], [], [], TODAY);
+    expect(result.health).toBe('owing');
+  });
+
+  it('reports inactive when archived', () => {
+    const wallet = makeWallet({ id: 'w1', balance: 1000, archived: true });
+    const result = getWalletHealth(wallet, [groupBooking], [], [], TODAY);
+    expect(result.health).toBe('inactive');
+  });
+
+  it('reports tab for tab-mode wallets regardless of balance', () => {
+    const wallet = makeWallet({ id: 'w1', studentIds: ['s1', 's2'], balance: -100, tabMode: true });
+    const result = getWalletHealth(wallet, [groupBooking], [], [], TODAY);
+    expect(result.health).toBe('tab');
   });
 });
 
 describe('getWalletStatus', () => {
-  const today = '2026-04-18';
-  const booking = makeBooking();
+  const groupBooking = makeBooking({
+    dayOfWeek: 'thursday',
+    studentIds: ['s1', 's2'],
+    studentPrices: { s1: 70, s2: 70 },
+    studentWallets: { s1: 'w1', s2: 'w1' },
+  });
 
   it('reports isLow = false for tab-mode wallets regardless of balance', () => {
-    const wallet = makeWallet({ balance: 0, tabMode: true });
-    expect(getWalletStatus(wallet, [booking], today).isLow).toBe(false);
+    const wallet = makeWallet({ id: 'w1', studentIds: ['s1', 's2'], balance: 0, tabMode: true });
+    expect(getWalletStatus(wallet, [groupBooking], [], [], TODAY).isLow).toBe(false);
   });
 
   it('still computes rate for tab-mode wallets (for top-up presets)', () => {
-    const wallet = makeWallet({ balance: 0, tabMode: true });
-    expect(getWalletStatus(wallet, [booking], today).rate).toBe(60);
+    const wallet = makeWallet({ id: 'w1', studentIds: ['s1', 's2'], balance: 0, tabMode: true });
+    expect(getWalletStatus(wallet, [groupBooking], [], [], TODAY).rate).toBe(140);
   });
 
   it('reports isLow = true for prepaid wallets at zero with active booking', () => {
-    const wallet = makeWallet({ balance: 0 });
-    expect(getWalletStatus(wallet, [booking], today).isLow).toBe(true);
+    const wallet = makeWallet({ id: 'w1', studentIds: ['s1', 's2'], balance: 0 });
+    expect(getWalletStatus(wallet, [groupBooking], [], [], TODAY).isLow).toBe(true);
   });
 
   it('returns zero rate for archived wallets', () => {
-    const wallet = makeWallet({ balance: 0, archived: true });
-    const status = getWalletStatus(wallet, [booking], today);
+    const wallet = makeWallet({ id: 'w1', balance: 0, archived: true });
+    const status = getWalletStatus(wallet, [groupBooking], [], [], TODAY);
     expect(status.rate).toBe(0);
     expect(status.isLow).toBe(false);
   });

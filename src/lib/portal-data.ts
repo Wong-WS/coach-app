@@ -1,6 +1,6 @@
 import 'server-only';
 import { getAdminDb } from '@/lib/firebase-admin';
-import type { Booking, Wallet } from '@/types';
+import type { Booking, ClassException, LessonLog, Wallet } from '@/types';
 import { getWalletHealth, type WalletHealth } from '@/lib/wallet-alerts';
 import { getSuggestedTopUp } from '@/lib/portal-suggestion';
 import type { Firestore, Timestamp } from 'firebase-admin/firestore';
@@ -47,6 +47,14 @@ function todayIsoDate(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function isoDateOffset(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + days);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
 }
 
 /**
@@ -173,16 +181,28 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
   if (!ctx) return null;
   const { db, coachId, walletId, hideStudentNames } = ctx;
 
-  const [coachSnap, walletSnap, bookingsSnap, charges, topUps] = await Promise.all([
-    db.doc(`coaches/${coachId}`).get(),
-    db.doc(`coaches/${coachId}/wallets/${walletId}`).get(),
-    db
-      .collection(`coaches/${coachId}/bookings`)
-      .where('status', '==', 'confirmed')
-      .get(),
-    fetchChargesPage(ctx, null),
-    fetchTopUpsPage(ctx, null),
-  ]);
+  const today = todayIsoDate();
+  // Fetch a 4-month exception window centred on today, matching the dashboard's
+  // useClassExceptions hook so getWalletHealth's lookahead has the same data.
+  const fourMonthsAgo = isoDateOffset(today, -120);
+  const fourMonthsAhead = isoDateOffset(today, 120);
+  const [coachSnap, walletSnap, bookingsSnap, exceptionsSnap, todayLogsSnap, charges, topUps] =
+    await Promise.all([
+      db.doc(`coaches/${coachId}`).get(),
+      db.doc(`coaches/${coachId}/wallets/${walletId}`).get(),
+      db
+        .collection(`coaches/${coachId}/bookings`)
+        .where('status', '==', 'confirmed')
+        .get(),
+      db
+        .collection(`coaches/${coachId}/classExceptions`)
+        .where('originalDate', '>=', fourMonthsAgo)
+        .where('originalDate', '<=', fourMonthsAhead)
+        .get(),
+      db.collection(`coaches/${coachId}/lessonLogs`).where('date', '==', today).get(),
+      fetchChargesPage(ctx, null),
+      fetchTopUpsPage(ctx, null),
+    ]);
 
   if (!coachSnap.exists || !walletSnap.exists) return null;
   const displayName = (coachSnap.data()?.displayName as string | undefined) ?? 'Coach';
@@ -223,7 +243,43 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
     };
   });
 
-  const { health, rate } = getWalletHealth(wallet, bookings, todayIsoDate());
+  const exceptions: ClassException[] = exceptionsSnap.docs.map((d) => {
+    const e = d.data();
+    return {
+      id: d.id,
+      bookingId: e.bookingId,
+      originalDate: e.originalDate,
+      type: e.type,
+      newDate: e.newDate,
+      newStartTime: e.newStartTime,
+      newEndTime: e.newEndTime,
+      newLocationId: e.newLocationId,
+      newLocationName: e.newLocationName,
+      newNote: e.newNote,
+      newClassName: e.newClassName,
+      newStudentIds: e.newStudentIds,
+      newStudentPrices: e.newStudentPrices,
+      newStudentWallets: e.newStudentWallets,
+      createdAt: e.createdAt?.toDate?.() ?? new Date(),
+    };
+  });
+  const todayLogs: LessonLog[] = todayLogsSnap.docs.map((d) => {
+    const l = d.data();
+    return {
+      id: d.id,
+      date: l.date,
+      bookingId: l.bookingId,
+      studentId: l.studentId,
+      studentName: l.studentName ?? '',
+      locationName: l.locationName ?? '',
+      startTime: l.startTime ?? '',
+      endTime: l.endTime ?? '',
+      price: l.price ?? 0,
+      createdAt: l.createdAt?.toDate?.() ?? new Date(),
+    };
+  });
+
+  const { health, rate } = getWalletHealth(wallet, bookings, exceptions, todayLogs, today);
 
   const suggestion =
     (health === 'empty' || health === 'owing')

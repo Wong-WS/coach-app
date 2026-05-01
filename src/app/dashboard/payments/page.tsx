@@ -147,6 +147,8 @@ function Stat({
 function WalletCard({
   wallet,
   bookings,
+  exceptions,
+  completedLogs,
   todayStr,
   linkedStudents,
   selected,
@@ -154,38 +156,20 @@ function WalletCard({
 }: {
   wallet: Wallet;
   bookings: import('@/types').Booking[];
+  exceptions: import('@/types').ClassException[];
+  completedLogs: import('@/types').LessonLog[];
   todayStr: string;
   linkedStudents: { id: string; clientName: string }[];
   selected: boolean;
   onClick: () => void;
 }) {
-  const { health, rate, lessonsLeft } = getWalletHealth(wallet, bookings, todayStr);
-
-  // TEMP DEBUG — diagnose inflated rate. Remove after diagnosis.
-  if (health === 'empty' || health === 'low') {
-    const contributing = bookings
-      .filter((b) => !(b.endDate && b.endDate < todayStr))
-      .filter((b) => b.studentIds.some((sid) => b.studentWallets?.[sid] === wallet.id))
-      .map((b) => ({
-        id: b.id,
-        className: b.className,
-        dayOfWeek: b.dayOfWeek,
-        startDate: b.startDate,
-        endDate: b.endDate,
-        studentIds: b.studentIds,
-        studentPrices: b.studentPrices,
-        studentWallets: b.studentWallets,
-      }));
-    console.log('[wallet-debug]', {
-      wallet: wallet.name,
-      walletId: wallet.id,
-      balance: wallet.balance,
-      health,
-      rate,
-      todayStr,
-      contributing,
-    });
-  }
+  const { health, rate, lessonsLeft } = getWalletHealth(
+    wallet,
+    bookings,
+    exceptions,
+    completedLogs,
+    todayStr,
+  );
 
   const balanceColor =
     health === 'owing'
@@ -879,9 +863,11 @@ export default function PaymentsPage() {
   const lowCount = useMemo(
     () =>
       wallets.filter(
-        (w) => !(w.archived ?? false) && isLowBalance(w, bookings, todayStr),
+        (w) =>
+          !(w.archived ?? false) &&
+          isLowBalance(w, bookings, classExceptions, lessonLogs, todayStr),
       ).length,
-    [wallets, bookings, todayStr],
+    [wallets, bookings, classExceptions, lessonLogs, todayStr],
   );
 
   const filteredWallets = useMemo(() => {
@@ -892,7 +878,9 @@ export default function PaymentsPage() {
     } else if (walletDayFilter === 'negative') {
       result = result.filter((w) => w.balance < 0);
     } else if (walletDayFilter === 'low') {
-      result = result.filter((w) => isLowBalance(w, bookings, todayStr));
+      result = result.filter((w) =>
+        isLowBalance(w, bookings, classExceptions, lessonLogs, todayStr),
+      );
     } else if (walletDayFilter !== 'all') {
       const dayWallets = walletDayMap.get(walletDayFilter);
       result = dayWallets ? result.filter((w) => dayWallets.has(w.id)) : [];
@@ -915,6 +903,8 @@ export default function PaymentsPage() {
     studentNameById,
     showArchived,
     bookings,
+    classExceptions,
+    lessonLogs,
     todayStr,
   ]);
 
@@ -938,13 +928,19 @@ export default function PaymentsPage() {
     let low = 0;
     for (const w of wallets) {
       if (w.archived) continue;
-      const { health } = getWalletHealth(w, bookings, todayStr);
+      const { health } = getWalletHealth(
+        w,
+        bookings,
+        classExceptions,
+        lessonLogs,
+        todayStr,
+      );
       if (health === 'owing') owing += 1;
       else if (health === 'empty') empty += 1;
       else if (health === 'low') low += 1;
     }
     return { owing, empty, low };
-  }, [wallets, bookings, todayStr]);
+  }, [wallets, bookings, classExceptions, lessonLogs, todayStr]);
   const monthActual = useMemo(
     () =>
       lessonLogs
@@ -973,10 +969,16 @@ export default function PaymentsPage() {
   // Top-up presets (require a rate > 0).
   const topUpPresets = useMemo(() => {
     if (!selectedWallet) return null;
-    const { rate } = getWalletStatus(selectedWallet, bookings, todayStr);
+    const { rate } = getWalletStatus(
+      selectedWallet,
+      bookings,
+      classExceptions,
+      lessonLogs,
+      todayStr,
+    );
     if (rate <= 0) return null;
     return [rate, rate * 5, rate * 10];
-  }, [selectedWallet, bookings, todayStr]);
+  }, [selectedWallet, bookings, classExceptions, lessonLogs, todayStr]);
 
   const unassignedStudents = students.filter(
     (s) => !wallets.some((w) => w.studentIds.includes(s.id)),
@@ -1355,6 +1357,8 @@ export default function PaymentsPage() {
                     key={wallet.id}
                     wallet={wallet}
                     bookings={bookings}
+                    exceptions={classExceptions}
+                    completedLogs={lessonLogs}
                     todayStr={todayStr}
                     linkedStudents={linked}
                     selected={selectedWallet?.id === wallet.id}
