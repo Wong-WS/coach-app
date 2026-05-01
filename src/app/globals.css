@@ -133,11 +133,25 @@ body {
   .paper-backdrop-in { animation: paperBackdropIn 0.15s ease-out; }
   .paper-sheet-in { animation: paperDialogIn 0.16s cubic-bezier(0.2, 0.8, 0.2, 1); }
   .fade-in { animation: fadeIn 0.18s ease-out; }
+  .crossfade-in { animation: fadeIn 0.2s ease-out; }
   .paper-sheet { width: 100%; max-width: 100%; }
   @media (max-width: 639.99px) {
     .paper-sheet-in { animation: paperSheetSlideUp 0.24s cubic-bezier(0.2, 0.8, 0.2, 1); }
   }
   @media (min-width: 640px) {
     .paper-sheet { max-width: var(--paper-modal-max, 440px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .fade-in,
+    .crossfade-in,
+    .paper-backdrop-in,
+    .paper-sheet-in { animation: none !important; }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
   }
 }

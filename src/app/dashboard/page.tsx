@@ -908,7 +908,7 @@ export default function DashboardPage() {
                 )
               }
             />
-            <div className="flex flex-col gap-2.5">
+            <div key={selectedDateStr} className="flex flex-col gap-2.5 crossfade-in">
               {totalCount === 0 && (
                 <div
                   className="rounded-[14px] border p-7 text-center text-[13px]"
@@ -956,11 +956,13 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex flex-col gap-3.5">
+            <div key={selectedDateStr} className="crossfade-in">
             <StatCard
               label={isToday ? 'Earned today' : `Earned ${formatDateShort(selectedDate)}`}
               value={doneStateLoading ? '—' : `RM ${Math.round(todayRevenue)}`}
               sub={doneStateLoading ? ' ' : `of RM ${Math.round(expectedRevenue)} expected`}
             />
+            </div>
             <LowWalletsCard wallets={lowWallets} />
             <QuickActionsCard
               onAdd={() => setShowAdd(true)}
@@ -1013,46 +1015,48 @@ export default function DashboardPage() {
           }
         />
         <div className="flex flex-col gap-2.5">
-          {totalCount === 0 && (
-            <div
-              className="rounded-[14px] border p-7 text-center text-[13px]"
-              style={{
-                background: 'var(--panel)',
-                borderColor: 'var(--line)',
-                color: 'var(--ink-3)',
-              }}
-            >
-              Nothing on the schedule.
-            </div>
-          )}
-          {todaysClasses.map((c) => (
-            <ClassCard
-              key={c.id}
-              cls={c}
-              students={students}
-              wallets={wallets}
-              bookings={bookings}
-              exceptions={classExceptions}
-              completedLogs={lessonLogs}
-              todayStr={todayStr}
-              hasBackingException={
-                !!getBackingException(c.id, selectedDateStr, classExceptions)
-              }
-              isDone={doneByBookingId.has(c.id)}
-              doneLoading={doneStateLoading}
-              doneTotal={doneByBookingId.get(c.id) ?? 0}
-              attendedIds={doneStudentsByBookingId.get(c.id)}
-              onMarkDone={() => openMarkDone(c)}
-              onCancel={() => openCancelFlow(c)}
-              onUndo={() => handleUndoMarkDone(c)}
-              onEdit={() => openEditBooking(c)}
-              onDuplicate={() => handleDuplicate(c)}
-              compact
-            />
-          ))}
-          {cancelledToday.length > 0 && (
-            <CancelledList items={cancelledToday} onUndo={(id) => handleUndoCancel(id)} />
-          )}
+          <div key={selectedDateStr} className="flex flex-col gap-2.5 crossfade-in">
+            {totalCount === 0 && (
+              <div
+                className="rounded-[14px] border p-7 text-center text-[13px]"
+                style={{
+                  background: 'var(--panel)',
+                  borderColor: 'var(--line)',
+                  color: 'var(--ink-3)',
+                }}
+              >
+                Nothing on the schedule.
+              </div>
+            )}
+            {todaysClasses.map((c) => (
+              <ClassCard
+                key={c.id}
+                cls={c}
+                students={students}
+                wallets={wallets}
+                bookings={bookings}
+                exceptions={classExceptions}
+                completedLogs={lessonLogs}
+                todayStr={todayStr}
+                hasBackingException={
+                  !!getBackingException(c.id, selectedDateStr, classExceptions)
+                }
+                isDone={doneByBookingId.has(c.id)}
+                doneLoading={doneStateLoading}
+                doneTotal={doneByBookingId.get(c.id) ?? 0}
+                attendedIds={doneStudentsByBookingId.get(c.id)}
+                onMarkDone={() => openMarkDone(c)}
+                onCancel={() => openCancelFlow(c)}
+                onUndo={() => handleUndoMarkDone(c)}
+                onEdit={() => openEditBooking(c)}
+                onDuplicate={() => handleDuplicate(c)}
+                compact
+              />
+            ))}
+            {cancelledToday.length > 0 && (
+              <CancelledList items={cancelledToday} onUndo={(id) => handleUndoCancel(id)} />
+            )}
+          </div>
           <Btn variant="outline" full onClick={() => setShowAdd(true)}>
             <IconPlus size={14} /> Add lesson
           </Btn>
@@ -1060,11 +1064,13 @@ export default function DashboardPage() {
 
         {/* mobile stat row */}
         <div className="mt-4 grid grid-cols-2 gap-3">
+          <div key={selectedDateStr} className="crossfade-in">
           <StatCard
             label={isToday ? 'Earned today' : `Earned ${formatDateShort(selectedDate)}`}
             value={doneStateLoading ? '—' : `RM ${Math.round(todayRevenue)}`}
             sub={doneStateLoading ? ' ' : `of RM ${Math.round(expectedRevenue)}`}
           />
+          </div>
           <StatCard
             label="Low wallets"
             value={`${lowWallets.length}`}
@@ -1690,12 +1696,7 @@ function ClassCard({
         </div>
         {!compact && (
           <div className="flex gap-2 mt-1.5" style={{ minHeight: 28 }}>
-            {doneLoading ? (
-              <div
-                className="rounded-[8px] animate-pulse"
-                style={{ width: 110, height: 26, background: 'var(--line)' }}
-              />
-            ) : !isDone ? (
+            {doneLoading ? null : !isDone ? (
               <span className="fade-in inline-flex">
                 <Btn size="sm" variant="primary" onClick={onMarkDone}>
                   <IconCheck size={13} /> Mark done
@@ -1724,15 +1725,8 @@ function ClassCard({
         >
           RM {Math.round(total)}
         </div>
-        <div style={{ minHeight: compact ? 28 : 28, minWidth: 28 }} className="flex items-end">
-          {doneLoading ? (
-            compact ? (
-              <div
-                className="rounded-[8px] animate-pulse"
-                style={{ width: 32, height: 26, background: 'var(--line)' }}
-              />
-            ) : null
-          ) : isDone ? (
+        <div style={{ minHeight: 28, minWidth: 28 }} className="flex items-end">
+          {doneLoading ? null : isDone ? (
             compact ? (
               <span className="fade-in inline-flex">
                 <Btn size="sm" variant="ghost" onClick={onUndo}>
