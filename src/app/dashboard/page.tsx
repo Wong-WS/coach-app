@@ -925,6 +925,9 @@ export default function DashboardPage() {
                   exceptions={classExceptions}
                   completedLogs={lessonLogs}
                   todayStr={todayStr}
+                  hasBackingException={
+                    !!getBackingException(c.id, selectedDateStr, classExceptions)
+                  }
                   isDone={doneByBookingId.has(c.id)}
                   doneTotal={doneByBookingId.get(c.id) ?? 0}
                   attendedIds={doneStudentsByBookingId.get(c.id)}
@@ -1023,6 +1026,9 @@ export default function DashboardPage() {
               exceptions={classExceptions}
               completedLogs={lessonLogs}
               todayStr={todayStr}
+              hasBackingException={
+                !!getBackingException(c.id, selectedDateStr, classExceptions)
+              }
               isDone={doneByBookingId.has(c.id)}
               doneTotal={doneByBookingId.get(c.id) ?? 0}
               attendedIds={doneStudentsByBookingId.get(c.id)}
@@ -1525,6 +1531,7 @@ function ClassCard({
   exceptions,
   completedLogs,
   todayStr,
+  hasBackingException,
   isDone,
   doneTotal,
   attendedIds,
@@ -1542,6 +1549,7 @@ function ClassCard({
   exceptions: ClassException[];
   completedLogs: LessonLog[];
   todayStr: string;
+  hasBackingException: boolean;
   isDone: boolean;
   doneTotal: number;
   attendedIds?: string[];
@@ -1565,7 +1573,11 @@ function ClassCard({
     isLowBalance(w, bookings, exceptions, completedLogs, todayStr),
   );
   const duration = minutesBetween(cls.startTime, cls.endTime);
-  const isRecurring = !cls.startDate || !cls.endDate || cls.startDate !== cls.endDate;
+  // A "this only" override (rescheduled exception backing this date) is a
+  // one-off divergence from the series, so don't paint it as recurring.
+  const isRecurring =
+    !hasBackingException &&
+    (!cls.startDate || !cls.endDate || cls.startDate !== cls.endDate);
 
   return (
     <div
