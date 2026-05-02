@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { RedirectIfSignedIn } from '@/lib/auth-redirect';
 import {
   Btn,
   Chip,
@@ -11,6 +10,7 @@ import {
 import { PricingSection } from './_components/PricingSection';
 import { OverviewPreview } from './_components/OverviewPreview';
 import { FounderNote } from './_components/FounderNote';
+import { NavCta, HeroCta, FinalCta, FooterLogIn } from './_components/AuthCtas';
 
 export default function Home() {
   return (
@@ -18,8 +18,6 @@ export default function Home() {
       className="min-h-screen"
       style={{ background: 'var(--bg)', color: 'var(--ink)' }}
     >
-      <RedirectIfSignedIn />
-
       {/* Nav */}
       <nav
         className="sticky top-0 z-20 border-b"
@@ -61,18 +59,7 @@ export default function Home() {
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <Link
-              href="/login"
-              className="hidden md:inline-flex rounded-[8px] px-3 py-1.5 text-[13px] font-medium transition-colors hover:bg-[var(--line)]"
-              style={{ color: 'var(--ink-2)' }}
-            >
-              Log in
-            </Link>
-            <Link href="/signup">
-              <Btn variant="primary" size="md">
-                Start free
-              </Btn>
-            </Link>
+            <NavCta />
           </div>
         </div>
       </nav>
@@ -99,11 +86,7 @@ export default function Home() {
               who&rsquo;d rather be teaching than typing.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
-              <Link href="/signup">
-                <Btn variant="primary" size="lg">
-                  Start free
-                </Btn>
-              </Link>
+              <HeroCta />
               <a href="#features" className="inline-flex">
                 <Btn variant="ghost" size="lg">
                   See how it works →
@@ -357,11 +340,7 @@ export default function Home() {
             Free during early access. Set up in under 10 minutes.
           </p>
           <div className="mt-7 flex justify-center">
-            <Link href="/signup">
-              <Btn variant="primary" size="lg">
-                Start free →
-              </Btn>
-            </Link>
+            <FinalCta />
           </div>
         </div>
       </section>
@@ -377,13 +356,7 @@ export default function Home() {
           >
             <p>© 2026 CoachSimplify · Built in Malaysia</p>
             <div className="flex items-center gap-5">
-              <Link
-                href="/login"
-                className="transition-colors"
-                style={{ color: 'var(--ink-3)' }}
-              >
-                Log in
-              </Link>
+              <FooterLogIn />
               <a
                 href="mailto:weisiangwong@gmail.com"
                 className="transition-colors"
