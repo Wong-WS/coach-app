@@ -14,6 +14,7 @@ import {
   getDayOfWeekForDate,
 } from '@/lib/class-schedule';
 import { findOrCreateStudent } from '@/lib/students';
+import { shiftEndTime } from '@/lib/time-input';
 import {
   Btn,
   PaperModal,
@@ -373,7 +374,13 @@ export function AddLessonModal({
             <input
               type="time"
               value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
+              onChange={(e) => {
+                const t = e.target.value;
+                if (startTime && endTime) {
+                  setEndTime(shiftEndTime(startTime, endTime, t));
+                }
+                setStartTime(t);
+              }}
               step={300}
               className={`${paperInputClass} mono tnum min-w-0`}
               style={paperInputStyle}

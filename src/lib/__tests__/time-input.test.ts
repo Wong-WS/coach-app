@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseTimeInput, nearbySteppedTimes, snapToStep } from '@/lib/time-input';
+import { parseTimeInput, nearbySteppedTimes, snapToStep, shiftEndTime } from '@/lib/time-input';
 
 describe('parseTimeInput — suffix forms', () => {
   it('parses "9a" as 09:00', () => {
@@ -139,5 +139,29 @@ describe('nearbySteppedTimes', () => {
     // 09:07 with step 5 should anchor around 09:05
     const slots = nearbySteppedTimes('09:07', 5, 3);
     expect(slots).toContain('09:05');
+  });
+});
+
+describe('shiftEndTime', () => {
+  it('shifts end forward preserving 1h duration', () => {
+    expect(shiftEndTime('16:00', '17:00', '18:00')).toBe('19:00');
+  });
+  it('shifts end backward preserving 1h duration', () => {
+    expect(shiftEndTime('16:00', '17:00', '09:00')).toBe('10:00');
+  });
+  it('preserves a 90-minute duration', () => {
+    expect(shiftEndTime('10:00', '11:30', '14:00')).toBe('15:30');
+  });
+  it('preserves a 5-minute duration', () => {
+    expect(shiftEndTime('10:00', '10:05', '14:30')).toBe('14:35');
+  });
+  it('clamps end at 23:55 when shift would overflow', () => {
+    expect(shiftEndTime('22:00', '23:00', '23:30')).toBe('23:55');
+  });
+  it('returns the original end if duration is zero', () => {
+    expect(shiftEndTime('10:00', '10:00', '14:00')).toBe('10:00');
+  });
+  it('returns the original end if duration is negative', () => {
+    expect(shiftEndTime('11:00', '10:00', '14:00')).toBe('10:00');
   });
 });

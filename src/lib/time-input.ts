@@ -96,6 +96,18 @@ export function snapToStep(time: string, step: number): string {
 }
 
 /**
+ * Compute a new end time when the start time changes, preserving the
+ * original duration. Clamped so end never exceeds 23:55. If the original
+ * duration is non-positive, the original end is returned unchanged.
+ */
+export function shiftEndTime(oldStart: string, oldEnd: string, newStart: string): string {
+  const duration = toMinutes(oldEnd) - toMinutes(oldStart);
+  if (duration <= 0) return oldEnd;
+  const maxMin = 23 * 60 + 55;
+  return fromMinutes(Math.min(toMinutes(newStart) + duration, maxMin));
+}
+
+/**
  * Build a list of stepped times around `anchor`, clamped to [00:00, 23:55].
  * The anchor itself is included if on-step; otherwise the nearest stepped
  * time is used.
