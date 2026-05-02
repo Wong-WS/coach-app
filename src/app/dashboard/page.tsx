@@ -179,12 +179,10 @@ export default function DashboardPage() {
     [todaysClasses, doneByBookingId],
   );
   const todayRevenue = lessonLogs.reduce((s, l) => s + l.price, 0);
-  const expectedRevenue =
-    todaysClasses.reduce((s, c) => {
-      if (doneByBookingId.has(c.id)) return s + (doneByBookingId.get(c.id) ?? 0);
-      return s + getBookingTotal(c);
-    }, 0) +
-    cancelledToday.reduce((s, c) => s + getBookingTotal(c.booking), 0);
+  const expectedRevenue = todaysClasses.reduce((s, c) => {
+    if (doneByBookingId.has(c.id)) return s + (doneByBookingId.get(c.id) ?? 0);
+    return s + getBookingTotal(c);
+  }, 0);
 
   const lowWallets = useMemo(() => {
     return wallets
