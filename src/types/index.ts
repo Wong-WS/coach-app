@@ -107,3 +107,12 @@ export interface WalletTransaction {
   date: string;
   createdAt: Date;
 }
+
+export interface AwayPeriod {
+  id: string;
+  startDate: string;        // YYYY-MM-DD, inclusive
+  endDate: string;          // YYYY-MM-DD, inclusive
+  label?: string;           // optional free text, e.g. "Bali holiday"
+  createdAt: Date;
+  updatedAt: Date;
+}
