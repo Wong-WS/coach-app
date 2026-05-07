@@ -133,7 +133,11 @@ Recurring-class occurrences are NOT listed individually in the resolver — they
 
 #### Schedule page
 
-`src/app/dashboard/bookings/page.tsx` — days inside an away period render with a soft grey overlay and a small "Away — [label]" pill. No clickable lesson blocks. Preserves the historical record when scrolling back.
+No changes. The Schedule page (`src/app/dashboard/bookings/page.tsx`) is a recurring-weekly **template** view (bookings grouped by `dayOfWeek`, not a calendar). Date-based overlays don't apply. The historical record lives in:
+- **Settings → Time off** — the canonical list of past/current/upcoming away periods.
+- **Dashboard date-picker** — navigating to a specific past date inside an away period shows the "You're away" empty state.
+
+(Spec originally proposed an overlay here on the assumption that the page rendered calendar dates; it doesn't, so the overlay was dropped during implementation.)
 
 ### Security rules
 
