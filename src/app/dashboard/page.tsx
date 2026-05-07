@@ -39,6 +39,7 @@ import {
 import { resolveWallet } from '@/lib/wallets';
 import { isLowBalance, getNextLessonCost } from '@/lib/wallet-alerts';
 import { computeCancelFuture } from '@/lib/cancel-scope';
+import { isDateInAwayPeriod } from '@/lib/away-periods';
 import { shiftEndTime } from '@/lib/time-input';
 import { formatTimeDisplay } from '@/lib/time-format';
 import { formatDateFull, formatDateShort, parseDateString } from '@/lib/date-format';
@@ -139,6 +140,10 @@ export default function DashboardPage() {
 
   const { classExceptions, loading: classExceptionsLoading } = useClassExceptions(coach?.id, selectedDateStr);
   const { awayPeriods } = useAwayPeriods(coach?.id, selectedDateStr);
+  const activeAwayPeriod = useMemo(
+    () => isDateInAwayPeriod(selectedDateStr, awayPeriods),
+    [selectedDateStr, awayPeriods],
+  );
   const { lessonLogs, loading: lessonLogsLoading } = useLessonLogs(coach?.id, selectedDateStr);
   // Until both date-scoped queries land, doneByBookingId is unreliable and
   // would flash cards as "not done" before flipping to done.
@@ -913,16 +918,20 @@ export default function DashboardPage() {
             />
             <div key={selectedDateStr} className="flex flex-col gap-2.5 crossfade-in">
               {totalCount === 0 && (
-                <div
-                  className="rounded-[14px] border p-7 text-center text-[13px]"
-                  style={{
-                    background: 'var(--panel)',
-                    borderColor: 'var(--line)',
-                    color: 'var(--ink-3)',
-                  }}
-                >
-                  Nothing on the schedule.
-                </div>
+                activeAwayPeriod ? (
+                  <AwayCard period={activeAwayPeriod} />
+                ) : (
+                  <div
+                    className="rounded-[14px] border p-7 text-center text-[13px]"
+                    style={{
+                      background: 'var(--panel)',
+                      borderColor: 'var(--line)',
+                      color: 'var(--ink-3)',
+                    }}
+                  >
+                    Nothing on the schedule.
+                  </div>
+                )
               )}
               {todaysClasses.map((c) => (
                 <ClassCard
@@ -1021,16 +1030,20 @@ export default function DashboardPage() {
         <div className="flex flex-col gap-2.5">
           <div key={selectedDateStr} className="flex flex-col gap-2.5 crossfade-in">
             {totalCount === 0 && (
-              <div
-                className="rounded-[14px] border p-7 text-center text-[13px]"
-                style={{
-                  background: 'var(--panel)',
-                  borderColor: 'var(--line)',
-                  color: 'var(--ink-3)',
-                }}
-              >
-                Nothing on the schedule.
-              </div>
+              activeAwayPeriod ? (
+                <AwayCard period={activeAwayPeriod} />
+              ) : (
+                <div
+                  className="rounded-[14px] border p-7 text-center text-[13px]"
+                  style={{
+                    background: 'var(--panel)',
+                    borderColor: 'var(--line)',
+                    color: 'var(--ink-3)',
+                  }}
+                >
+                  Nothing on the schedule.
+                </div>
+              )
             )}
             {todaysClasses.map((c) => (
               <ClassCard
@@ -1866,6 +1879,46 @@ function QuickActionsCard({ onAdd }: { onAdd: () => void }) {
           </Btn>
         </a>
       </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Away-period empty state card
+// ────────────────────────────────────────────────────────────────────────────
+
+function AwayCard({ period }: { period: { startDate: string; endDate: string; label?: string } }) {
+  const formatDate = (d: string) => {
+    const [y, m, day] = d.split('-').map(Number);
+    return new Date(y, m - 1, day).toLocaleDateString('en-MY', {
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+  const range = `${formatDate(period.startDate)} – ${formatDate(period.endDate)}`;
+  return (
+    <div
+      className="rounded-[14px] border p-7 text-center"
+      style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
+    >
+      <div className="text-[15px] font-semibold" style={{ color: 'var(--ink)' }}>
+        You&apos;re away
+      </div>
+      {period.label && (
+        <div className="text-[13px] mt-1" style={{ color: 'var(--ink-2)' }}>
+          {period.label}
+        </div>
+      )}
+      <div className="text-[12px] mt-1" style={{ color: 'var(--ink-3)' }}>
+        {range}
+      </div>
+      <a
+        href="/dashboard/settings"
+        className="inline-block mt-3 text-[12px] underline"
+        style={{ color: 'var(--ink-2)' }}
+      >
+        Edit in Settings
+      </a>
     </div>
   );
 }
