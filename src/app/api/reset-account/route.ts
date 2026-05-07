@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Delete all subcollections
-  const collections = ['wallets', 'students', 'bookings', 'lessonLogs', 'classExceptions', 'locations'];
+  const collections = ['wallets', 'students', 'bookings', 'lessonLogs', 'classExceptions', 'locations', 'awayPeriods'];
   const deleted: Record<string, number> = {};
   for (const col of collections) {
     deleted[col] = await deleteCollection(db, `${base}/${col}`);
