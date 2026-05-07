@@ -1,4 +1,5 @@
-import { Booking, ClassException, DayOfWeek } from '@/types';
+import { Booking, ClassException, DayOfWeek, AwayPeriod } from '@/types';
+import { isDateInAwayPeriod } from '@/lib/away-periods';
 
 const DAY_NAMES: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
@@ -23,8 +24,11 @@ export function isGroupBooking(
 export function getClassesForDate(
   date: string,
   bookings: Booking[],
-  exceptions: ClassException[]
+  exceptions: ClassException[],
+  awayPeriods: AwayPeriod[] = [],
 ): Booking[] {
+  if (isDateInAwayPeriod(date, awayPeriods)) return [];
+
   const dayOfWeek = getDayOfWeekForDate(date);
 
   // Start with bookings for this day of week, within their active date range
@@ -91,7 +95,8 @@ export function getScheduledRevenueForDateRange(
   start: string,
   end: string,
   bookings: Booking[],
-  exceptions: ClassException[]
+  exceptions: ClassException[],
+  awayPeriods: AwayPeriod[] = [],
 ): number {
   const [sy, sm, sd] = start.split('-').map(Number);
   const [ey, em, ed] = end.split('-').map(Number);
@@ -102,7 +107,7 @@ export function getScheduledRevenueForDateRange(
   let total = 0;
   for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
     const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    for (const c of getClassesForDate(dateStr, bookings, exceptions)) {
+    for (const c of getClassesForDate(dateStr, bookings, exceptions, awayPeriods)) {
       total += getBookingTotal(c);
     }
   }

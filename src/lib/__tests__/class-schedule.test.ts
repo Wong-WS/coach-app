@@ -6,7 +6,7 @@ import {
   getCancelledClassesForDate,
   getScheduledRevenueForDateRange,
 } from '@/lib/class-schedule';
-import { Booking, ClassException } from '@/types';
+import { Booking, ClassException, AwayPeriod } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -38,6 +38,17 @@ function makeException(overrides: Partial<ClassException> = {}): ClassException 
     originalDate: '2026-03-24',
     type: 'cancelled',
     createdAt: new Date(),
+    ...overrides,
+  };
+}
+
+function makeAwayPeriod(overrides: Partial<AwayPeriod> = {}): AwayPeriod {
+  return {
+    id: 'away1',
+    startDate: '2026-03-23',
+    endDate: '2026-03-27',
+    createdAt: new Date(),
+    updatedAt: new Date(),
     ...overrides,
   };
 }
@@ -539,5 +550,74 @@ describe('getScheduledRevenueForDateRange', () => {
     expect(getScheduledRevenueForDateRange(MONDAY, MONDAY, [b], [])).toBe(60);
     // And Sunday-only range picks nothing up for a Monday booking.
     expect(getScheduledRevenueForDateRange(SUNDAY, SUNDAY, [b], [])).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getClassesForDate with away periods
+// ---------------------------------------------------------------------------
+
+describe('getClassesForDate with away periods', () => {
+  it('returns empty when the date falls inside an away period', () => {
+    const booking = makeBooking({ dayOfWeek: 'tuesday' });
+    const away = [makeAwayPeriod({ startDate: '2026-03-23', endDate: '2026-03-27' })];
+    expect(getClassesForDate(TUESDAY, [booking], [], away)).toEqual([]);
+  });
+
+  it('returns classes when the date is outside every away period', () => {
+    const booking = makeBooking({ dayOfWeek: 'tuesday' });
+    const away = [makeAwayPeriod({ startDate: '2026-04-01', endDate: '2026-04-10' })];
+    const result = getClassesForDate(TUESDAY, [booking], [], away);
+    expect(result).toHaveLength(1);
+  });
+
+  it('skips away period even when an exception reschedules a class to that date', () => {
+    const original = makeBooking({ dayOfWeek: 'tuesday' });
+    const ex = makeException({
+      bookingId: 'b1',
+      originalDate: '2026-03-17',
+      type: 'rescheduled',
+      newDate: TUESDAY,
+    });
+    const away = [makeAwayPeriod({ startDate: '2026-03-23', endDate: '2026-03-27' })];
+    expect(getClassesForDate(TUESDAY, [original], [ex], away)).toEqual([]);
+  });
+
+  it('omitting awayPeriods param keeps existing behaviour (backward-compatible)', () => {
+    const booking = makeBooking({ dayOfWeek: 'tuesday' });
+    expect(getClassesForDate(TUESDAY, [booking], [])).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getScheduledRevenueForDateRange with away periods
+// ---------------------------------------------------------------------------
+
+describe('getScheduledRevenueForDateRange with away periods', () => {
+  it('excludes revenue from days inside an away period', () => {
+    const booking = makeBooking({
+      dayOfWeek: 'tuesday',
+      studentIds: ['s1'],
+      studentPrices: { s1: 100 },
+    });
+    const away = [makeAwayPeriod({ startDate: '2026-03-23', endDate: '2026-03-27' })];
+    const total = getScheduledRevenueForDateRange(
+      '2026-03-15',
+      '2026-04-01',
+      [booking],
+      [],
+      away,
+    );
+    expect(total).toBe(200);
+  });
+
+  it('omitting awayPeriods param keeps existing behaviour', () => {
+    const booking = makeBooking({
+      dayOfWeek: 'tuesday',
+      studentIds: ['s1'],
+      studentPrices: { s1: 100 },
+    });
+    const total = getScheduledRevenueForDateRange('2026-03-15', '2026-04-01', [booking], []);
+    expect(total).toBe(300);
   });
 });
