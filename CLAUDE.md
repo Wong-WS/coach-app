@@ -150,6 +150,11 @@ coaches/{coachId}/classExceptions/{exceptionId}   # Per-date overrides of recurr
   newDate, newStartTime, newEndTime, newLocationId, newLocationName, newPrice
   createdAt
 
+coaches/{coachId}/awayPeriods/{periodId}   # Coach travel/leave — full-day blackouts
+  startDate, endDate                       # YYYY-MM-DD inclusive on both ends
+  label                                    # optional free text, e.g. "Bali holiday"
+  createdAt, updatedAt
+
 coaches/{coachId}/wallets/{walletId}       # Shared balance for one or more students
   name, balance, studentIds[]
   archived?                                # hides from default list, disables alerts
@@ -176,6 +181,7 @@ coaches/{coachId}/wallets/{walletId}/transactions/{txnId}
 - **Wallets**: named multi-student balance; top-up / charge / refund / adjust / archive; tab mode; health states = `healthy / low / empty / owing / tab / inactive` (see `getWalletHealth`); depletion alert is a popup (not toast)
 - **Wallet portal**: parent/student-facing at `/portal/[token]` (shareable via WhatsApp). Shows balance, status chip, coach-set top-up suggestion, paginated charges + top-ups (10 per page with Load more). Read-only; uses Admin SDK to bypass owner rules.
 - **Income dashboard**: projected (from recurring bookings) vs. actual (from lessonLogs)
+- **Time off (away periods)**: full-day blackouts for travel/leave (Settings → Time off). Recurring classes inside the range are skipped automatically; ad-hoc + rescheduled lessons surface in a conflict resolver. Persists indefinitely as a labelled record visible on dashboard + schedule.
 - **Account reset** (settings → Danger Zone): dev-only nuke via API route
 
 ### Security Rules
