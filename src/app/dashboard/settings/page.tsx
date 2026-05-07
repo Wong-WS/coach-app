@@ -27,6 +27,7 @@ import {
   IconPlus,
 } from '@/components/paper';
 import type { Location } from '@/types';
+import TimeOffSection from './_components/TimeOffSection';
 
 // ─── Shared input styling (matches Payments & Students) ──────────────────────
 
@@ -416,6 +417,8 @@ export default function SettingsPage() {
           </div>
         )}
       </section>
+
+      {coach && <TimeOffSection coachId={coach.id} />}
 
       {/* ── Danger zone ── */}
       <section
