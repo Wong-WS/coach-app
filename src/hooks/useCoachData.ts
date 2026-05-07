@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, where, orderBy, limit, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Booking, Location, Student, LessonLog, ClassException, Wallet, WalletTransaction } from '@/types';
+import { Booking, Location, Student, LessonLog, ClassException, Wallet, WalletTransaction, AwayPeriod } from '@/types';
 
 export function useLocations(coachId: string | undefined) {
   const [locations, setLocations] = useState<Location[]>([]);
@@ -341,4 +341,98 @@ export function useWalletTransactions(coachId: string | undefined, walletId: str
   }, [coachId, walletId, limitCount]);
 
   return { transactions, loading };
+}
+
+export function useAwayPeriods(coachId: string | undefined, referenceDate?: string) {
+  const [awayPeriods, setAwayPeriods] = useState<AwayPeriod[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Build a 4-month window around the reference date (2 months each direction).
+  // Periods whose endDate < window.from or startDate > window.to are excluded.
+  const dateWindow = useMemo(() => {
+    const ref = referenceDate ? new Date(referenceDate + 'T00:00:00') : new Date();
+    const from = new Date(ref);
+    from.setMonth(from.getMonth() - 2);
+    const to = new Date(ref);
+    to.setMonth(to.getMonth() + 2);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return {
+      from: `${from.getFullYear()}-${pad(from.getMonth() + 1)}-${pad(from.getDate())}`,
+      to: `${to.getFullYear()}-${pad(to.getMonth() + 1)}-${pad(to.getDate())}`,
+    };
+  }, [referenceDate]);
+
+  useEffect(() => {
+    if (!coachId || !db) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- guard branch: hydrate loading=false when no subscription will be opened
+      setLoading(false);
+      return;
+    }
+
+    const firestore = db as Firestore;
+    // Filter by startDate <= window.to. We can't add endDate >= window.from in
+    // the same query (Firestore allows range filters on only one field), so we
+    // post-filter on the client.
+    const q = query(
+      collection(firestore, 'coaches', coachId, 'awayPeriods'),
+      where('startDate', '<=', dateWindow.to),
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items: AwayPeriod[] = snapshot.docs
+        .map((d) => ({
+          id: d.id,
+          startDate: d.data().startDate,
+          endDate: d.data().endDate,
+          label: d.data().label,
+          createdAt: d.data().createdAt?.toDate() || new Date(),
+          updatedAt: d.data().updatedAt?.toDate() || new Date(),
+        }))
+        .filter((p) => p.endDate >= dateWindow.from);
+      // Sort by startDate ascending — settings list will reverse for display.
+      items.sort((a, b) => a.startDate.localeCompare(b.startDate));
+      setAwayPeriods(items);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [coachId, dateWindow]);
+
+  return { awayPeriods, loading };
+}
+
+/**
+ * Loads ALL away periods (no date window). Used by Settings → Time off so the
+ * coach can see their full history. Small dataset (a few per year) — fine.
+ */
+export function useAllAwayPeriods(coachId: string | undefined) {
+  const [awayPeriods, setAwayPeriods] = useState<AwayPeriod[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!coachId || !db) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- guard branch: hydrate loading=false when no subscription will be opened
+      setLoading(false);
+      return;
+    }
+    const firestore = db as Firestore;
+    const unsubscribe = onSnapshot(
+      query(collection(firestore, 'coaches', coachId, 'awayPeriods')),
+      (snapshot) => {
+        const items: AwayPeriod[] = snapshot.docs.map((d) => ({
+          id: d.id,
+          startDate: d.data().startDate,
+          endDate: d.data().endDate,
+          label: d.data().label,
+          createdAt: d.data().createdAt?.toDate() || new Date(),
+          updatedAt: d.data().updatedAt?.toDate() || new Date(),
+        }));
+        items.sort((a, b) => b.startDate.localeCompare(a.startDate));
+        setAwayPeriods(items);
+        setLoading(false);
+      },
+    );
+    return () => unsubscribe();
+  }, [coachId]);
+
+  return { awayPeriods, loading };
 }
