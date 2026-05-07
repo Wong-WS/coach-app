@@ -1,6 +1,6 @@
 import 'server-only';
 import { getAdminDb } from '@/lib/firebase-admin';
-import type { Booking, ClassException, LessonLog, Wallet } from '@/types';
+import type { Booking, ClassException, LessonLog, Wallet, AwayPeriod } from '@/types';
 import { getWalletHealth, type WalletHealth } from '@/lib/wallet-alerts';
 import { getSuggestedTopUp } from '@/lib/portal-suggestion';
 import type { Firestore, Timestamp } from 'firebase-admin/firestore';
@@ -186,7 +186,7 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
   // useClassExceptions hook so getWalletHealth's lookahead has the same data.
   const fourMonthsAgo = isoDateOffset(today, -120);
   const fourMonthsAhead = isoDateOffset(today, 120);
-  const [coachSnap, walletSnap, bookingsSnap, exceptionsSnap, todayLogsSnap, charges, topUps] =
+  const [coachSnap, walletSnap, bookingsSnap, exceptionsSnap, awayPeriodsSnap, todayLogsSnap, charges, topUps] =
     await Promise.all([
       db.doc(`coaches/${coachId}`).get(),
       db.doc(`coaches/${coachId}/wallets/${walletId}`).get(),
@@ -198,6 +198,10 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
         .collection(`coaches/${coachId}/classExceptions`)
         .where('originalDate', '>=', fourMonthsAgo)
         .where('originalDate', '<=', fourMonthsAhead)
+        .get(),
+      db
+        .collection(`coaches/${coachId}/awayPeriods`)
+        .where('startDate', '<=', fourMonthsAhead)
         .get(),
       db.collection(`coaches/${coachId}/lessonLogs`).where('date', '==', today).get(),
       fetchChargesPage(ctx, null),
@@ -263,6 +267,20 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
       createdAt: e.createdAt?.toDate?.() ?? new Date(),
     };
   });
+  const awayPeriods: AwayPeriod[] = awayPeriodsSnap.docs
+    .map((d) => {
+      const a = d.data();
+      return {
+        id: d.id,
+        startDate: a.startDate as string,
+        endDate: a.endDate as string,
+        label: a.label as string | undefined,
+        createdAt: a.createdAt?.toDate?.() ?? new Date(),
+        updatedAt: a.updatedAt?.toDate?.() ?? new Date(),
+      };
+    })
+    .filter((p) => p.endDate >= fourMonthsAgo);
+
   const todayLogs: LessonLog[] = todayLogsSnap.docs.map((d) => {
     const l = d.data();
     return {
@@ -279,7 +297,7 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
     };
   });
 
-  const { health, rate } = getWalletHealth(wallet, bookings, exceptions, todayLogs, today);
+  const { health, rate } = getWalletHealth(wallet, bookings, exceptions, todayLogs, today, awayPeriods);
 
   const suggestion =
     (health === 'empty' || health === 'owing')

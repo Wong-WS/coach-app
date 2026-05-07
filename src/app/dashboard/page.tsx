@@ -25,9 +25,10 @@ import {
   useStudents,
   useWallets,
   useLocations,
+  useAwayPeriods,
 } from '@/hooks/useCoachData';
 import { useToast } from '@/components/ui/Toast';
-import type { Booking, ClassException, LessonLog, Student, Wallet } from '@/types';
+import type { AwayPeriod, Booking, ClassException, LessonLog, Student, Wallet } from '@/types';
 import {
   getClassesForDate,
   getBookingTotal,
@@ -137,14 +138,15 @@ export default function DashboardPage() {
   const todayStr = useMemo(() => ymd(new Date()), []);
 
   const { classExceptions, loading: classExceptionsLoading } = useClassExceptions(coach?.id, selectedDateStr);
+  const { awayPeriods } = useAwayPeriods(coach?.id, selectedDateStr);
   const { lessonLogs, loading: lessonLogsLoading } = useLessonLogs(coach?.id, selectedDateStr);
   // Until both date-scoped queries land, doneByBookingId is unreliable and
   // would flash cards as "not done" before flipping to done.
   const doneStateLoading = lessonLogsLoading || classExceptionsLoading;
 
   const todaysClasses = useMemo(
-    () => getClassesForDate(selectedDateStr, bookings, classExceptions),
-    [selectedDateStr, bookings, classExceptions],
+    () => getClassesForDate(selectedDateStr, bookings, classExceptions, awayPeriods),
+    [selectedDateStr, bookings, classExceptions, awayPeriods],
   );
 
   const cancelledToday = useMemo(
@@ -186,9 +188,9 @@ export default function DashboardPage() {
 
   const lowWallets = useMemo(() => {
     return wallets
-      .filter((w) => isLowBalance(w, bookings, classExceptions, lessonLogs, todayStr))
+      .filter((w) => isLowBalance(w, bookings, classExceptions, lessonLogs, todayStr, awayPeriods))
       .sort((a, b) => a.balance - b.balance);
-  }, [wallets, bookings, classExceptions, lessonLogs, todayStr]);
+  }, [wallets, bookings, classExceptions, lessonLogs, todayStr, awayPeriods]);
 
   const weekDays = useMemo(() => {
     const start = weekStartMon(selectedDate);
@@ -199,10 +201,10 @@ export default function DashboardPage() {
     const map = new Map<string, number>();
     for (const d of weekDays) {
       const k = ymd(d);
-      map.set(k, getClassesForDate(k, bookings, classExceptions).length);
+      map.set(k, getClassesForDate(k, bookings, classExceptions, awayPeriods).length);
     }
     return map;
-  }, [weekDays, bookings, classExceptions]);
+  }, [weekDays, bookings, classExceptions, awayPeriods]);
 
   const displayName = coach?.displayName || 'Coach';
   const firstName = displayName.split(' ')[0] || 'Coach';
@@ -351,6 +353,7 @@ export default function DashboardPage() {
           classExceptions,
           completedWithJustDone,
           todayStr,
+          awayPeriods,
         );
         if (rate <= 0) continue;
         const prevBalance = wallet.balance;
@@ -463,6 +466,7 @@ export default function DashboardPage() {
           classExceptions,
           completedWithJustDone,
           todayStr,
+          awayPeriods,
         );
         if (rate <= 0) continue;
         const prevBalance = wallet.balance;
@@ -930,6 +934,7 @@ export default function DashboardPage() {
                   exceptions={classExceptions}
                   completedLogs={lessonLogs}
                   todayStr={todayStr}
+                  awayPeriods={awayPeriods}
                   hasBackingException={
                     !!getBackingException(c.id, selectedDateStr, classExceptions)
                   }
@@ -1037,6 +1042,7 @@ export default function DashboardPage() {
                 exceptions={classExceptions}
                 completedLogs={lessonLogs}
                 todayStr={todayStr}
+                awayPeriods={awayPeriods}
                 hasBackingException={
                   !!getBackingException(c.id, selectedDateStr, classExceptions)
                 }
@@ -1534,6 +1540,7 @@ function ClassCard({
   exceptions,
   completedLogs,
   todayStr,
+  awayPeriods,
   hasBackingException,
   isDone,
   doneLoading = false,
@@ -1553,6 +1560,7 @@ function ClassCard({
   exceptions: ClassException[];
   completedLogs: LessonLog[];
   todayStr: string;
+  awayPeriods: AwayPeriod[];
   hasBackingException: boolean;
   isDone: boolean;
   doneLoading?: boolean;
@@ -1575,7 +1583,7 @@ function ClassCard({
     .map((sid) => resolveWallet(cls, sid, wallets))
     .filter((w): w is Wallet => !!w);
   const anyLow = walletsFor.some((w) =>
-    isLowBalance(w, bookings, exceptions, completedLogs, todayStr),
+    isLowBalance(w, bookings, exceptions, completedLogs, todayStr, awayPeriods),
   );
   const duration = minutesBetween(cls.startTime, cls.endTime);
   // A "this only" override (rescheduled exception backing this date) is a

@@ -29,6 +29,7 @@ import {
   useBookings,
   useLessonLogs,
   useClassExceptions,
+  useAwayPeriods,
 } from '@/hooks/useCoachData';
 import { useToast } from '@/components/ui/Toast';
 import { getScheduledRevenueForDateRange } from '@/lib/class-schedule';
@@ -48,7 +49,7 @@ import {
   IconArrowUp,
   IconArrowDown,
 } from '@/components/paper';
-import type { Wallet, WalletTransaction, DayOfWeek } from '@/types';
+import type { AwayPeriod, Wallet, WalletTransaction, DayOfWeek } from '@/types';
 
 const PORTAL_BASE_URL = 'https://coach-simplify.com';
 
@@ -150,6 +151,7 @@ function WalletCard({
   exceptions,
   completedLogs,
   todayStr,
+  awayPeriods,
   linkedStudents,
   selected,
   onClick,
@@ -159,6 +161,7 @@ function WalletCard({
   exceptions: import('@/types').ClassException[];
   completedLogs: import('@/types').LessonLog[];
   todayStr: string;
+  awayPeriods: AwayPeriod[];
   linkedStudents: { id: string; clientName: string }[];
   selected: boolean;
   onClick: () => void;
@@ -169,6 +172,7 @@ function WalletCard({
     exceptions,
     completedLogs,
     todayStr,
+    awayPeriods,
   );
 
   const balanceColor =
@@ -738,6 +742,7 @@ export default function PaymentsPage() {
   const { bookings } = useBookings(coach?.id, 'confirmed');
   const { classExceptions } = useClassExceptions(coach?.id);
   const { lessonLogs } = useLessonLogs(coach?.id, undefined, undefined, 2);
+  const { awayPeriods } = useAwayPeriods(coach?.id);
 
   const walletIds = wallets.map((w) => w.id).join(',');
 
@@ -875,9 +880,9 @@ export default function PaymentsPage() {
       wallets.filter(
         (w) =>
           !(w.archived ?? false) &&
-          isLowBalance(w, bookings, classExceptions, lessonLogs, todayStr),
+          isLowBalance(w, bookings, classExceptions, lessonLogs, todayStr, awayPeriods),
       ).length,
-    [wallets, bookings, classExceptions, lessonLogs, todayStr],
+    [wallets, bookings, classExceptions, lessonLogs, todayStr, awayPeriods],
   );
 
   const filteredWallets = useMemo(() => {
@@ -889,7 +894,7 @@ export default function PaymentsPage() {
       result = result.filter((w) => w.balance < 0);
     } else if (walletDayFilter === 'low') {
       result = result.filter((w) =>
-        isLowBalance(w, bookings, classExceptions, lessonLogs, todayStr),
+        isLowBalance(w, bookings, classExceptions, lessonLogs, todayStr, awayPeriods),
       );
     } else if (walletDayFilter !== 'all') {
       const dayWallets = walletDayMap.get(walletDayFilter);
@@ -916,6 +921,7 @@ export default function PaymentsPage() {
     classExceptions,
     lessonLogs,
     todayStr,
+    awayPeriods,
   ]);
 
   useEffect(() => {
@@ -944,13 +950,14 @@ export default function PaymentsPage() {
         classExceptions,
         lessonLogs,
         todayStr,
+        awayPeriods,
       );
       if (health === 'owing') owing += 1;
       else if (health === 'empty') empty += 1;
       else if (health === 'low') low += 1;
     }
     return { owing, empty, low };
-  }, [wallets, bookings, classExceptions, lessonLogs, todayStr]);
+  }, [wallets, bookings, classExceptions, lessonLogs, todayStr, awayPeriods]);
   const monthActual = useMemo(
     () =>
       lessonLogs
@@ -972,8 +979,9 @@ export default function PaymentsPage() {
         monthRange.end,
         bookings,
         classExceptions,
+        awayPeriods,
       ),
-    [monthRange, bookings, classExceptions],
+    [monthRange, bookings, classExceptions, awayPeriods],
   );
 
   // Top-up presets (require a rate > 0).
@@ -985,10 +993,11 @@ export default function PaymentsPage() {
       classExceptions,
       lessonLogs,
       todayStr,
+      awayPeriods,
     );
     if (rate <= 0) return null;
     return [rate, rate * 5, rate * 10];
-  }, [selectedWallet, bookings, classExceptions, lessonLogs, todayStr]);
+  }, [selectedWallet, bookings, classExceptions, lessonLogs, todayStr, awayPeriods]);
 
   const unassignedStudents = students.filter(
     (s) => !wallets.some((w) => w.studentIds.includes(s.id)),
@@ -1397,6 +1406,7 @@ export default function PaymentsPage() {
                     exceptions={classExceptions}
                     completedLogs={lessonLogs}
                     todayStr={todayStr}
+                    awayPeriods={awayPeriods}
                     linkedStudents={linked}
                     selected={selectedWallet?.id === wallet.id}
                     onClick={() => setSelectedWallet(wallet)}
