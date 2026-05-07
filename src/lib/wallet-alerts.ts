@@ -1,4 +1,4 @@
-import type { Booking, ClassException, LessonLog, Wallet } from '@/types';
+import type { Booking, ClassException, LessonLog, Wallet, AwayPeriod } from '@/types';
 import { getClassesForDate } from '@/lib/class-schedule';
 import { parseDateString } from '@/lib/date-format';
 
@@ -16,7 +16,8 @@ function ymd(d: Date): string {
  * marked done yet. Walks forward from `today` (up to LOOKAHEAD_DAYS, which
  * stays inside the 4-month exception fetch window), applies class exceptions
  * via `getClassesForDate`, and skips any class with a matching lessonLog for
- * that date.
+ * that date. Respects away periods — lessons on dates within an away period
+ * are skipped.
  *
  * Returns 0 if no upcoming lesson is found in the lookahead window — caller
  * should treat that as "no rate to compare against".
@@ -27,11 +28,12 @@ export function getNextLessonCost(
   exceptions: ClassException[],
   completedLogs: LessonLog[],
   today: string,
+  awayPeriods: AwayPeriod[] = [],
 ): number {
   const cur = parseDateString(today);
   for (let i = 0; i < LOOKAHEAD_DAYS; i++) {
     const date = ymd(cur);
-    const classes = getClassesForDate(date, bookings, exceptions);
+    const classes = getClassesForDate(date, bookings, exceptions, awayPeriods);
     for (const c of classes) {
       const isDone = completedLogs.some(
         (l) => l.date === date && l.bookingId === c.id,
@@ -81,11 +83,12 @@ export function isLowBalance(
   exceptions: ClassException[],
   completedLogs: LessonLog[],
   today: string,
+  awayPeriods: AwayPeriod[] = [],
 ): boolean {
   if (wallet.archived) return false;
   if (wallet.tabMode) return false;
   if (!hasActiveBooking(wallet, bookings, today)) return false;
-  const rate = getNextLessonCost(wallet, bookings, exceptions, completedLogs, today);
+  const rate = getNextLessonCost(wallet, bookings, exceptions, completedLogs, today, awayPeriods);
   if (rate <= 0) return false;
   return wallet.balance < rate * 2;
 }
@@ -99,11 +102,12 @@ export function getWalletStatus(
   exceptions: ClassException[],
   completedLogs: LessonLog[],
   today: string,
+  awayPeriods: AwayPeriod[] = [],
 ): { rate: number; isLow: boolean } {
   if (wallet.archived) {
     return { rate: 0, isLow: false };
   }
-  const rate = getNextLessonCost(wallet, bookings, exceptions, completedLogs, today);
+  const rate = getNextLessonCost(wallet, bookings, exceptions, completedLogs, today, awayPeriods);
   if (wallet.tabMode) {
     return { rate, isLow: false };
   }
@@ -135,9 +139,10 @@ export function getWalletHealth(
   exceptions: ClassException[],
   completedLogs: LessonLog[],
   today: string,
+  awayPeriods: AwayPeriod[] = [],
 ): { health: WalletHealth; rate: number; lessonsLeft: number } {
   if (wallet.archived) return { health: 'inactive', rate: 0, lessonsLeft: 0 };
-  const rate = getNextLessonCost(wallet, bookings, exceptions, completedLogs, today);
+  const rate = getNextLessonCost(wallet, bookings, exceptions, completedLogs, today, awayPeriods);
   const lessonsLeft = rate > 0 ? Math.floor(wallet.balance / rate) : 0;
   if (wallet.tabMode) return { health: 'tab', rate, lessonsLeft };
   if (!hasActiveBooking(wallet, bookings, today))

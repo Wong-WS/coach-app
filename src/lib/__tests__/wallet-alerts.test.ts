@@ -6,7 +6,7 @@ import {
   getWalletStatus,
   getWalletHealth,
 } from '@/lib/wallet-alerts';
-import type { Booking, ClassException, LessonLog, Wallet } from '@/types';
+import type { Booking, ClassException, LessonLog, Wallet, AwayPeriod } from '@/types';
 
 function makeWallet(overrides: Partial<Wallet> = {}): Wallet {
   return {
@@ -52,6 +52,17 @@ function makeLog(overrides: Partial<LessonLog> = {}): LessonLog {
     endTime: '11:00',
     price: 60,
     createdAt: new Date(),
+    ...overrides,
+  };
+}
+
+function makeAwayPeriod(overrides: Partial<AwayPeriod> = {}): AwayPeriod {
+  return {
+    id: 'away1',
+    startDate: '2026-05-01',
+    endDate: '2026-05-30',
+    createdAt: new Date(),
+    updatedAt: new Date(),
     ...overrides,
   };
 }
@@ -360,5 +371,52 @@ describe('getWalletStatus', () => {
     const status = getWalletStatus(wallet, [groupBooking], [], [], TODAY);
     expect(status.rate).toBe(0);
     expect(status.isLow).toBe(false);
+  });
+});
+
+describe('away periods affect wallet health lookahead', () => {
+  // Today is Mon 2026-04-27 (a few days before the away period starts).
+  // Recurring Monday booking at rate 60.
+  const TODAY = '2026-04-27';
+
+  it('getNextLessonCost returns 0 when every upcoming Monday falls inside an away period', () => {
+    const booking = makeBooking({ dayOfWeek: 'monday' });
+    const wallet = makeWallet({ balance: 100 });
+    // Cover all Mondays in lookahead window (LOOKAHEAD_DAYS = 56)
+    const away = [makeAwayPeriod({ startDate: '2026-04-27', endDate: '2026-06-30' })];
+    expect(getNextLessonCost(wallet, [booking], [], [], TODAY, away)).toBe(0);
+  });
+
+  it('getNextLessonCost finds the first Monday outside the away period', () => {
+    const booking = makeBooking({ dayOfWeek: 'monday' });
+    const wallet = makeWallet({ balance: 100 });
+    // Mondays in window: 2026-04-27, 2026-05-04, 2026-05-11, 2026-05-18, 2026-05-25, 2026-06-01...
+    // Block first 4: away period covers 2026-04-26 → 2026-05-22
+    const away = [makeAwayPeriod({ startDate: '2026-04-26', endDate: '2026-05-22' })];
+    expect(getNextLessonCost(wallet, [booking], [], [], TODAY, away)).toBe(60);
+  });
+
+  it('getWalletHealth flips from "low" to "healthy" when away period removes upcoming charges', () => {
+    const booking = makeBooking({ dayOfWeek: 'monday' });
+    const wallet = makeWallet({ balance: 60 });
+    const noAwayHealth = getWalletHealth(wallet, [booking], [], [], TODAY);
+    expect(noAwayHealth.health).toBe('low');
+
+    const away = [makeAwayPeriod({ startDate: '2026-04-27', endDate: '2026-06-30' })];
+    const withAwayHealth = getWalletHealth(wallet, [booking], [], [], TODAY, away);
+    expect(withAwayHealth.health).toBe('healthy');
+  });
+
+  it('isLowBalance returns false when away period clears upcoming charges', () => {
+    const booking = makeBooking({ dayOfWeek: 'monday' });
+    const wallet = makeWallet({ balance: 60 });
+    const away = [makeAwayPeriod({ startDate: '2026-04-27', endDate: '2026-06-30' })];
+    expect(isLowBalance(wallet, [booking], [], [], TODAY, away)).toBe(false);
+  });
+
+  it('omitting awayPeriods keeps existing behaviour (backward-compatible)', () => {
+    const booking = makeBooking({ dayOfWeek: 'monday' });
+    const wallet = makeWallet({ balance: 60 });
+    expect(getNextLessonCost(wallet, [booking], [], [], TODAY)).toBe(60);
   });
 });
