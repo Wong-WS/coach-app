@@ -31,6 +31,7 @@ import {
   useClassExceptions,
   useAwayPeriods,
 } from '@/hooks/useCoachData';
+import { usePointerType } from '@/hooks/usePointerType';
 import { useToast } from '@/components/ui/Toast';
 import { getScheduledRevenueForDateRange } from '@/lib/class-schedule';
 import {
@@ -282,6 +283,7 @@ function WalletDetailBody({
   onEditTxn: (txn: WalletTransaction) => void;
   showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }) {
+  const pointer = usePointerType();
   const [txnLimit, setTxnLimit] = useState(12);
   const { transactions, loading: transactionsLoading } = useWalletTransactions(coachId, wallet.id, txnLimit);
   const linkedStudents = students.filter((s) => wallet.studentIds.includes(s.id));
@@ -458,7 +460,7 @@ function WalletDetailBody({
             value={topUpValue}
             onChange={(e) => setTopUpValue(e.target.value)}
             placeholder="e.g. 500"
-            autoFocus
+            autoFocus={pointer === 'fine'}
             className={paperInputClass}
             style={paperInputStyle}
           />
@@ -642,7 +644,7 @@ function WalletDetailBody({
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
               placeholder="Wallet name"
-              autoFocus
+              autoFocus={pointer === 'fine'}
               className={paperInputClass}
               style={paperInputStyle}
             />
@@ -772,6 +774,7 @@ function TxnRow({
 export default function PaymentsPage() {
   const { coach } = useAuth();
   const { showToast } = useToast();
+  const pointer = usePointerType();
 
   const { wallets, loading: walletsLoading } = useWallets(coach?.id);
   const { students } = useStudents(coach?.id);
@@ -1589,7 +1592,7 @@ export default function PaymentsPage() {
               value={newWalletName}
               onChange={(e) => setNewWalletName(e.target.value)}
               placeholder="e.g. Ahmad Family"
-              autoFocus
+              autoFocus={pointer === 'fine'}
               className={paperInputClass}
               style={paperInputStyle}
             />
@@ -1727,7 +1730,7 @@ export default function PaymentsPage() {
               value={topUpAmount}
               onChange={(e) => setTopUpAmount(e.target.value)}
               placeholder="0"
-              autoFocus
+              autoFocus={pointer === 'fine'}
               className={paperInputClass}
               style={paperInputStyle}
             />
@@ -1842,7 +1845,7 @@ export default function PaymentsPage() {
               value={adjAmount}
               onChange={(e) => setAdjAmount(e.target.value)}
               placeholder="0"
-              autoFocus
+              autoFocus={pointer === 'fine'}
               className={paperInputClass}
               style={paperInputStyle}
             />
@@ -1933,7 +1936,7 @@ export default function PaymentsPage() {
                 value={editTxnAmount}
                 onChange={(e) => setEditTxnAmount(e.target.value)}
                 placeholder="0"
-                autoFocus
+                autoFocus={pointer === 'fine'}
                 className={paperInputClass}
                 style={paperInputStyle}
               />
