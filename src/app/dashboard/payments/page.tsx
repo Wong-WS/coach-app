@@ -178,7 +178,7 @@ function WalletCard({
   );
 
   const balanceColor =
-    health === 'owing'
+    wallet.balance < 0
       ? 'var(--bad)'
       : health === 'empty' || health === 'low'
         ? 'var(--warn)'
@@ -192,7 +192,7 @@ function WalletCard({
         : `${linkedStudents.length} students`;
 
   const footer =
-    health === 'owing'
+    wallet.balance < 0
       ? 'Owes you'
       : health === 'tab'
         ? 'Tab mode'
@@ -247,9 +247,8 @@ function WalletCard({
           )}
         </div>
         <div className="shrink-0 flex items-center gap-1.5">
-          {health === 'owing' && <Chip tone="bad">Owing</Chip>}
-          {health === 'empty' && <Chip tone="bad">Empty</Chip>}
-          {health === 'low' && <Chip tone="warn">Low</Chip>}
+          {wallet.balance >= 0 && health === 'empty' && <Chip tone="bad">Empty</Chip>}
+          {wallet.balance >= 0 && health === 'low' && <Chip tone="warn">Low</Chip>}
         </div>
       </div>
     </button>
@@ -1014,6 +1013,18 @@ export default function PaymentsPage() {
     }
     return { owing, empty, low };
   }, [wallets, bookings, classExceptions, lessonLogs, todayStr, awayPeriods]);
+  const owedToYou = useMemo(() => {
+    let total = 0;
+    let count = 0;
+    for (const w of wallets) {
+      if (w.archived) continue;
+      if (w.balance < 0) {
+        total += -w.balance;
+        count += 1;
+      }
+    }
+    return { total, count };
+  }, [wallets]);
   const monthActual = useMemo(
     () =>
       lessonLogs
@@ -1362,7 +1373,7 @@ export default function PaymentsPage() {
       </div>
 
       {/* Stat row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mb-5">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3 mb-5">
         <Stat
           label="Needs attention"
           value={needsAttention.owing + needsAttention.empty + needsAttention.low}
@@ -1380,6 +1391,16 @@ export default function PaymentsPage() {
                 ? 'warn'
                 : undefined
           }
+        />
+        <Stat
+          label="Owed to you"
+          value={formatRM(owedToYou.total)}
+          sub={
+            owedToYou.count > 0
+              ? `${owedToYou.count} ${owedToYou.count === 1 ? 'wallet' : 'wallets'}`
+              : 'nothing owed'
+          }
+          tone={owedToYou.count > 0 ? 'bad' : undefined}
         />
         <Stat label="Last month" value={formatRM(lastMonthActual)} sub="earned" />
         <Stat
