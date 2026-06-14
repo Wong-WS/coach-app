@@ -445,8 +445,8 @@ function WalletDetailBody({
         )}
       </div>
 
-      {/* Usual top-up */}
-      {editingTopUp ? (
+      {/* Usual top-up — prepaid only (tab wallets settle what's owed) */}
+      {!wallet.tabMode && (editingTopUp ? (
         <div className="space-y-2">
           <div className="text-[10.5px] font-semibold uppercase" style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}>
             Usual top-up (RM)
@@ -504,7 +504,7 @@ function WalletDetailBody({
             {wallet.usualTopUp != null ? 'Edit' : 'Set'}
           </button>
         </div>
-      )}
+      ))}
 
       {/* Actions */}
       <div className="grid grid-cols-2 gap-2">
@@ -1031,9 +1031,16 @@ export default function PaymentsPage() {
     [monthRange, bookings, classExceptions, awayPeriods],
   );
 
-  // Top-up presets (require a rate > 0).
-  const topUpPresets = useMemo(() => {
+  // Top-up presets. Tab wallets pay per class, so the natural amount is
+  // settling what's owed; prepaid wallets get 1/5/10-lesson presets.
+  const topUpPresets = useMemo<{ label: string; amount: number }[] | null>(() => {
     if (!selectedWallet) return null;
+    if (selectedWallet.tabMode) {
+      if (selectedWallet.balance < 0) {
+        return [{ label: 'Amount owed', amount: Math.abs(selectedWallet.balance) }];
+      }
+      return null;
+    }
     const { rate } = getWalletStatus(
       selectedWallet,
       bookings,
@@ -1043,7 +1050,11 @@ export default function PaymentsPage() {
       awayPeriods,
     );
     if (rate <= 0) return null;
-    return [rate, rate * 5, rate * 10];
+    return [
+      { label: '1 lesson', amount: rate },
+      { label: '5 lessons', amount: rate * 5 },
+      { label: '10 lessons', amount: rate * 10 },
+    ];
   }, [selectedWallet, bookings, classExceptions, lessonLogs, todayStr, awayPeriods]);
 
   const unassignedStudents = students.filter(
@@ -1666,15 +1677,20 @@ export default function PaymentsPage() {
               >
                 Quick amounts
               </label>
-              <div className="grid grid-cols-3 gap-2">
-                {topUpPresets.map((amount, i) => {
-                  const label = i === 0 ? '1 lesson' : `${i === 1 ? 5 : 10} lessons`;
-                  const active = topUpAmount === String(amount);
+              <div
+                className={
+                  topUpPresets.length === 1
+                    ? 'grid grid-cols-1 gap-2'
+                    : 'grid grid-cols-3 gap-2'
+                }
+              >
+                {topUpPresets.map((preset, i) => {
+                  const active = topUpAmount === String(preset.amount);
                   return (
                     <button
                       key={i}
                       type="button"
-                      onClick={() => setTopUpAmount(String(amount))}
+                      onClick={() => setTopUpAmount(String(preset.amount))}
                       className="rounded-[10px] border py-2 px-2 text-left transition-colors"
                       style={{
                         background: active ? 'var(--ink)' : 'var(--panel)',
@@ -1686,10 +1702,10 @@ export default function PaymentsPage() {
                         className="text-[11px] font-medium"
                         style={{ color: active ? 'var(--bg)' : 'var(--ink-3)' }}
                       >
-                        {label}
+                        {preset.label}
                       </div>
                       <div className="mono tnum text-[15px] font-semibold">
-                        RM {amount.toFixed(0)}
+                        RM {preset.amount.toFixed(0)}
                       </div>
                     </button>
                   );
