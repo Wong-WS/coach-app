@@ -993,26 +993,6 @@ export default function PaymentsPage() {
 
   // Stats.
   const lastMonthRange = useMemo(() => getLastMonthRange(), []);
-  const needsAttention = useMemo(() => {
-    let owing = 0;
-    let empty = 0;
-    let low = 0;
-    for (const w of wallets) {
-      if (w.archived) continue;
-      const { health } = getWalletHealth(
-        w,
-        bookings,
-        classExceptions,
-        lessonLogs,
-        todayStr,
-        awayPeriods,
-      );
-      if (health === 'owing') owing += 1;
-      else if (health === 'empty') empty += 1;
-      else if (health === 'low') low += 1;
-    }
-    return { owing, empty, low };
-  }, [wallets, bookings, classExceptions, lessonLogs, todayStr, awayPeriods]);
   const owedToYou = useMemo(() => {
     let total = 0;
     let count = 0;
@@ -1373,25 +1353,7 @@ export default function PaymentsPage() {
       </div>
 
       {/* Stat row */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3 mb-5">
-        <Stat
-          label="Needs attention"
-          value={needsAttention.owing + needsAttention.empty + needsAttention.low}
-          sub={(() => {
-            const parts: string[] = [];
-            if (needsAttention.owing > 0) parts.push(`${needsAttention.owing} owing`);
-            if (needsAttention.empty > 0) parts.push(`${needsAttention.empty} empty`);
-            if (needsAttention.low > 0) parts.push(`${needsAttention.low} low`);
-            return parts.length ? parts.join(' · ') : 'all healthy';
-          })()}
-          tone={
-            needsAttention.owing > 0 || needsAttention.empty > 0
-              ? 'bad'
-              : needsAttention.low > 0
-                ? 'warn'
-                : undefined
-          }
-        />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mb-5">
         <Stat
           label="Owed to you"
           value={formatRM(owedToYou.total)}
