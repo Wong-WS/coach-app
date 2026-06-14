@@ -48,6 +48,8 @@ import {
   IconSearch,
   IconArrowUp,
   IconArrowDown,
+  IconChevR,
+  IconTrash,
 } from '@/components/paper';
 import type { AwayPeriod, Wallet, WalletTransaction, DayOfWeek } from '@/types';
 
@@ -266,6 +268,7 @@ function WalletDetailBody({
   onToggleTabMode,
   onArchive,
   onDelete,
+  onEditTxn,
   showToast,
 }: {
   coachId: string;
@@ -277,6 +280,7 @@ function WalletDetailBody({
   onToggleTabMode: () => void;
   onArchive: () => void;
   onDelete: () => void;
+  onEditTxn: (txn: WalletTransaction) => void;
   showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }) {
   const [txnLimit, setTxnLimit] = useState(12);
@@ -605,9 +609,16 @@ function WalletDetailBody({
           </p>
         ) : (
           <div className="flex flex-col">
-            {transactions.map((txn) => (
-              <TxnRow key={txn.id} txn={txn} />
-            ))}
+            {transactions.map((txn) => {
+              const editable = txn.type === 'top-up' || txn.type === 'adjustment';
+              return (
+                <TxnRow
+                  key={txn.id}
+                  txn={txn}
+                  onEdit={editable ? () => onEditTxn(txn) : undefined}
+                />
+              );
+            })}
             {transactions.length >= txnLimit && (
               <button
                 onClick={() => setTxnLimit(txnLimit + 12)}
@@ -690,17 +701,16 @@ function WalletDetailBody({
 function TxnRow({
   txn,
   subtitle,
+  onEdit,
 }: {
   txn: WalletTransaction & { walletName?: string };
   subtitle?: string;
+  onEdit?: () => void;
 }) {
   const positive = txn.amount > 0;
   const sub = subtitle ?? txn.date;
-  return (
-    <div
-      className="flex items-center gap-2.5 py-2.5 border-b last:border-0"
-      style={{ borderColor: 'var(--line)' }}
-    >
+  const content = (
+    <>
       <div
         className="w-7 h-7 rounded-[8px] flex items-center justify-center shrink-0"
         style={{
@@ -727,6 +737,33 @@ function TxnRow({
       >
         {positive ? '+' : ''}RM {Math.abs(txn.amount).toFixed(0)}
       </div>
+      {onEdit && (
+        <span className="shrink-0" style={{ color: 'var(--ink-3)' }}>
+          <IconChevR size={14} />
+        </span>
+      )}
+    </>
+  );
+
+  if (onEdit) {
+    return (
+      <button
+        type="button"
+        onClick={onEdit}
+        className="w-full flex items-center gap-2.5 py-2.5 border-b last:border-0 text-left rounded-[6px] transition-colors hover:opacity-80"
+        style={{ borderColor: 'var(--line)' }}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className="flex items-center gap-2.5 py-2.5 border-b last:border-0"
+      style={{ borderColor: 'var(--line)' }}
+    >
+      {content}
     </div>
   );
 }
@@ -810,6 +847,25 @@ export default function PaymentsPage() {
   const [adjAmount, setAdjAmount] = useState('');
   const [adjDescription, setAdjDescription] = useState('');
   const [adjusting, setAdjusting] = useState(false);
+
+  const [editingTxn, setEditingTxn] = useState<WalletTransaction | null>(null);
+  const [editTxnAmount, setEditTxnAmount] = useState('');
+  const [savingTxn, setSavingTxn] = useState(false);
+  const [confirmDeleteTxn, setConfirmDeleteTxn] = useState(false);
+  const [deletingTxn, setDeletingTxn] = useState(false);
+
+  const openEditTxn = (txn: WalletTransaction) => {
+    setEditingTxn(txn);
+    setEditTxnAmount(String(Math.abs(txn.amount)));
+    setConfirmDeleteTxn(false);
+  };
+
+  const closeEditTxn = () => {
+    if (savingTxn || deletingTxn) return;
+    setEditingTxn(null);
+    setEditTxnAmount('');
+    setConfirmDeleteTxn(false);
+  };
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingWallet, setDeletingWallet] = useState(false);
@@ -1127,6 +1183,82 @@ export default function PaymentsPage() {
     }
   };
 
+  const handleSaveTxnEdit = async () => {
+    if (!db || !selectedWallet || !editingTxn) return;
+    const mag = parseFloat(editTxnAmount);
+    if (isNaN(mag) || mag <= 0) {
+      showToast('Enter a valid amount', 'error');
+      return;
+    }
+    const sign = editingTxn.amount < 0 ? -1 : 1;
+    const newAmount = mag * sign;
+    const delta = newAmount - editingTxn.amount;
+    if (delta === 0) {
+      closeEditTxn();
+      return;
+    }
+    setSavingTxn(true);
+    try {
+      const firestore = db as Firestore;
+      const txnRef = doc(
+        firestore,
+        'coaches',
+        coach.id,
+        'wallets',
+        selectedWallet.id,
+        'transactions',
+        editingTxn.id,
+      );
+      await updateDoc(txnRef, {
+        amount: newAmount,
+        balanceAfter: editingTxn.balanceAfter + delta,
+      });
+      await updateDoc(
+        doc(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id),
+        { balance: increment(delta), updatedAt: serverTimestamp() },
+      );
+      showToast('Transaction updated', 'success');
+      setEditingTxn(null);
+      setEditTxnAmount('');
+      setConfirmDeleteTxn(false);
+    } catch {
+      showToast('Failed to update transaction', 'error');
+    } finally {
+      setSavingTxn(false);
+    }
+  };
+
+  const handleDeleteTxn = async () => {
+    if (!db || !selectedWallet || !editingTxn) return;
+    setDeletingTxn(true);
+    try {
+      const firestore = db as Firestore;
+      await deleteDoc(
+        doc(
+          firestore,
+          'coaches',
+          coach.id,
+          'wallets',
+          selectedWallet.id,
+          'transactions',
+          editingTxn.id,
+        ),
+      );
+      await updateDoc(
+        doc(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id),
+        { balance: increment(-editingTxn.amount), updatedAt: serverTimestamp() },
+      );
+      showToast('Transaction deleted', 'success');
+      setEditingTxn(null);
+      setEditTxnAmount('');
+      setConfirmDeleteTxn(false);
+    } catch {
+      showToast('Failed to delete transaction', 'error');
+    } finally {
+      setDeletingTxn(false);
+    }
+  };
+
   const handleToggleTabMode = async () => {
     if (!db || !selectedWallet) return;
     setTogglingTabMode(true);
@@ -1435,6 +1567,7 @@ export default function PaymentsPage() {
             onToggleTabMode={() => setShowTabModeModal(true)}
             onArchive={() => setShowArchiveModal(true)}
             onDelete={() => setShowDeleteModal(true)}
+            onEditTxn={openEditTxn}
             showToast={showToast}
           />
         )}
@@ -1753,6 +1886,114 @@ export default function PaymentsPage() {
             </Btn>
           </div>
         </div>
+      </PaperModal>
+
+      {/* ── Edit transaction modal ── */}
+      <PaperModal
+        open={!!editingTxn}
+        onClose={closeEditTxn}
+        title="Edit transaction"
+      >
+        {editingTxn && (
+          <div className="space-y-4">
+            <div
+              className="rounded-[10px] border px-3 py-2.5 flex items-center justify-between"
+              style={{ borderColor: 'var(--line)', background: 'var(--panel)' }}
+            >
+              <div className="min-w-0">
+                <div
+                  className="text-[13px] font-medium truncate"
+                  style={{ color: 'var(--ink)' }}
+                >
+                  {editingTxn.description || editingTxn.type}
+                </div>
+                <div
+                  className="text-[11px] mono"
+                  style={{ color: 'var(--ink-3)' }}
+                >
+                  {editingTxn.type === 'top-up' ? 'Top-up' : 'Adjustment'}
+                  {' · '}
+                  {editingTxn.date}
+                </div>
+              </div>
+              <Chip tone={editingTxn.amount < 0 ? 'bad' : 'good'}>
+                {editingTxn.amount < 0 ? 'Deduct' : 'Add'}
+              </Chip>
+            </div>
+
+            <div>
+              <label
+                className="block text-[12px] font-medium mb-1"
+                style={{ color: 'var(--ink-2)' }}
+              >
+                Amount (RM)
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={editTxnAmount}
+                onChange={(e) => setEditTxnAmount(e.target.value)}
+                placeholder="0"
+                autoFocus
+                className={paperInputClass}
+                style={paperInputStyle}
+              />
+            </div>
+
+            {!confirmDeleteTxn ? (
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <Btn
+                  variant="primary"
+                  onClick={handleSaveTxnEdit}
+                  disabled={!editTxnAmount || savingTxn}
+                >
+                  {savingTxn ? 'Saving…' : 'Save'}
+                </Btn>
+                <Btn variant="outline" onClick={closeEditTxn} disabled={savingTxn}>
+                  Cancel
+                </Btn>
+              </div>
+            ) : (
+              <div
+                className="rounded-[10px] border p-3 space-y-3"
+                style={{ borderColor: 'var(--bad)', background: 'var(--bad-soft)' }}
+              >
+                <p className="text-[12.5px]" style={{ color: 'var(--bad)' }}>
+                  Delete this transaction? The wallet balance will be adjusted by{' '}
+                  {editingTxn.amount < 0 ? '+' : '−'}RM{' '}
+                  {Math.abs(editingTxn.amount).toFixed(0)}.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Btn
+                    variant="primary"
+                    onClick={handleDeleteTxn}
+                    disabled={deletingTxn}
+                  >
+                    {deletingTxn ? 'Deleting…' : 'Yes, delete'}
+                  </Btn>
+                  <Btn
+                    variant="outline"
+                    onClick={() => setConfirmDeleteTxn(false)}
+                    disabled={deletingTxn}
+                  >
+                    Keep
+                  </Btn>
+                </div>
+              </div>
+            )}
+
+            {!confirmDeleteTxn && (
+              <button
+                onClick={() => setConfirmDeleteTxn(true)}
+                disabled={savingTxn}
+                className="w-full flex items-center justify-center gap-1.5 text-[13px] font-medium py-2 rounded-[8px]"
+                style={{ color: 'var(--bad)' }}
+              >
+                <IconTrash size={14} /> Delete transaction
+              </button>
+            )}
+          </div>
+        )}
       </PaperModal>
 
       {/* ── Delete wallet modal ── */}
