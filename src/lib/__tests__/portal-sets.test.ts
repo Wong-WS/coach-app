@@ -154,4 +154,41 @@ describe('computeLessonSets', () => {
     const r = computeLessonSets([txn('charge', 80, -80, '2026-07-09')], 0);
     expect(r.mode).toBe('flat');
   });
+
+  it('treats charges before any top-up as a legacy set with no blank slots', () => {
+    seq = 0;
+    const r = computeLessonSets(
+      [
+        txn('charge', 80, -80, '2026-07-09'),
+        txn('charge', 80, -160, '2026-07-11'),
+      ],
+      80,
+    );
+    expect(r.mode).toBe('sets');
+    expect(r.current).not.toBeNull();
+    expect(r.current!.topUp).toBeNull();
+    expect(r.current!.done).toBe(2);
+    expect(r.current!.slots).toBe(2); // legacy = no blank slots
+    expect(r.current!.left).toBe(0);
+    // endingBalance -160, left*rate 0 → raw -160 → owed 160
+    expect(r.current!.reconciliation).toEqual({ kind: 'owed', amount: 160 });
+  });
+
+  it('moves the legacy set to earlier when a later top-up starts a fresh set', () => {
+    seq = 0;
+    const r = computeLessonSets(
+      [
+        txn('charge', 80, -80, '2026-07-09'),
+        txn('charge', 80, -160, '2026-07-11'),
+        txn('top-up', 800, 640, '2026-07-20'), // pre-balance -160 < rate → new set
+      ],
+      80,
+    );
+    expect(r.earlier).toHaveLength(1);
+    expect(r.earlier[0].topUp).toBeNull();
+    expect(r.earlier[0].done).toBe(2);
+    expect(r.current).not.toBeNull();
+    expect(r.current!.topUp).toEqual({ date: '2026-07-20', amount: 800 });
+    expect(r.current!.done).toBe(0);
+  });
 });
