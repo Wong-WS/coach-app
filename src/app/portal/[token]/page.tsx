@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { fetchPortalData, type PortalPayload } from '@/lib/portal-data';
-import LessonSets from './LessonSets';
+import ChargesList from './ChargesList';
+import TopUpsList from './TopUpsList';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,7 +39,7 @@ export default async function PortalPage({
   const data = await fetchPortalData(token);
   if (!data) notFound();
 
-  const { coach, wallet, suggestion, sets } = data;
+  const { coach, wallet, suggestion, charges, topUps } = data;
   const owing = wallet.balance < 0;
 
   return (
@@ -113,15 +114,34 @@ export default async function PortalPage({
         </div>
       )}
 
-      {/* Lessons — current set + earlier */}
+      {/* Recent lessons */}
       <section>
         <div
           className="text-[10.5px] font-semibold uppercase mb-2"
           style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
         >
-          Lessons
+          Recent lessons
         </div>
-        <LessonSets sets={sets} />
+        <ChargesList
+          token={token}
+          initial={charges.items}
+          initialHasMore={charges.hasMore}
+        />
+      </section>
+
+      {/* Top-up history */}
+      <section>
+        <div
+          className="text-[10.5px] font-semibold uppercase mb-2"
+          style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
+        >
+          Top-ups
+        </div>
+        <TopUpsList
+          token={token}
+          initial={topUps.items}
+          initialHasMore={topUps.hasMore}
+        />
       </section>
 
       {/* Footer */}

@@ -74,14 +74,11 @@ class) never make the count fractional — they only surface in the money
 reconciliation line (below). This mirrors the coach's WhatsApp habit: the numbered
 list stays clean; a note at the bottom captures any leftover/shortfall.
 
-**Slot count** for the set = `max(round((openingBalance + topUpAmount) / rate), done)`
-— the number of lessons the set's *net available* money buys (RM800 ÷ RM80 = 10
-when there is no carry). Sizing from net available money (not the top-up alone)
-means a carried **owed** amount reduces the affordable slot count rather than
-showing phantom blanks — e.g. a set opening −RM160 in debt then topped up RM800
-shows 8 slots, and the RM160 owed is surfaced as the *previous* set's closing note,
-not duplicated on the new one. A carried **credit** simply rounds into the count.
-The `max(…, done)` guard guarantees no completed lesson is ever hidden.
+**Slot count** for the set = `round(bucketTopUpAmount / lessonRate)`
+(RM800 ÷ RM80 = 10) — the *intended* number of lessons the payment bought. If
+completed lessons ever exceed this (e.g. several cheaper lessons stretched the
+budget), expand: `slots = max(round(topUp / rate), doneCount)` so no lesson is
+hidden.
 
 - **Filled slots** = completed lessons in the set, numbered `1..done` in **date
   order (oldest first)**, each showing its lesson date, a ✓, and **its price**
@@ -152,11 +149,10 @@ them one at a time is a purely client-side interaction (no extra fetch per tap).
   - `refund` / positive `adjustment` → add to balance; not a lesson, not a set
     boundary.
   - negative `adjustment` → subtract from balance; not a lesson.
-- Per-set derived fields: `slots = max(round((openingBalance + topUpSum) / rate), done)`;
+- Per-set derived fields: `slots = max(round(topUp / rate), done)`;
   `left = slots − done`; `reconciliation` compares the set's ending balance to
   `left × rate` — a positive difference is `credit`, negative is `owed`, zero is
-  `none`. Lessons are numbered oldest-first by lesson **date** (display-only sort),
-  independent of transaction insertion order.
+  `none`.
 
 ## Fallbacks / Edge Cases
 
