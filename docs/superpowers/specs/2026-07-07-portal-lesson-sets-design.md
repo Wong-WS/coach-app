@@ -19,26 +19,38 @@ checklist, hide already-settled sets behind a toggle, and let the parent verify
 
 ## Core Model: Money Buckets (FIFO)
 
-Treat each **top-up as a bucket of money**. Lessons (charges) always consume the
-**oldest** non-empty bucket first (first-in-first-out). The **current set** = the
-lessons drawn from whichever bucket is currently at the front (the oldest bucket
-that still has money in it).
+Intuition: each **top-up is a bucket of money**, and lessons always spend the
+**oldest** bucket first. A new "set" begins when the wallet was effectively drained
+and a fresh top-up refills it.
 
-Consequences (all four cases handled by this one rule):
+**The operative rule (single test):**
 
-| Case | Behaviour |
-|---|---|
-| Balance hits RM0, then RM800 top-up | New bucket is the only one → it becomes the current set immediately. Prior lessons collapse. |
-| ~1 lesson left, parent pays next fee **in advance** | Old bucket still has money, so it stays the front → current set keeps showing the old batch. No confusing reset. |
-| That last leftover lesson is done (e.g. 880 → 800) | Old bucket empties → front flips to the advance bucket → portal now shows the fresh RM800 set, 0 lessons in. |
-| Two installments for one batch | Second top-up sits behind the first; set doesn't falsely reset until the first bucket drains. |
+> A top-up **starts a new set** if the balance *immediately before it* is **below
+> one lesson's cost** (the parent couldn't afford another lesson without paying).
+> Otherwise the top-up **extends** the current set.
 
-**Set start timestamp** = the moment the current front bucket *became* the front:
-- the `createdAt` of the charge that emptied the bucket immediately older than it, or
-- if there is no older bucket, the front bucket's own top-up `createdAt`.
+The **current set** = all lessons since the most recent set-*starting* top-up.
 
-Charges/top-ups with `createdAt` ≥ set start belong to the current set; everything
-before is an earlier (settled) set.
+Consequences (all cases handled by this one rule):
+
+| Case | Balance just before top-up | Result |
+|---|---|---|
+| Balance hits RM0, then RM800 top-up | RM0 (< rate) | **New set** — prior lessons collapse. |
+| ~1 lesson left, parent pays next fee **in advance** | ≥ RM80 (≥ rate) | **Extends** — current set keeps showing the old batch, no confusing reset. |
+| That leftover lesson is then done (880 → 800) | (a charge, not a top-up) | No change at the charge; the *next* top-up will start the new set because balance will be < rate by then. |
+| Two installments for one batch | still ≥ rate at 2nd payment | **Extends** — no false reset. |
+| Odd pricing leaves RM20 credit, then top-up | RM20 (< rate) | **New set** — the RM20 credit carries into the new set's opening reconciliation. |
+
+**Leftover / shortfall carry-over:** when a top-up starts a new set, whatever the
+balance was just before it (a small positive credit *or* a negative owed amount)
+becomes the new set's **opening balance**, surfaced in that set's reconciliation
+note. This is exactly the coach's manual "RM20 remaining → next top-up is RM780"
+habit, done automatically.
+
+**Set start timestamp** = the `createdAt` of the set-starting top-up. Charges/
+top-ups with `createdAt` ≥ set start belong to the current set; everything before
+is an earlier (settled) set. Each earlier set is bounded by consecutive
+set-starting top-ups.
 
 ## Checklist Rendering
 
@@ -47,29 +59,46 @@ the coach's WhatsApp list:
 
 ```
 CURRENT SET · RM 800 top-up · 6 Jul
- 1.  9 Jul   ✓
- 2.  11 Jul  ✓
- 3.  16 Jul  ✓
+ 1.  9 Jul    ✓  RM 80
+ 2.  11 Jul   ✓  RM 100
+ 3.  16 Jul   ✓  RM 80
  4.  ─
  5.  ─
  …
-10.  ─                    3 done · 7 left
+10.  ─            3 done · 7 left · RM 20 owed
 ```
 
+**The checklist is COUNT-based, not money-based.** Each completed lesson is exactly
+one slot regardless of its price. Variable lesson prices (a one-off RM60 or RM100
+class) never make the count fractional — they only surface in the money
+reconciliation line (below). This mirrors the coach's WhatsApp habit: the numbered
+list stays clean; a note at the bottom captures any leftover/shortfall.
+
 **Slot count** for the set = `round(bucketTopUpAmount / lessonRate)`
-(RM800 ÷ RM80 = 10). If the number of completed lessons ever exceeds this (price
-variance / adjustments), expand the slot count to the number of completed lessons
-so no lesson is hidden. `expand: slots = max(round(topUp / rate), doneCount)`.
+(RM800 ÷ RM80 = 10) — the *intended* number of lessons the payment bought. If
+completed lessons ever exceed this (e.g. several cheaper lessons stretched the
+budget), expand: `slots = max(round(topUp / rate), doneCount)` so no lesson is
+hidden.
 
 - **Filled slots** = completed lessons in the set, numbered `1..done` in **date
-  order (oldest first)**, each showing its lesson date + a ✓. Oldest-first matches
-  the WhatsApp habit and reads naturally against a calendar.
-- **Blank slots** = `slots − done`, shown as `─` (upcoming/owed).
-- **Footer** = `{done} done · {slots − done} left`.
+  order (oldest first)**, each showing its lesson date, a ✓, and **its price**
+  (shown on every row — usual and odd alike — for easy cross-check). Oldest-first
+  matches the WhatsApp habit and reads naturally against a calendar.
+- **Blank slots** = `slots − done` (a count, not money ÷ rate), shown as `─`.
+- **Footer** = `{done} done · {slots − done} left`, plus a **reconciliation note**
+  when the wallet balance isn't a clean multiple of the rate:
+  - balance runs *above* the clean count → **"RM X credit — carries to your next
+    top-up"** (a cheaper lesson happened; next payment is that much less).
+  - balance runs *below* → **"RM X owed — added to your next payment"** (a pricier
+    lesson happened; next payment is that much more).
+  - clean multiple → no note.
+
+The reconciliation amount is derived straight from the wallet balance vs. the
+count, so it always self-updates and needs no manual math from the coach.
 
 `lessonRate` comes from `getWalletHealth(...)`'s existing `rate` return (next
-lesson cost). If `rate` is 0/unknown, fall back to the non-checklist numbered list
-(see Fallbacks).
+lesson cost — the wallet's usual per-lesson price). If `rate` is 0/unknown, fall
+back to the non-checklist numbered list (see Fallbacks).
 
 ## Earlier Sets
 
@@ -79,7 +108,9 @@ shows the one before it, and so on — no hard cap. Each revealed set renders as
 own block with the same checklist format (e.g. `RM 400 · 18 Apr · 5 done`). The
 control disappears once the oldest set is shown. Nothing is deleted — the parent
 can always keep tapping to walk back through the full trustworthy history. Earlier
-sets are all-done by definition (their bucket is empty), so every slot is filled.
+sets are closed (a later top-up started a new set), so they carry their final
+`credit` / `owed` note; usually every slot is filled, though a batch closed early
+by pricier lessons may show a blank slot alongside its `owed` note.
 
 All sets are computed server-side (see below) and sent in the payload; revealing
 them one at a time is a purely client-side interaction (no extra fetch per tap).
@@ -96,7 +127,8 @@ them one at a time is a purely client-side interaction (no extra fetch per tap).
 
 - New pure module `src/lib/portal-sets.ts`:
   `computeLessonSets(transactions, rate)` → `{ current, earlier[] }` where each set
-  = `{ topUp: {date, amount}, slots, lessons: [{n, date}], done, left }`.
+  = `{ topUp: {date, amount}, openingBalance, slots, lessons: [{n, date, price}],
+  done, left, reconciliation: {kind:'credit'|'owed'|'none', amount} }`.
   Pure + deterministic → unit-tested in `src/lib/__tests__/portal-sets.test.ts`
   (matches existing `wallet-alerts`/`cancel-scope` test pattern).
 - `portal-data.ts` `fetchPortalData` fetches **all** wallet transactions ordered
@@ -108,12 +140,19 @@ them one at a time is a purely client-side interaction (no extra fetch per tap).
   (`/api/portal/[token]/transactions`) is replaced by client-side one-at-a-time
   reveal of earlier sets. The route can be removed or left unused (decide during
   planning).
-- Transaction handling in the FIFO replay:
-  - `top-up` → push bucket `{time, amount}`.
-  - `charge` → drain oldest bucket(s) by `abs(amount)`; a charge that spans a bucket
-    boundary is attributed to the older set (it's the lesson that drains it).
-  - `refund` / positive `adjustment` → treated as a bucket at their time.
-  - negative `adjustment` → treated like a charge (drains oldest).
+- Replay is a single ascending pass tracking a running balance:
+  - `top-up` → if running balance **< rate**, close the current set and start a new
+    one anchored at this top-up (opening balance = the pre-top-up balance, i.e. the
+    carried credit/owed). Else, extend the current set. Then add the amount.
+  - `charge` → append a lesson `{date, price = abs(amount)}` to the current set;
+    subtract from the balance.
+  - `refund` / positive `adjustment` → add to balance; not a lesson, not a set
+    boundary.
+  - negative `adjustment` → subtract from balance; not a lesson.
+- Per-set derived fields: `slots = max(round(topUp / rate), done)`;
+  `left = slots − done`; `reconciliation` compares the set's ending balance to
+  `left × rate` — a positive difference is `credit`, negative is `owed`, zero is
+  `none`.
 
 ## Fallbacks / Edge Cases
 
@@ -126,8 +165,11 @@ them one at a time is a purely client-side interaction (no extra fetch per tap).
   ambiguous. Default: fall back to the numbered completed-lesson list for these
   wallets; the clean checklist targets the common single-student wallet
   (e.g. "Doyoon's Mom"). Revisit if needed.
-- **Fractional leftover** (bucket remaining < one lesson, e.g. RM50 with RM80 rate)
-  → 0 blank slots; the leftover simply lives in the headline balance number.
+- **Odd / variable lesson price** (a one-off RM60 or RM100 class) → still one slot;
+  the difference shows as the per-row price and rolls into the set's `credit` / `owed`
+  reconciliation note. Never affects the lesson count.
+- **Fractional leftover** (balance ends between 0 and one lesson, e.g. RM20) → 0
+  blank slots; shown as `RM20 credit — carries to your next top-up`.
 - **Tab-mode wallets** → sets concept doesn't apply (pay-after); keep current
   behaviour / plain list.
 
