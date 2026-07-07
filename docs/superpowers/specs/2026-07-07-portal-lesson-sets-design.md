@@ -73,20 +73,24 @@ lesson cost). If `rate` is 0/unknown, fall back to the non-checklist numbered li
 
 ## Earlier Sets
 
-Below the current set, a single **"Show earlier lessons"** control reveals prior
-sets, each rendered as its own collapsed block with the same checklist format
-(e.g. `RM 400 · 18 Apr · 5 done`). Nothing is deleted — the parent can always
-expand to see the full trustworthy history. Earlier sets are all-done by
-definition (their bucket is empty), so every slot is filled.
+Below the current set, a **"Show earlier lessons"** control reveals prior sets
+**one at a time**: the first tap shows the most recent finished set, the next tap
+shows the one before it, and so on — no hard cap. Each revealed set renders as its
+own block with the same checklist format (e.g. `RM 400 · 18 Apr · 5 done`). The
+control disappears once the oldest set is shown. Nothing is deleted — the parent
+can always keep tapping to walk back through the full trustworthy history. Earlier
+sets are all-done by definition (their bucket is empty), so every slot is filled.
+
+All sets are computed server-side (see below) and sent in the payload; revealing
+them one at a time is a purely client-side interaction (no extra fetch per tap).
 
 ## Layout Changes on the Portal
 
 - **Balance card** — unchanged (still the headline `CURRENT BALANCE` + status chip
   + `Next lesson ≈ RM X`).
 - **"Recent lessons" section** → becomes **"Current set"** checklist block.
-- **Separate "Top-ups" section** → folded into each set's header
-  (`RM 800 top-up · 6 Jul`). A flat top-up history is no longer shown separately;
-  the per-set header carries the same info in context. (Open question — see below.)
+- **Separate "Top-ups" section** → **removed**. Each set is headed by its own
+  top-up (`RM 800 top-up · 6 Jul`), so a flat top-up list is redundant.
 
 ## Data & Implementation
 
@@ -101,8 +105,9 @@ definition (their bucket is empty), so every slot is filled.
   for a solo coach are small; a single ordered read is acceptable. If a wallet ever
   grows very large we can cap earlier sets — noted, not built.
 - Because all sets are computed server-side, the current `Load more` API pagination
-  (`/api/portal/[token]/transactions`) is replaced by client-side expand/collapse of
-  earlier sets. The route can be removed or left unused (decide during planning).
+  (`/api/portal/[token]/transactions`) is replaced by client-side one-at-a-time
+  reveal of earlier sets. The route can be removed or left unused (decide during
+  planning).
 - Transaction handling in the FIFO replay:
   - `top-up` → push bucket `{time, amount}`.
   - `charge` → drain oldest bucket(s) by `abs(amount)`; a charge that spans a bucket
@@ -126,13 +131,12 @@ definition (their bucket is empty), so every slot is filled.
 - **Tab-mode wallets** → sets concept doesn't apply (pay-after); keep current
   behaviour / plain list.
 
-## Open Questions for Review
+## Resolved Decisions
 
-1. **Top-up history** — OK to drop the separate flat "Top-ups" list now that each
-   set is headed by its top-up? Or keep a collapsed "all top-ups" under the earlier
-   toggle for completeness?
-2. **Earlier-set cap** — show *all* earlier sets, or only the last few with a
-   "that's everything" note? (Affects read size for long-tenured parents.)
+1. **Top-up history** — the separate flat "Top-ups" list is dropped; each set's
+   header carries its top-up.
+2. **Earlier sets** — no cap; revealed one at a time via repeated taps of "Show
+   earlier lessons".
 
 ## Out of Scope
 
