@@ -3,6 +3,8 @@ import { getAdminDb } from '@/lib/firebase-admin';
 import type { Booking, ClassException, LessonLog, Wallet, AwayPeriod } from '@/types';
 import { getWalletHealth, type WalletHealth } from '@/lib/wallet-alerts';
 import { getSuggestedTopUp } from '@/lib/portal-suggestion';
+import { computeLessonSets, type SetInputTxn, type PortalLessonSets } from '@/lib/portal-sets';
+import type { WalletTransactionType } from '@/types';
 import type { Firestore, Timestamp } from 'firebase-admin/firestore';
 
 export const PORTAL_PAGE_SIZE = 10;
@@ -32,6 +34,7 @@ export type PortalPayload = {
     hideStudentNames: boolean;
   };
   suggestion: { usual: number; amount: number } | null;
+  sets: PortalLessonSets;
   charges: { items: PortalChargeRow[]; hasMore: boolean };
   topUps: { items: PortalTopUpRow[]; hasMore: boolean };
 };
@@ -176,6 +179,29 @@ export async function fetchTopUpsPage(
   return { items, hasMore };
 }
 
+/**
+ * Fetch every transaction for the wallet, oldest-first, reduced to the fields
+ * `computeLessonSets` needs. Solo-coach wallets have small histories, so a single
+ * ordered read is fine.
+ */
+async function fetchAllTransactions(ctx: PortalTokenResolution): Promise<SetInputTxn[]> {
+  const { db, coachId, walletId } = ctx;
+  const snap = await db
+    .collection(`coaches/${coachId}/wallets/${walletId}/transactions`)
+    .orderBy('createdAt', 'asc')
+    .get();
+  return snap.docs.map((d) => {
+    const t = d.data();
+    return {
+      type: (t.type as WalletTransactionType) ?? 'charge',
+      amount: (t.amount as number) ?? 0,
+      balanceAfter: (t.balanceAfter as number) ?? 0,
+      date: (t.date as string) ?? '',
+      createdAt: (t.createdAt as Timestamp | undefined)?.toMillis?.() ?? 0,
+    };
+  });
+}
+
 export async function fetchPortalData(token: string): Promise<PortalPayload | null> {
   const ctx = await resolvePortalToken(token);
   if (!ctx) return null;
@@ -186,7 +212,7 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
   // useClassExceptions hook so getWalletHealth's lookahead has the same data.
   const fourMonthsAgo = isoDateOffset(today, -120);
   const fourMonthsAhead = isoDateOffset(today, 120);
-  const [coachSnap, walletSnap, bookingsSnap, exceptionsSnap, awayPeriodsSnap, todayLogsSnap, charges, topUps] =
+  const [coachSnap, walletSnap, bookingsSnap, exceptionsSnap, awayPeriodsSnap, todayLogsSnap, charges, topUps, allTxns] =
     await Promise.all([
       db.doc(`coaches/${coachId}`).get(),
       db.doc(`coaches/${coachId}/wallets/${walletId}`).get(),
@@ -206,6 +232,7 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
       db.collection(`coaches/${coachId}/lessonLogs`).where('date', '==', today).get(),
       fetchChargesPage(ctx, null),
       fetchTopUpsPage(ctx, null),
+      fetchAllTransactions(ctx),
     ]);
 
   if (!coachSnap.exists || !walletSnap.exists) return null;
@@ -304,6 +331,9 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
       ? getSuggestedTopUp(wallet.usualTopUp ?? null, wallet.balance)
       : null;
 
+  const forceFlat = wallet.tabMode === true || !hideStudentNames;
+  const sets = computeLessonSets(allTxns, rate, forceFlat);
+
   return {
     coach: { displayName },
     wallet: {
@@ -314,6 +344,7 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
       hideStudentNames,
     },
     suggestion,
+    sets,
     charges,
     topUps,
   };
