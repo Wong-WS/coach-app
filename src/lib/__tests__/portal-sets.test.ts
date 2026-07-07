@@ -191,4 +191,50 @@ describe('computeLessonSets', () => {
     expect(r.current!.topUp).toEqual({ date: '2026-07-20', amount: 800 });
     expect(r.current!.done).toBe(0);
   });
+
+  it('numbers lessons by lesson date, not createdAt/replay order (back-dated mark-done)', () => {
+    seq = 0;
+    // createdAt order (seq): top-up, then the 07-16 charge, then the 07-09 charge —
+    // i.e. the later-dated lesson was recorded (createdAt) before the earlier-dated one.
+    const r = computeLessonSets(
+      [
+        txn('top-up', 800, 800, '2026-07-01'),
+        txn('charge', 80, 720, '2026-07-16'), // recorded first (lower createdAt), later date
+        txn('charge', 80, 640, '2026-07-09'), // recorded second (higher createdAt), earlier date
+      ],
+      80,
+    );
+    expect(r.current).not.toBeNull();
+    expect(r.current!.done).toBe(2);
+    expect(r.current!.lessons).toEqual([
+      { n: 1, date: '2026-07-09', price: 80 },
+      { n: 2, date: '2026-07-16', price: 80 },
+    ]);
+  });
+
+  it('sizes the new set from net available money after a carried owed amount', () => {
+    seq = 0;
+    // Debt set: small top-up (80) then one pricier charge (240) drives balance to -160.
+    const r = computeLessonSets(
+      [
+        txn('top-up', 80, 80, '2026-06-01'),
+        txn('charge', 240, -160, '2026-06-05'),
+        // pre-top-up balance -160 < rate → new set; opening balance carries the debt.
+        txn('top-up', 800, 640, '2026-07-20'),
+      ],
+      80,
+    );
+    expect(r.earlier).toHaveLength(1);
+    expect(r.earlier[0].done).toBe(1);
+    expect(r.earlier[0].left).toBe(0);
+    expect(r.earlier[0].reconciliation).toEqual({ kind: 'owed', amount: 160 });
+
+    expect(r.current).not.toBeNull();
+    expect(r.current!.topUp).toEqual({ date: '2026-07-20', amount: 800 });
+    // slots sized from openingBalance (-160) + topUpSum (800): round(640 / 80) = 8
+    expect(r.current!.slots).toBe(8);
+    expect(r.current!.done).toBe(0);
+    expect(r.current!.left).toBe(8);
+    expect(r.current!.reconciliation).toEqual({ kind: 'none', amount: 0 });
+  });
 });

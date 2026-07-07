@@ -87,7 +87,7 @@ async function fetchAllTransactions(ctx: PortalTokenResolution): Promise<SetInpu
   return snap.docs.map((d) => {
     const t = d.data();
     return {
-      type: (t.type as WalletTransactionType) ?? 'charge',
+      type: (t.type as WalletTransactionType) ?? 'refund',
       amount: (t.amount as number) ?? 0,
       balanceAfter: (t.balanceAfter as number) ?? 0,
       date: (t.date as string) ?? '',

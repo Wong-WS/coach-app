@@ -54,6 +54,10 @@ function finalizeSet(ws: WorkingSet, rate: number): PortalSet {
     ws.topUpDate != null ? { date: ws.topUpDate, amount: ws.topUpSum } : null;
 
   // Legacy set (charges with no top-up): no blank slots.
+  // Slots are sized from net available money (openingBalance + topUpSum), not the
+  // top-up alone, so a carried owed amount reduces the affordable slot count rather
+  // than showing phantom blanks; the carried owed itself is surfaced as the
+  // *previous* set's closing `reconciliation` (kind: 'owed').
   const slots =
     topUp == null && ws.topUpSum === 0
       ? done
@@ -68,12 +72,17 @@ function finalizeSet(ws: WorkingSet, rate: number): PortalSet {
         ? { kind: 'owed', amount: -raw }
         : { kind: 'none', amount: 0 };
 
+  // Number filled slots in lesson-date order (oldest first) for display, independent
+  // of the replay/insertion order above — a back-dated mark-done should not throw off
+  // the numbering. This is display-only: it must not affect endingBalance/done/slots.
+  const orderedLessons = [...ws.lessons].sort((a, b) => a.date.localeCompare(b.date));
+
   return {
     topUp,
     slots,
     done,
     left,
-    lessons: ws.lessons.map((l, i) => ({ n: i + 1, date: l.date, price: l.price })),
+    lessons: orderedLessons.map((l, i) => ({ n: i + 1, date: l.date, price: l.price })),
     reconciliation,
   };
 }
