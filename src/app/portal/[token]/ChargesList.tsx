@@ -64,11 +64,13 @@ export default function ChargesList({
                   style={{ color: 'var(--ink)' }}
                 >
                   {formatNameList(g.names) ||
-                    (g.count > 1 ? `${g.count} lessons` : 'Lesson')}
+                    (g.sessions > 1 ? `${g.sessions} lessons` : 'Lesson')}
                 </div>
                 <div className="text-[11px] mono" style={{ color: 'var(--ink-3)' }}>
                   {formatDateShort(parseDateString(g.date))}
-                  {g.names.length > 0 && g.count > 1 ? ` · ${g.count} lessons` : ''}
+                  {g.names.length > 0 && g.sessions > 1
+                    ? ` · ${g.sessions} lessons`
+                    : ''}
                 </div>
               </div>
               <div

@@ -2,6 +2,7 @@ import 'server-only';
 import { getAdminDb } from '@/lib/firebase-admin';
 import type { Booking, ClassException, LessonLog, Wallet, AwayPeriod } from '@/types';
 import { getWalletHealth, type WalletHealth } from '@/lib/wallet-alerts';
+import { sessionKeyFromDescription } from '@/lib/portal-charges';
 import type { Firestore, Timestamp } from 'firebase-admin/firestore';
 
 export const PORTAL_PAGE_SIZE = 10;
@@ -10,6 +11,7 @@ export type PortalChargeRow = {
   date: string;
   studentName: string;          // empty when wallet has ≤1 student
   amount: number;               // positive RM
+  sessionKey: string;           // lesson start time — two students share one session
   cursor: number;               // createdAt ms — opaque pagination key
 };
 
@@ -137,6 +139,7 @@ export async function fetchChargesPage(
       date: t.date as string,
       studentName: hideStudentNames ? '' : (sid ? studentNames.get(sid) ?? '' : ''),
       amount: Math.abs((t.amount as number) ?? 0),
+      sessionKey: sessionKeyFromDescription(t.description),
       cursor: createdAt,
     };
   });

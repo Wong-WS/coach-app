@@ -1,66 +1,105 @@
 import { describe, it, expect } from 'vitest';
-import { groupCharges, formatNameList } from '@/lib/portal-charges';
+import {
+  groupCharges,
+  formatNameList,
+  sessionKeyFromDescription,
+} from '@/lib/portal-charges';
 import type { PortalChargeRow } from '@/lib/portal-data';
 
 const row = (
   date: string,
   studentName: string,
   amount: number,
+  sessionKey: string,
   cursor: number,
-): PortalChargeRow => ({ date, studentName, amount, cursor });
+): PortalChargeRow => ({ date, studentName, amount, sessionKey, cursor });
 
 describe('groupCharges', () => {
-  it('rolls two students on the same date into one row', () => {
+  it('rolls two students in one session into a single one-lesson row', () => {
     const groups = groupCharges([
-      row('2026-08-23', 'Jian', 50, 300),
-      row('2026-08-23', 'Seoan', 50, 200),
-      row('2026-08-21', 'Seoan', 50, 100),
+      row('2026-08-23', 'Jian', 50, '08:30', 300),
+      row('2026-08-23', 'Seoan', 50, '08:30', 300),
+      row('2026-08-21', 'Seoan', 50, '17:00', 100),
     ]);
     expect(groups).toHaveLength(2);
     expect(groups[0]).toMatchObject({
       date: '2026-08-23',
       names: ['Jian', 'Seoan'],
-      count: 2,
+      sessions: 1,
       amount: 100,
     });
-    expect(groups[1]).toMatchObject({ date: '2026-08-21', count: 1, amount: 50 });
+    expect(groups[1]).toMatchObject({ date: '2026-08-21', sessions: 1, amount: 50 });
+  });
+
+  it('counts two different times on one day as two lessons', () => {
+    const groups = groupCharges([
+      row('2026-08-23', 'Jian', 50, '17:00', 400),
+      row('2026-08-23', 'Seoan', 50, '17:00', 400),
+      row('2026-08-23', 'Jian', 50, '08:30', 300),
+      row('2026-08-23', 'Seoan', 50, '08:30', 300),
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ sessions: 2, amount: 200, names: ['Jian', 'Seoan'] });
+  });
+
+  it('counts one student attending twice in a day as two lessons', () => {
+    const groups = groupCharges([
+      row('2026-08-23', 'Jian', 50, '17:00', 400),
+      row('2026-08-23', 'Jian', 50, '08:30', 300),
+    ]);
+    expect(groups[0]).toMatchObject({ names: ['Jian'], sessions: 2, amount: 100 });
+  });
+
+  it('under-counts rather than invents sessions when the time is missing', () => {
+    const groups = groupCharges([
+      row('2026-08-23', 'Jian', 50, '', 300),
+      row('2026-08-23', 'Seoan', 50, '', 300),
+    ]);
+    expect(groups[0].sessions).toBe(1);
   });
 
   it('merges a date split across pages when the next page is appended', () => {
-    const page1 = [row('2026-08-23', 'Jian', 50, 300)];
-    const page2 = [row('2026-08-23', 'Seoan', 50, 200)];
+    const page1 = [row('2026-08-23', 'Jian', 50, '08:30', 300)];
+    const page2 = [row('2026-08-23', 'Seoan', 50, '08:30', 300)];
     const groups = groupCharges([...page1, ...page2]);
     expect(groups).toHaveLength(1);
     expect(groups[0].amount).toBe(100);
+    expect(groups[0].sessions).toBe(1);
   });
 
   it('keeps a backdated charge in its own date row', () => {
     const groups = groupCharges([
-      row('2026-08-23', 'Jian', 50, 300),
-      row('2026-08-21', 'Seoan', 50, 250),
-      row('2026-08-23', 'Seoan', 50, 200),
+      row('2026-08-23', 'Jian', 50, '08:30', 300),
+      row('2026-08-21', 'Seoan', 50, '17:00', 250),
+      row('2026-08-23', 'Seoan', 50, '08:30', 200),
     ]);
     expect(groups.map((g) => g.date)).toEqual(['2026-08-23', '2026-08-21']);
-    expect(groups[0].count).toBe(2);
-  });
-
-  it('does not repeat a name when the same student has two lessons that day', () => {
-    const groups = groupCharges([
-      row('2026-08-23', 'Jian', 50, 300),
-      row('2026-08-23', 'Jian', 50, 200),
-    ]);
-    expect(groups[0].names).toEqual(['Jian']);
-    expect(groups[0].count).toBe(2);
+    expect(groups[0].sessions).toBe(1);
     expect(groups[0].amount).toBe(100);
   });
 
   it('leaves names empty for single-student wallets', () => {
-    const groups = groupCharges([row('2026-08-23', '', 50, 300)]);
+    const groups = groupCharges([row('2026-08-23', '', 50, '08:30', 300)]);
     expect(groups[0].names).toEqual([]);
   });
 
   it('returns nothing for an empty list', () => {
     expect(groupCharges([])).toEqual([]);
+  });
+});
+
+describe('sessionKeyFromDescription', () => {
+  it('pulls the start time out of a mark-as-done description', () => {
+    expect(sessionKeyFromDescription('Lesson — Jian (08:30)')).toBe('08:30');
+    expect(sessionKeyFromDescription('Lesson — Seoan Wong-Lee (17:00)')).toBe('17:00');
+    expect(sessionKeyFromDescription('Lesson — Jian (9:05)')).toBe('9:05');
+  });
+
+  it('returns an empty key for anything else', () => {
+    expect(sessionKeyFromDescription('Manual charge')).toBe('');
+    expect(sessionKeyFromDescription('Lesson — Jian (morning)')).toBe('');
+    expect(sessionKeyFromDescription(undefined)).toBe('');
+    expect(sessionKeyFromDescription(42)).toBe('');
   });
 });
 
