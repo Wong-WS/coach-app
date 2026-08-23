@@ -71,16 +71,11 @@ export default function ChargesList({
                   {g.names.length > 0 && g.count > 1 ? ` · ${g.count} lessons` : ''}
                 </div>
               </div>
-              <div className="text-right shrink-0">
-                <div
-                  className="mono tnum text-[13px] font-medium"
-                  style={{ color: 'var(--ink)' }}
-                >
-                  −RM {g.amount.toFixed(0)}
-                </div>
-                <div className="mono text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
-                  bal {g.balanceAfter < 0 ? '−' : ''}RM {Math.abs(g.balanceAfter).toFixed(0)}
-                </div>
+              <div
+                className="mono tnum text-[13px] font-medium shrink-0"
+                style={{ color: 'var(--ink)' }}
+              >
+                −RM {g.amount.toFixed(0)}
               </div>
             </div>
           ))

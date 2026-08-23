@@ -10,14 +10,12 @@ export type PortalChargeRow = {
   date: string;
   studentName: string;          // empty when wallet has ≤1 student
   amount: number;               // positive RM
-  balanceAfter: number;
   cursor: number;               // createdAt ms — opaque pagination key
 };
 
 export type PortalTopUpRow = {
   date: string;
   amount: number;
-  balanceAfter: number;
   cursor: number;
 };
 
@@ -139,7 +137,6 @@ export async function fetchChargesPage(
       date: t.date as string,
       studentName: hideStudentNames ? '' : (sid ? studentNames.get(sid) ?? '' : ''),
       amount: Math.abs((t.amount as number) ?? 0),
-      balanceAfter: (t.balanceAfter as number) ?? 0,
       cursor: createdAt,
     };
   });
@@ -167,7 +164,6 @@ export async function fetchTopUpsPage(
     return {
       date: t.date as string,
       amount: (t.amount as number) ?? 0,
-      balanceAfter: (t.balanceAfter as number) ?? 0,
       cursor: createdAt,
     };
   });

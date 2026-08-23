@@ -9,8 +9,6 @@ export type PortalChargeGroup = {
   count: number;
   /** Sum of the group's charges, positive RM. */
   amount: number;
-  /** Balance after the newest charge in the group — i.e. after the whole day. */
-  balanceAfter: number;
 };
 
 /**
@@ -38,7 +36,6 @@ export function groupCharges(rows: PortalChargeRow[]): PortalChargeGroup[] {
         names: r.studentName ? [r.studentName] : [],
         count: 1,
         amount: r.amount,
-        balanceAfter: r.balanceAfter,
       });
     }
   }

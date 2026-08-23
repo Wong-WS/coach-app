@@ -67,16 +67,11 @@ export default function TopUpsList({
                   {formatDateShort(parseDateString(t.date))}
                 </div>
               </div>
-              <div className="text-right shrink-0">
-                <div
-                  className="mono tnum text-[13px] font-medium"
-                  style={{ color: 'var(--good)' }}
-                >
-                  +RM {t.amount.toFixed(0)}
-                </div>
-                <div className="mono text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
-                  bal {t.balanceAfter < 0 ? '−' : ''}RM {Math.abs(t.balanceAfter).toFixed(0)}
-                </div>
+              <div
+                className="mono tnum text-[13px] font-medium shrink-0"
+                style={{ color: 'var(--good)' }}
+              >
+                +RM {t.amount.toFixed(0)}
               </div>
             </div>
           ))
