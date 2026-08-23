@@ -14,6 +14,8 @@ import {
   getDayOfWeekForDate,
 } from '@/lib/class-schedule';
 import { findOrCreateStudent } from '@/lib/students';
+import { groupStudentsByLocation } from '@/lib/student-location-history';
+import type { StudentsByLocation } from '@/lib/student-location-history';
 import { shiftEndTime } from '@/lib/time-input';
 import {
   Btn,
@@ -188,6 +190,14 @@ export function AddLessonModal({
 
   const total = rows.reduce((s, r) => s + (Number(r.price) || 0), 0);
   const creatingLocation = locationId === '__new';
+
+  // Surface students who already have lessons at the picked location first.
+  // Nobody is hidden — the rest stay selectable under "Other students".
+  const studentGroups = useMemo(
+    () => groupStudentsByLocation(students, bookings, locationId),
+    [students, bookings, locationId]
+  );
+  const selectedLocationName = locations.find((l) => l.id === locationId)?.name ?? '';
 
   const handleSave = async () => {
     if (!coachId || !db) {
@@ -454,7 +464,8 @@ export function AddLessonModal({
                 row={r}
                 index={i}
                 count={rows.length}
-                students={students}
+                studentGroups={studentGroups}
+                locationName={selectedLocationName}
                 wallets={wallets}
                 rows={rows}
                 onChange={(patch) => updateRow(i, patch)}
@@ -530,7 +541,8 @@ function StudentRow({
   row,
   index,
   count,
-  students,
+  studentGroups,
+  locationName,
   wallets,
   rows,
   onChange,
@@ -540,7 +552,8 @@ function StudentRow({
   row: StudentRowState;
   index: number;
   count: number;
-  students: Student[];
+  studentGroups: StudentsByLocation;
+  locationName: string;
   wallets: Wallet[];
   rows: StudentRowState[];
   onChange: (patch: Partial<StudentRowState>) => void;
@@ -621,11 +634,31 @@ function StudentRow({
           style={paperInputStyle}
         >
           <option value="">Select student…</option>
-          {students.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.clientName}
-            </option>
-          ))}
+          {studentGroups.here.length === 0 || studentGroups.others.length === 0 ? (
+            // No split worth showing — render one flat list.
+            [...studentGroups.here, ...studentGroups.others].map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.clientName}
+              </option>
+            ))
+          ) : (
+            <>
+              <optgroup label={locationName ? `At ${locationName}` : 'At this location'}>
+                {studentGroups.here.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.clientName}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Other students">
+                {studentGroups.others.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.clientName}
+                  </option>
+                ))}
+              </optgroup>
+            </>
+          )}
         </select>
       ) : (
         <div className="grid grid-cols-2 gap-2">
