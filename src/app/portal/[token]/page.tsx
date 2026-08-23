@@ -39,7 +39,7 @@ export default async function PortalPage({
   const data = await fetchPortalData(token);
   if (!data) notFound();
 
-  const { coach, wallet, suggestion, charges, topUps } = data;
+  const { coach, wallet, charges, topUps } = data;
   const owing = wallet.balance < 0;
 
   return (
@@ -89,30 +89,6 @@ export default async function PortalPage({
           </div>
         )}
       </div>
-
-      {/* Top-up suggestion (only when coach has set usual AND status is empty/owing) */}
-      {suggestion && (
-        <div
-          className="rounded-[12px] border p-4"
-          style={{
-            background: owing ? 'var(--bad-soft)' : 'var(--warn-soft)',
-            borderColor: owing ? 'var(--bad)' : 'var(--warn)',
-          }}
-        >
-          <div
-            className="text-[13.5px] font-semibold mb-1"
-            style={{ color: 'var(--ink)' }}
-          >
-            Time for the next top-up
-          </div>
-          <div className="mono tnum text-[22px] font-semibold" style={{ color: 'var(--ink)' }}>
-            Suggested top-up: RM {suggestion.amount}
-          </div>
-          <div className="text-[11.5px] mt-1" style={{ color: 'var(--ink-3)' }}>
-            Tops you up to your usual RM {suggestion.usual}.
-          </div>
-        </div>
-      )}
 
       {/* Recent lessons */}
       <section>

@@ -2,7 +2,6 @@ import 'server-only';
 import { getAdminDb } from '@/lib/firebase-admin';
 import type { Booking, ClassException, LessonLog, Wallet, AwayPeriod } from '@/types';
 import { getWalletHealth, type WalletHealth } from '@/lib/wallet-alerts';
-import { getSuggestedTopUp } from '@/lib/portal-suggestion';
 import type { Firestore, Timestamp } from 'firebase-admin/firestore';
 
 export const PORTAL_PAGE_SIZE = 10;
@@ -31,7 +30,6 @@ export type PortalPayload = {
     rate: number;
     hideStudentNames: boolean;
   };
-  suggestion: { usual: number; amount: number } | null;
   charges: { items: PortalChargeRow[]; hasMore: boolean };
   topUps: { items: PortalTopUpRow[]; hasMore: boolean };
 };
@@ -299,11 +297,6 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
 
   const { health, rate } = getWalletHealth(wallet, bookings, exceptions, todayLogs, today, awayPeriods);
 
-  const suggestion =
-    (health === 'empty' || health === 'owing')
-      ? getSuggestedTopUp(wallet.usualTopUp ?? null, wallet.balance)
-      : null;
-
   return {
     coach: { displayName },
     wallet: {
@@ -313,7 +306,6 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
       rate,
       hideStudentNames,
     },
-    suggestion,
     charges,
     topUps,
   };

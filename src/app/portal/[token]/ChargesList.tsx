@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { PortalChargeRow } from '@/lib/portal-data';
 import { formatDateShort, parseDateString } from '@/lib/date-format';
+import { groupCharges, formatNameList } from '@/lib/portal-charges';
 
 export default function ChargesList({
   token,
@@ -14,6 +15,7 @@ export default function ChargesList({
   initialHasMore: boolean;
 }) {
   const [items, setItems] = useState(initial);
+  const groups = groupCharges(items);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -45,14 +47,14 @@ export default function ChargesList({
         className="rounded-[12px] border divide-y"
         style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
       >
-        {items.length === 0 ? (
+        {groups.length === 0 ? (
           <div className="px-3 py-4 text-[12.5px]" style={{ color: 'var(--ink-3)' }}>
             No lessons yet.
           </div>
         ) : (
-          items.map((c) => (
+          groups.map((g) => (
             <div
-              key={`${c.cursor}-${c.date}`}
+              key={g.key}
               className="flex items-center gap-2.5 px-3 py-2.5"
               style={{ borderColor: 'var(--line)' }}
             >
@@ -61,10 +63,12 @@ export default function ChargesList({
                   className="text-[13px] font-medium truncate"
                   style={{ color: 'var(--ink)' }}
                 >
-                  {c.studentName || 'Lesson'}
+                  {formatNameList(g.names) ||
+                    (g.count > 1 ? `${g.count} lessons` : 'Lesson')}
                 </div>
                 <div className="text-[11px] mono" style={{ color: 'var(--ink-3)' }}>
-                  {formatDateShort(parseDateString(c.date))}
+                  {formatDateShort(parseDateString(g.date))}
+                  {g.names.length > 0 && g.count > 1 ? ` · ${g.count} lessons` : ''}
                 </div>
               </div>
               <div className="text-right shrink-0">
@@ -72,10 +76,10 @@ export default function ChargesList({
                   className="mono tnum text-[13px] font-medium"
                   style={{ color: 'var(--ink)' }}
                 >
-                  −RM {c.amount.toFixed(0)}
+                  −RM {g.amount.toFixed(0)}
                 </div>
                 <div className="mono text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
-                  bal {c.balanceAfter < 0 ? '−' : ''}RM {Math.abs(c.balanceAfter).toFixed(0)}
+                  bal {g.balanceAfter < 0 ? '−' : ''}RM {Math.abs(g.balanceAfter).toFixed(0)}
                 </div>
               </div>
             </div>
