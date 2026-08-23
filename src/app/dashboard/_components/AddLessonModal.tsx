@@ -15,10 +15,11 @@ import {
 } from '@/lib/class-schedule';
 import { findOrCreateStudent } from '@/lib/students';
 import { groupStudentsByLocation } from '@/lib/student-location-history';
-import type { StudentsByLocation } from '@/lib/student-location-history';
+import type { OptionGroup } from '@/lib/combobox-filter';
 import { shiftEndTime } from '@/lib/time-input';
 import {
   Btn,
+  ComboBox,
   PaperModal,
   IconCheck,
   IconClose,
@@ -198,6 +199,25 @@ export function AddLessonModal({
     [students, bookings, locationId]
   );
   const selectedLocationName = locations.find((l) => l.id === locationId)?.name ?? '';
+
+  // Same option groups for every row — build once here rather than per row.
+  // A one-sided split (new location, no history, or everyone has history)
+  // collapses to a single unlabelled list.
+  const optionGroups: OptionGroup[] = useMemo(() => {
+    const toOptions = (list: Student[]) =>
+      list.map((s) => ({ value: s.id, label: s.clientName }));
+    const { here, others } = studentGroups;
+    if (here.length === 0 || others.length === 0) {
+      return [{ label: '', options: toOptions([...here, ...others]) }];
+    }
+    return [
+      {
+        label: selectedLocationName ? `At ${selectedLocationName}` : 'At this location',
+        options: toOptions(here),
+      },
+      { label: 'Other students', options: toOptions(others) },
+    ];
+  }, [studentGroups, selectedLocationName]);
 
   const handleSave = async () => {
     if (!coachId || !db) {
@@ -464,8 +484,7 @@ export function AddLessonModal({
                 row={r}
                 index={i}
                 count={rows.length}
-                studentGroups={studentGroups}
-                locationName={selectedLocationName}
+                optionGroups={optionGroups}
                 wallets={wallets}
                 rows={rows}
                 onChange={(patch) => updateRow(i, patch)}
@@ -541,8 +560,7 @@ function StudentRow({
   row,
   index,
   count,
-  studentGroups,
-  locationName,
+  optionGroups,
   wallets,
   rows,
   onChange,
@@ -552,8 +570,7 @@ function StudentRow({
   row: StudentRowState;
   index: number;
   count: number;
-  studentGroups: StudentsByLocation;
-  locationName: string;
+  optionGroups: OptionGroup[];
   wallets: Wallet[];
   rows: StudentRowState[];
   onChange: (patch: Partial<StudentRowState>) => void;
@@ -627,39 +644,16 @@ function StudentRow({
       </div>
 
       {row.mode === 'existing' ? (
-        <select
+        <ComboBox
+          groups={optionGroups}
           value={row.studentId}
-          onChange={(e) => onPickStudent(e.target.value)}
-          className={paperInputClass}
-          style={paperInputStyle}
-        >
-          <option value="">Select student…</option>
-          {studentGroups.here.length === 0 || studentGroups.others.length === 0 ? (
-            // No split worth showing — render one flat list.
-            [...studentGroups.here, ...studentGroups.others].map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.clientName}
-              </option>
-            ))
-          ) : (
-            <>
-              <optgroup label={locationName ? `At ${locationName}` : 'At this location'}>
-                {studentGroups.here.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.clientName}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Other students">
-                {studentGroups.others.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.clientName}
-                  </option>
-                ))}
-              </optgroup>
-            </>
-          )}
-        </select>
+          onChange={onPickStudent}
+          placeholder="Select student…"
+          searchPlaceholder="Search students…"
+          emptyLabel="No students match"
+          inputClassName={paperInputClass}
+          inputStyle={paperInputStyle}
+        />
       ) : (
         <div className="grid grid-cols-2 gap-2">
           <input
