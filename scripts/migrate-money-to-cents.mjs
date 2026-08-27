@@ -18,8 +18,8 @@
  *   classExceptions.newStudentPrices-> newStudentPriceCents
  *   wallets.balance                 -> balanceCents
  *   wallets.usualTopUp              -> usualTopUpCents
- *   wallets/*/transactions.amount   -> amountCents
- *   wallets/*/transactions.balanceAfter -> balanceAfterCents
+ *   wallets/{id}/transactions.amount -> amountCents
+ *   wallets/{id}/transactions.balanceAfter -> balanceAfterCents
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
