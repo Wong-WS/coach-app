@@ -488,7 +488,7 @@ function WalletDetailBody({
         <div className="flex items-center justify-between">
           {wallet.usualTopUpCents != null ? (
             <span className="text-[13px]" style={{ color: 'var(--ink-2)' }}>
-              Usual top-up: RM {wallet.usualTopUpCents}
+              Usual top-up: RM {formatCents(wallet.usualTopUpCents)}
             </span>
           ) : (
             <span className="text-[13px]" style={{ color: 'var(--ink-3)' }}>

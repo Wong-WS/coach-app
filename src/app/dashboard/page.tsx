@@ -973,8 +973,8 @@ export default function DashboardPage() {
             <div key={selectedDateStr} className="crossfade-in">
             <StatCard
               label={isToday ? 'Earned today' : `Earned ${formatDateShort(selectedDate)}`}
-              value={doneStateLoading ? '—' : `RM ${Math.round(todayRevenue)}`}
-              sub={doneStateLoading ? ' ' : `of RM ${Math.round(expectedRevenue)} expected`}
+              value={doneStateLoading ? '—' : `RM ${formatCents(todayRevenue)}`}
+              sub={doneStateLoading ? ' ' : `of RM ${formatCents(expectedRevenue)} expected`}
             />
             </div>
             <LowWalletsCard wallets={lowWallets} />
@@ -1086,8 +1086,8 @@ export default function DashboardPage() {
           <div key={selectedDateStr} className="crossfade-in">
           <StatCard
             label={isToday ? 'Earned today' : `Earned ${formatDateShort(selectedDate)}`}
-            value={doneStateLoading ? '—' : `RM ${Math.round(todayRevenue)}`}
-            sub={doneStateLoading ? ' ' : `of RM ${Math.round(expectedRevenue)}`}
+            value={doneStateLoading ? '—' : `RM ${formatCents(todayRevenue)}`}
+            sub={doneStateLoading ? ' ' : `of RM ${formatCents(expectedRevenue)}`}
           />
           </div>
           <StatCard
@@ -1729,7 +1729,7 @@ function ClassCard({
             letterSpacing: '-0.2px',
           }}
         >
-          RM {Math.round(total)}
+          RM {formatCents(total)}
         </div>
         <div style={{ minHeight: 28, minWidth: 28 }} className="flex items-end">
           {doneLoading ? null : isDone ? (

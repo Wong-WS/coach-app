@@ -6,6 +6,7 @@ import { useBookings, useStudents } from '@/hooks/useCoachData';
 import { getBookingTotalCents } from '@/lib/class-schedule';
 import { Chip } from '@/components/paper';
 import type { Booking, DayOfWeek, Student } from '@/types';
+import { formatCents, formatCentsGrouped } from '@/lib/money';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -126,7 +127,7 @@ function RecurringCard({
         className="mono tnum text-[12.5px] shrink-0"
         style={{ color: 'var(--ink-2)', fontWeight: 500 }}
       >
-        RM {total}
+        RM {formatCents(total)}
       </div>
     </div>
   );
@@ -420,7 +421,7 @@ export default function BookingsPage() {
               className="mono tnum"
               style={{ color: 'var(--ink)', fontWeight: 500 }}
             >
-              RM {weeklyTotal.toLocaleString()}
+              RM {formatCentsGrouped(weeklyTotal)}
             </span>
             <span className="ml-1">/week</span>
           </div>

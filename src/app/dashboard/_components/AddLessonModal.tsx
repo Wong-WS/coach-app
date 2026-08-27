@@ -529,7 +529,7 @@ export function AddLessonModal({
             className="mono tnum text-[18px] font-semibold"
             style={{ color: 'var(--ink)' }}
           >
-            RM {total}
+            RM {formatCents(total)}
           </div>
         </div>
       </div>

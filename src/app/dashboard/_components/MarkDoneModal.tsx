@@ -11,6 +11,7 @@ import {
 import { resolveWallet } from '@/lib/wallets';
 import { formatTimeDisplay } from '@/lib/time-format';
 import type { Booking, Student, Wallet } from '@/types';
+import { formatCents } from '@/lib/money';
 
 export function MarkDoneModal({
   open,
@@ -102,7 +103,7 @@ export function MarkDoneModal({
               {isAttending ? (
                 w && (
                   <div className="text-[11px] mono tnum" style={{ color: 'var(--ink-3)' }}>
-                    Wallet: RM {Math.round(w.balanceCents)}
+                    Wallet: RM {formatCents(w.balanceCents)}
                   </div>
                 )
               ) : (
@@ -171,7 +172,7 @@ export function MarkDoneModal({
           className="mono tnum text-[16px] font-semibold"
           style={{ color: 'var(--ink)' }}
         >
-          RM {Math.round(total)}
+          RM {formatCents(total)}
         </span>
       </div>
       <div className="flex gap-2 mt-4">

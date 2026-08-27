@@ -3,6 +3,7 @@
 import { Btn, PaperModal } from '@/components/paper';
 import { getBookingTotalCents } from '@/lib/class-schedule';
 import type { Booking } from '@/types';
+import { formatCents } from '@/lib/money';
 
 function fmtTimeShort(t: string): string {
   const [hh, mm] = t.split(':').map(Number);
@@ -79,7 +80,7 @@ export function BulkMarkDoneConfirmModal({
                   className="mono tnum text-[13px] shrink-0"
                   style={{ color: 'var(--ink-2)' }}
                 >
-                  RM {Math.round(total)}
+                  RM {formatCents(total)}
                 </div>
               </div>
             );

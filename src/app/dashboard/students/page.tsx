@@ -386,7 +386,7 @@ function StudentDetail({
                   className="mono tnum text-[12.5px]"
                   style={{ color: 'var(--ink)' }}
                 >
-                  RM {b.studentPriceCents[student.id] ?? 0}
+                  RM {formatCents(b.studentPriceCents[student.id] ?? 0)}
                 </div>
               </div>
             ))}
@@ -452,7 +452,7 @@ function StudentDetail({
                   className="mono tnum text-[12.5px]"
                   style={{ color: 'var(--ink)' }}
                 >
-                  RM {log.priceCents}
+                  RM {formatCents(log.priceCents)}
                 </span>
                 <button
                   onClick={() => onDeleteLog(log.id)}
