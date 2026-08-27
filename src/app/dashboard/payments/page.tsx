@@ -53,6 +53,7 @@ import {
   IconTrash,
 } from '@/components/paper';
 import type { AwayPeriod, Wallet, WalletTransaction, DayOfWeek } from '@/types';
+import { formatCents, formatCentsGrouped, parseMoneyToCents } from '@/lib/money';
 
 const PORTAL_BASE_URL = 'https://coach-simplify.com';
 
@@ -95,8 +96,8 @@ function getLastMonthRange(): { start: string; end: string } {
   return { start: fmt(start), end: fmt(end) };
 }
 
-function formatRM(amount: number): string {
-  return `RM ${Math.round(amount).toLocaleString('en-MY')}`;
+function formatRM(cents: number): string {
+  return `RM ${formatCentsGrouped(cents)}`;
 }
 
 // ─── Stat card ───────────────────────────────────────────────────────────────
@@ -169,7 +170,7 @@ function WalletCard({
   selected: boolean;
   onClick: () => void;
 }) {
-  const { health, rate, lessonsLeft } = getWalletHealth(
+  const { health, rateCents, lessonsLeft } = getWalletHealth(
     wallet,
     bookings,
     exceptions,
@@ -179,7 +180,7 @@ function WalletCard({
   );
 
   const balanceColor =
-    wallet.balance < 0
+    wallet.balanceCents < 0
       ? 'var(--bad)'
       : health === 'empty' || health === 'low'
         ? 'var(--warn)'
@@ -193,12 +194,12 @@ function WalletCard({
         : `${linkedStudents.length} students`;
 
   const footer =
-    wallet.balance < 0
+    wallet.balanceCents < 0
       ? 'Owes you'
       : health === 'tab'
         ? 'Tab mode'
         : health === 'inactive'
-          ? rate <= 0 ? 'No lessons scheduled' : ''
+          ? rateCents <= 0 ? 'No lessons scheduled' : ''
           : health === 'empty'
             ? "Can't cover next lesson"
             : health === 'low'
@@ -239,7 +240,7 @@ function WalletCard({
             className="mono tnum text-[22px] font-semibold"
             style={{ color: balanceColor, letterSpacing: '-0.6px' }}
           >
-            {wallet.balance < 0 ? '−' : ''}RM {Math.abs(wallet.balance).toFixed(0)}
+            {wallet.balanceCents < 0 ? '−' : ''}RM {formatCents(Math.abs(wallet.balanceCents))}
           </div>
           {footer && (
             <div className="text-[11px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
@@ -248,8 +249,8 @@ function WalletCard({
           )}
         </div>
         <div className="shrink-0 flex items-center gap-1.5">
-          {wallet.balance >= 0 && health === 'empty' && <Chip tone="bad">Empty</Chip>}
-          {wallet.balance >= 0 && health === 'low' && <Chip tone="warn">Low</Chip>}
+          {wallet.balanceCents >= 0 && health === 'empty' && <Chip tone="bad">Empty</Chip>}
+          {wallet.balanceCents >= 0 && health === 'low' && <Chip tone="warn">Low</Chip>}
         </div>
       </div>
     </button>
@@ -298,7 +299,7 @@ function WalletDetailBody({
 
   const [editingTopUp, setEditingTopUp] = useState(false);
   const [topUpValue, setTopUpValue] = useState(
-    wallet.usualTopUp != null ? String(wallet.usualTopUp) : '',
+    wallet.usualTopUpCents != null ? String(wallet.usualTopUpCents) : '',
   );
   const [savingTopUp, setSavingTopUp] = useState(false);
 
@@ -308,13 +309,13 @@ function WalletDetailBody({
     try {
       const firestore = db as Firestore;
       const trimmed = topUpValue.trim();
-      const parsed = trimmed === '' ? null : parseInt(trimmed, 10);
-      if (parsed !== null && (isNaN(parsed) || parsed < 0)) {
-        showToast('Enter a whole number (0 or more)', 'error');
+      const parsed = trimmed === '' ? null : parseMoneyToCents(trimmed);
+      if (trimmed !== '' && (parsed === null || parsed < 0)) {
+        showToast('Enter an amount of 0 or more', 'error');
         return;
       }
       await updateDoc(doc(firestore, 'coaches', coachId, 'wallets', wallet.id), {
-        usualTopUp: parsed === null ? deleteField() : parsed,
+        usualTopUpCents: parsed === null ? deleteField() : parsed,
         updatedAt: serverTimestamp(),
       });
       showToast('Usual top-up saved', 'success');
@@ -431,11 +432,11 @@ function WalletDetailBody({
         <div
           className="mono tnum text-[30px] font-semibold"
           style={{
-            color: wallet.balance < 0 ? 'var(--bad)' : 'var(--ink)',
+            color: wallet.balanceCents < 0 ? 'var(--bad)' : 'var(--ink)',
             letterSpacing: '-0.8px',
           }}
         >
-          {wallet.balance < 0 ? '−' : ''}RM {Math.abs(wallet.balance).toFixed(0)}
+          {wallet.balanceCents < 0 ? '−' : ''}RM {formatCents(Math.abs(wallet.balanceCents))}
         </div>
         {wallet.tabMode && (
           <div
@@ -454,9 +455,8 @@ function WalletDetailBody({
             Usual top-up (RM)
           </div>
           <input
-            type="number"
-            min={0}
-            step={1}
+            type="text"
+            inputMode="decimal"
             value={topUpValue}
             onChange={(e) => setTopUpValue(e.target.value)}
             placeholder="e.g. 500"
@@ -476,7 +476,7 @@ function WalletDetailBody({
               variant="outline"
               onClick={() => {
                 setEditingTopUp(false);
-                setTopUpValue(wallet.usualTopUp != null ? String(wallet.usualTopUp) : '');
+                setTopUpValue(wallet.usualTopUpCents != null ? String(wallet.usualTopUpCents) : '');
               }}
               disabled={savingTopUp}
             >
@@ -486,9 +486,9 @@ function WalletDetailBody({
         </div>
       ) : (
         <div className="flex items-center justify-between">
-          {wallet.usualTopUp != null ? (
+          {wallet.usualTopUpCents != null ? (
             <span className="text-[13px]" style={{ color: 'var(--ink-2)' }}>
-              Usual top-up: RM {wallet.usualTopUp}
+              Usual top-up: RM {wallet.usualTopUpCents}
             </span>
           ) : (
             <span className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
@@ -497,13 +497,13 @@ function WalletDetailBody({
           )}
           <button
             onClick={() => {
-              setTopUpValue(wallet.usualTopUp != null ? String(wallet.usualTopUp) : '');
+              setTopUpValue(wallet.usualTopUpCents != null ? String(wallet.usualTopUpCents) : '');
               setEditingTopUp(true);
             }}
             className="text-[12px] font-medium"
             style={{ color: 'var(--accent)' }}
           >
-            {wallet.usualTopUp != null ? 'Edit' : 'Set'}
+            {wallet.usualTopUpCents != null ? 'Edit' : 'Set'}
           </button>
         </div>
       ))}
@@ -708,7 +708,7 @@ function TxnRow({
   subtitle?: string;
   onEdit?: () => void;
 }) {
-  const positive = txn.amount > 0;
+  const positive = txn.amountCents > 0;
   const sub = subtitle ?? txn.date;
   const content = (
     <>
@@ -736,7 +736,7 @@ function TxnRow({
         className="mono tnum text-[13px] font-medium shrink-0"
         style={{ color: positive ? 'var(--good)' : 'var(--ink)' }}
       >
-        {positive ? '+' : ''}RM {Math.abs(txn.amount).toFixed(0)}
+        {positive ? '+' : ''}RM {formatCents(Math.abs(txn.amountCents))}
       </div>
       {onEdit && (
         <span className="shrink-0" style={{ color: 'var(--ink-3)' }}>
@@ -810,7 +810,7 @@ export default function PaymentsPage() {
           const data = d.data();
           if (data.type !== 'top-up') continue;
           if (!data.date || data.date < monthRange.start || data.date > monthRange.end) continue;
-          sum += data.amount ?? 0;
+          sum += data.amountCents ?? 0;
         }
         byWallet.set(wallet.id, sum);
         let total = 0;
@@ -858,7 +858,7 @@ export default function PaymentsPage() {
 
   const openEditTxn = (txn: WalletTransaction) => {
     setEditingTxn(txn);
-    setEditTxnAmount(String(Math.abs(txn.amount)));
+    setEditTxnAmount(String(Math.abs(txn.amountCents)));
     setConfirmDeleteTxn(false);
   };
 
@@ -949,7 +949,7 @@ export default function PaymentsPage() {
     if (walletDayFilter === 'adhoc') {
       result = result.filter((w) => !activeWalletIds.has(w.id));
     } else if (walletDayFilter === 'negative') {
-      result = result.filter((w) => w.balance < 0);
+      result = result.filter((w) => w.balanceCents < 0);
     } else if (walletDayFilter === 'low') {
       result = result.filter((w) =>
         isLowBalance(w, bookings, classExceptions, lessonLogs, todayStr, awayPeriods),
@@ -1001,8 +1001,8 @@ export default function PaymentsPage() {
     let count = 0;
     for (const w of wallets) {
       if (w.archived) continue;
-      if (w.balance < 0) {
-        total += -w.balance;
+      if (w.balanceCents < 0) {
+        total += -w.balanceCents;
         count += 1;
       }
     }
@@ -1012,14 +1012,14 @@ export default function PaymentsPage() {
     () =>
       lessonLogs
         .filter((l) => l.date >= monthRange.start && l.date <= monthRange.end)
-        .reduce((sum, l) => sum + l.price, 0),
+        .reduce((sum, l) => sum + l.priceCents, 0),
     [lessonLogs, monthRange],
   );
   const lastMonthActual = useMemo(
     () =>
       lessonLogs
         .filter((l) => l.date >= lastMonthRange.start && l.date <= lastMonthRange.end)
-        .reduce((sum, l) => sum + l.price, 0),
+        .reduce((sum, l) => sum + l.priceCents, 0),
     [lessonLogs, lastMonthRange],
   );
   const monthProjected = useMemo(
@@ -1036,15 +1036,15 @@ export default function PaymentsPage() {
 
   // Top-up presets. Tab wallets pay per class, so the natural amount is
   // settling what's owed; prepaid wallets get 1/5/10-lesson presets.
-  const topUpPresets = useMemo<{ label: string; amount: number }[] | null>(() => {
+  const topUpPresets = useMemo<{ label: string; amountCents: number }[] | null>(() => {
     if (!selectedWallet) return null;
     if (selectedWallet.tabMode) {
-      if (selectedWallet.balance < 0) {
-        return [{ label: 'Amount owed', amount: Math.abs(selectedWallet.balance) }];
+      if (selectedWallet.balanceCents < 0) {
+        return [{ label: 'Amount owed', amountCents: Math.abs(selectedWallet.balanceCents) }];
       }
       return null;
     }
-    const { rate } = getWalletStatus(
+    const { rateCents } = getWalletStatus(
       selectedWallet,
       bookings,
       classExceptions,
@@ -1052,11 +1052,11 @@ export default function PaymentsPage() {
       todayStr,
       awayPeriods,
     );
-    if (rate <= 0) return null;
+    if (rateCents <= 0) return null;
     return [
-      { label: '1 lesson', amount: rate },
-      { label: '5 lessons', amount: rate * 5 },
-      { label: '10 lessons', amount: rate * 10 },
+      { label: '1 lesson', amountCents: rateCents },
+      { label: '5 lessons', amountCents: rateCents * 5 },
+      { label: '10 lessons', amountCents: rateCents * 10 },
     ];
   }, [selectedWallet, bookings, classExceptions, lessonLogs, todayStr, awayPeriods]);
 
@@ -1084,7 +1084,7 @@ export default function PaymentsPage() {
       const firestore = db as Firestore;
       await addDoc(collection(firestore, 'coaches', coach.id, 'wallets'), {
         name: newWalletName.trim(),
-        balance: 0,
+        balanceCents: 0,
         studentIds: newWalletStudentIds,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -1102,8 +1102,8 @@ export default function PaymentsPage() {
 
   const handleTopUp = async () => {
     if (!db || !selectedWallet) return;
-    const amount = parseFloat(topUpAmount);
-    if (isNaN(amount) || amount <= 0) {
+    const amount = parseMoneyToCents(topUpAmount);
+    if (amount === null || amount <= 0) {
       showToast('Enter a valid amount', 'error');
       return;
     }
@@ -1119,20 +1119,20 @@ export default function PaymentsPage() {
         selectedWallet.id,
         'transactions',
       );
-      const newBalance = selectedWallet.balance + amount;
+      const newBalance = selectedWallet.balanceCents + amount;
       await addDoc(txnCol, {
         type: 'top-up',
         amount,
-        balanceAfter: newBalance,
+        balanceAfterCents: newBalance,
         description: 'Top up',
         date: topUpDate,
         createdAt: serverTimestamp(),
       });
       await updateDoc(walletRef, {
-        balance: increment(amount),
+        balanceCents: increment(amount),
         updatedAt: serverTimestamp(),
       });
-      showToast(`RM ${amount.toFixed(0)} added to ${selectedWallet.name}`, 'success');
+      showToast(`RM ${formatCents(amount)} added to ${selectedWallet.name}`, 'success');
       setShowTopUpModal(false);
       setTopUpAmount('');
     } catch {
@@ -1144,8 +1144,8 @@ export default function PaymentsPage() {
 
   const handleAdjustment = async () => {
     if (!db || !selectedWallet) return;
-    const amount = parseFloat(adjAmount);
-    if (isNaN(amount) || amount <= 0) {
+    const amount = parseMoneyToCents(adjAmount);
+    if (amount === null || amount <= 0) {
       showToast('Enter a valid amount', 'error');
       return;
     }
@@ -1163,17 +1163,17 @@ export default function PaymentsPage() {
         selectedWallet.id,
         'transactions',
       );
-      const newBalance = selectedWallet.balance + delta;
+      const newBalance = selectedWallet.balanceCents + delta;
       await addDoc(txnCol, {
         type: 'adjustment',
-        amount: delta,
-        balanceAfter: newBalance,
+        amountCents: delta,
+        balanceAfterCents: newBalance,
         description,
         date: todayYMD(),
         createdAt: serverTimestamp(),
       });
       await updateDoc(walletRef, {
-        balance: increment(delta),
+        balanceCents: increment(delta),
         updatedAt: serverTimestamp(),
       });
       showToast('Adjustment applied', 'success');
@@ -1190,14 +1190,14 @@ export default function PaymentsPage() {
 
   const handleSaveTxnEdit = async () => {
     if (!db || !selectedWallet || !editingTxn) return;
-    const mag = parseFloat(editTxnAmount);
-    if (isNaN(mag) || mag <= 0) {
+    const mag = parseMoneyToCents(editTxnAmount);
+    if (mag === null || mag <= 0) {
       showToast('Enter a valid amount', 'error');
       return;
     }
-    const sign = editingTxn.amount < 0 ? -1 : 1;
+    const sign = editingTxn.amountCents < 0 ? -1 : 1;
     const newAmount = mag * sign;
-    const delta = newAmount - editingTxn.amount;
+    const delta = newAmount - editingTxn.amountCents;
     if (delta === 0) {
       closeEditTxn();
       return;
@@ -1215,12 +1215,12 @@ export default function PaymentsPage() {
         editingTxn.id,
       );
       await updateDoc(txnRef, {
-        amount: newAmount,
-        balanceAfter: editingTxn.balanceAfter + delta,
+        amountCents: newAmount,
+        balanceAfterCents: editingTxn.balanceAfterCents + delta,
       });
       await updateDoc(
         doc(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id),
-        { balance: increment(delta), updatedAt: serverTimestamp() },
+        { balanceCents: increment(delta), updatedAt: serverTimestamp() },
       );
       showToast('Transaction updated', 'success');
       setEditingTxn(null);
@@ -1251,7 +1251,7 @@ export default function PaymentsPage() {
       );
       await updateDoc(
         doc(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id),
-        { balance: increment(-editingTxn.amount), updatedAt: serverTimestamp() },
+        { balance: increment(-editingTxn.amountCents), updatedAt: serverTimestamp() },
       );
       showToast('Transaction deleted', 'success');
       setEditingTxn(null);
@@ -1688,12 +1688,12 @@ export default function PaymentsPage() {
                 }
               >
                 {topUpPresets.map((preset, i) => {
-                  const active = topUpAmount === String(preset.amount);
+                  const active = topUpAmount === String(preset.amountCents);
                   return (
                     <button
                       key={i}
                       type="button"
-                      onClick={() => setTopUpAmount(String(preset.amount))}
+                      onClick={() => setTopUpAmount(String(preset.amountCents))}
                       className="rounded-[10px] border py-2 px-2 text-left transition-colors"
                       style={{
                         background: active ? 'var(--ink)' : 'var(--panel)',
@@ -1708,7 +1708,7 @@ export default function PaymentsPage() {
                         {preset.label}
                       </div>
                       <div className="mono tnum text-[15px] font-semibold">
-                        RM {preset.amount.toFixed(0)}
+                        RM {formatCents(preset.amountCents)}
                       </div>
                     </button>
                   );
@@ -1720,13 +1720,13 @@ export default function PaymentsPage() {
           <div>
             <label
               className="block text-[12px] font-medium mb-1"
-              style={{ color: 'var(--ink-2)' }}
+              style={{ color: 'varformatCents(--ink-2)' }}
             >
               Amount (RM)
             </label>
             <input
-              type="number"
-              min="1"
+              type="text"
+              inputMode="decimal"
               value={topUpAmount}
               onChange={(e) => setTopUpAmount(e.target.value)}
               placeholder="0"
@@ -1754,8 +1754,7 @@ export default function PaymentsPage() {
 
           {selectedWallet &&
             topUpAmount &&
-            !isNaN(parseFloat(topUpAmount)) &&
-            parseFloat(topUpAmount) > 0 && (
+            (parseMoneyToCents(topUpAmount) ?? 0) > 0 && (
               <div
                 className="rounded-[10px] border p-3 text-[12.5px] flex items-center justify-between"
                 style={{ background: 'var(--bg)', borderColor: 'var(--line)' }}
@@ -1765,7 +1764,7 @@ export default function PaymentsPage() {
                   className="mono tnum font-semibold"
                   style={{ color: 'var(--ink)' }}
                 >
-                  RM {(selectedWallet.balance + parseFloat(topUpAmount)).toFixed(0)}
+                  RM {formatCents(selectedWallet.balanceCents + (parseMoneyToCents(topUpAmount) ?? 0))}
                 </span>
               </div>
             )}
@@ -1840,8 +1839,8 @@ export default function PaymentsPage() {
               Amount (RM)
             </label>
             <input
-              type="number"
-              min="1"
+              type="text"
+              inputMode="decimal"
               value={adjAmount}
               onChange={(e) => setAdjAmount(e.target.value)}
               placeholder="0"
@@ -1918,8 +1917,8 @@ export default function PaymentsPage() {
                   {editingTxn.date}
                 </div>
               </div>
-              <Chip tone={editingTxn.amount < 0 ? 'bad' : 'good'}>
-                {editingTxn.amount < 0 ? 'Deduct' : 'Add'}
+              <Chip tone={editingTxn.amountCents < 0 ? 'bad' : 'good'}>
+                {editingTxn.amountCents < 0 ? 'Deduct' : 'Add'}
               </Chip>
             </div>
 
@@ -1931,8 +1930,8 @@ export default function PaymentsPage() {
                 Amount (RM)
               </label>
               <input
-                type="number"
-                min="1"
+                type="text"
+                inputMode="decimal"
                 value={editTxnAmount}
                 onChange={(e) => setEditTxnAmount(e.target.value)}
                 placeholder="0"
@@ -1962,8 +1961,8 @@ export default function PaymentsPage() {
               >
                 <p className="text-[12.5px]" style={{ color: 'var(--bad)' }}>
                   Delete this transaction? The wallet balance will be adjusted by{' '}
-                  {editingTxn.amount < 0 ? '+' : '−'}RM{' '}
-                  {Math.abs(editingTxn.amount).toFixed(0)}.
+                  {editingTxn.amountCents < 0 ? '+' : '−'}RM{' '}
+                  {formatCents(Math.abs(editingTxn.amountCents))}.
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   <Btn
@@ -2029,7 +2028,7 @@ export default function PaymentsPage() {
                 will be unlinked: {selectedLinked.map((s) => s.clientName).join(', ')}.
               </div>
             )}
-            {selectedWallet.balance !== 0 && (
+            {selectedWallet.balanceCents !== 0 && (
               <div
                 className="rounded-[10px] border p-3 text-[12.5px]"
                 style={{
@@ -2040,10 +2039,10 @@ export default function PaymentsPage() {
               >
                 This wallet has a balance of{' '}
                 <span className="font-semibold">
-                  {selectedWallet.balance < 0 ? '−' : ''}RM{' '}
-                  {Math.abs(selectedWallet.balance).toFixed(0)}
+                  {selectedWallet.balanceCents < 0 ? '−' : ''}RM{' '}
+                  {formatCents(Math.abs(selectedWallet.balanceCents))}
                 </span>
-                {selectedWallet.balance < 0 ? ' owed' : ' remaining'} — this will be
+                {selectedWallet.balanceCents < 0 ? ' owed' : ' remaining'} — this will be
                 lost.
               </div>
             )}

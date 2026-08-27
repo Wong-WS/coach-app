@@ -13,7 +13,7 @@ function makeBooking(overrides: Partial<Booking> = {}): Booking {
     status: 'confirmed',
     className: 'Test Class',
     studentIds: [],
-    studentPrices: {},
+    studentPriceCents: {},
     studentWallets: {},
     notes: '',
     createdAt: new Date(),

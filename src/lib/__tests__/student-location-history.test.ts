@@ -26,7 +26,7 @@ function makeBooking(overrides: Partial<Booking> = {}): Booking {
     className: '',
     notes: '',
     studentIds: ['s1'],
-    studentPrices: {},
+    studentPriceCents: {},
     studentWallets: {},
     createdAt: new Date(),
     ...overrides,

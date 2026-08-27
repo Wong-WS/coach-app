@@ -42,7 +42,7 @@ export function getNextLessonCost(
       let cost = 0;
       for (const sid of c.studentIds) {
         if (c.studentWallets?.[sid] !== wallet.id) continue;
-        cost += c.studentPrices?.[sid] ?? 0;
+        cost += c.studentPriceCents?.[sid] ?? 0;
       }
       if (cost > 0) return cost;
     }
@@ -88,9 +88,9 @@ export function isLowBalance(
   if (wallet.archived) return false;
   if (wallet.tabMode) return false;
   if (!hasActiveBooking(wallet, bookings, today)) return false;
-  const rate = getNextLessonCost(wallet, bookings, exceptions, completedLogs, today, awayPeriods);
-  if (rate <= 0) return false;
-  return wallet.balance < rate * 2;
+  const rateCents = getNextLessonCost(wallet, bookings, exceptions, completedLogs, today, awayPeriods);
+  if (rateCents <= 0) return false;
+  return wallet.balanceCents < rateCents * 2;
 }
 
 /**
@@ -103,17 +103,17 @@ export function getWalletStatus(
   completedLogs: LessonLog[],
   today: string,
   awayPeriods: AwayPeriod[] = [],
-): { rate: number; isLow: boolean } {
+): { rateCents: number; isLow: boolean } {
   if (wallet.archived) {
-    return { rate: 0, isLow: false };
+    return { rateCents: 0, isLow: false };
   }
-  const rate = getNextLessonCost(wallet, bookings, exceptions, completedLogs, today, awayPeriods);
+  const rateCents = getNextLessonCost(wallet, bookings, exceptions, completedLogs, today, awayPeriods);
   if (wallet.tabMode) {
-    return { rate, isLow: false };
+    return { rateCents, isLow: false };
   }
   const active = hasActiveBooking(wallet, bookings, today);
-  const isLow = active && rate > 0 && wallet.balance < rate * 2;
-  return { rate, isLow };
+  const isLow = active && rateCents > 0 && wallet.balanceCents < rateCents * 2;
+  return { rateCents, isLow };
 }
 
 /**
@@ -140,16 +140,16 @@ export function getWalletHealth(
   completedLogs: LessonLog[],
   today: string,
   awayPeriods: AwayPeriod[] = [],
-): { health: WalletHealth; rate: number; lessonsLeft: number } {
-  if (wallet.archived) return { health: 'inactive', rate: 0, lessonsLeft: 0 };
-  const rate = getNextLessonCost(wallet, bookings, exceptions, completedLogs, today, awayPeriods);
-  const lessonsLeft = rate > 0 ? Math.floor(wallet.balance / rate) : 0;
-  if (wallet.tabMode) return { health: 'tab', rate, lessonsLeft };
+): { health: WalletHealth; rateCents: number; lessonsLeft: number } {
+  if (wallet.archived) return { health: 'inactive', rateCents: 0, lessonsLeft: 0 };
+  const rateCents = getNextLessonCost(wallet, bookings, exceptions, completedLogs, today, awayPeriods);
+  const lessonsLeft = rateCents > 0 ? Math.floor(wallet.balanceCents / rateCents) : 0;
+  if (wallet.tabMode) return { health: 'tab', rateCents, lessonsLeft };
   if (!hasActiveBooking(wallet, bookings, today))
-    return { health: 'inactive', rate, lessonsLeft };
-  if (wallet.balance < 0) return { health: 'owing', rate, lessonsLeft };
-  if (rate <= 0) return { health: 'healthy', rate, lessonsLeft };
-  if (wallet.balance < rate) return { health: 'empty', rate, lessonsLeft };
-  if (wallet.balance < rate * 2) return { health: 'low', rate, lessonsLeft };
-  return { health: 'healthy', rate, lessonsLeft };
+    return { health: 'inactive', rateCents, lessonsLeft };
+  if (wallet.balanceCents < 0) return { health: 'owing', rateCents, lessonsLeft };
+  if (rateCents <= 0) return { health: 'healthy', rateCents, lessonsLeft };
+  if (wallet.balanceCents < rateCents) return { health: 'empty', rateCents, lessonsLeft };
+  if (wallet.balanceCents < rateCents * 2) return { health: 'low', rateCents, lessonsLeft };
+  return { health: 'healthy', rateCents, lessonsLeft };
 }

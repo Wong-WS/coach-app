@@ -5,13 +5,13 @@ interface MockClass {
   time: string;
   name: string;
   location: string;
-  balance: number;
+  balanceCents: number;
 }
 
 const MOCK_CLASSES: MockClass[] = [
-  { time: '09:00', name: 'Junior squad', location: 'Court 2', balance: 320 },
-  { time: '16:30', name: 'Aiden · 1-on-1', location: 'Court 1', balance: 240 },
-  { time: '19:00', name: 'Adult intermediate', location: 'Court 3', balance: 180 },
+  { time: '09:00', name: 'Junior squad', location: 'Court 2', balanceCents: 320 },
+  { time: '16:30', name: 'Aiden · 1-on-1', location: 'Court 1', balanceCents: 240 },
+  { time: '19:00', name: 'Adult intermediate', location: 'Court 3', balanceCents: 180 },
 ];
 
 export function OverviewPreview() {
@@ -100,7 +100,7 @@ export function OverviewPreview() {
                   letterSpacing: '-0.01em',
                 }}
               >
-                RM {c.balance}
+                RM {c.balanceCents}
               </span>
             </li>
           ))}

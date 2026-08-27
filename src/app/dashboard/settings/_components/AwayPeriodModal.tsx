@@ -261,7 +261,7 @@ export default function AwayPeriodModal({
           newNote: null,
           newClassName: null,
           newStudentIds: null,
-          newStudentPrices: null,
+          newStudentPriceCents: null,
           newStudentWallets: null,
         });
       }

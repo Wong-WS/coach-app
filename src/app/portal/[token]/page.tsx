@@ -2,12 +2,12 @@ import { notFound } from 'next/navigation';
 import { fetchPortalData, type PortalPayload } from '@/lib/portal-data';
 import ChargesList from './ChargesList';
 import TopUpsList from './TopUpsList';
+import { formatCents } from '@/lib/money';
 
 export const dynamic = 'force-dynamic';
 
-function formatRM(n: number): string {
-  const abs = Math.abs(n).toFixed(0);
-  return `${n < 0 ? '−' : ''}RM ${abs}`;
+function formatRM(cents: number): string {
+  return `${cents < 0 ? '−' : ''}RM ${formatCents(Math.abs(cents))}`;
 }
 
 function statusChip(status: PortalPayload['wallet']['status']) {
@@ -40,7 +40,7 @@ export default async function PortalPage({
   if (!data) notFound();
 
   const { coach, wallet, charges, topUps } = data;
-  const owing = wallet.balance < 0;
+  const owing = wallet.balanceCents < 0;
 
   return (
     <div className="space-y-4">
@@ -78,14 +78,14 @@ export default async function PortalPage({
             letterSpacing: '-0.8px',
           }}
         >
-          {formatRM(wallet.balance)}
+          {formatRM(wallet.balanceCents)}
         </div>
-        {wallet.rate > 0 && wallet.status !== 'tab' && (
+        {wallet.rateCents > 0 && wallet.status !== 'tab' && (
           <div
             className="text-[11.5px] mt-1.5"
             style={{ color: 'var(--ink-3)' }}
           >
-            Next lesson ≈ RM {wallet.rate.toFixed(0)}
+            Next lesson ≈ RM {formatCents(wallet.rateCents)}
           </div>
         )}
       </div>

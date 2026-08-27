@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useBookings, useStudents } from '@/hooks/useCoachData';
-import { getBookingTotal } from '@/lib/class-schedule';
+import { getBookingTotalCents } from '@/lib/class-schedule';
 import { Chip } from '@/components/paper';
 import type { Booking, DayOfWeek, Student } from '@/types';
 
@@ -81,7 +81,7 @@ function RecurringCard({
   studentsById: Map<string, Student>;
 }) {
   const isGroup = b.studentIds.length > 1;
-  const total = getBookingTotal(b);
+  const total = getBookingTotalCents(b);
   const firstNames = b.studentIds
     .map((sid) => studentsById.get(sid)?.clientName.split(' ')[0])
     .filter((n): n is string => Boolean(n))
@@ -348,7 +348,7 @@ export default function BookingsPage() {
 
   const totalSlots = confirmedBookings.length;
   const weeklyTotal = useMemo(
-    () => confirmedBookings.reduce((s, b) => s + getBookingTotal(b), 0),
+    () => confirmedBookings.reduce((s, b) => s + getBookingTotalCents(b), 0),
     [confirmedBookings],
   );
 

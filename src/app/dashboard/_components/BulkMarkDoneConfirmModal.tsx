@@ -1,7 +1,7 @@
 'use client';
 
 import { Btn, PaperModal } from '@/components/paper';
-import { getBookingTotal } from '@/lib/class-schedule';
+import { getBookingTotalCents } from '@/lib/class-schedule';
 import type { Booking } from '@/types';
 
 function fmtTimeShort(t: string): string {
@@ -50,7 +50,7 @@ export function BulkMarkDoneConfirmModal({
           style={{ background: 'var(--bg)', borderColor: 'var(--line)' }}
         >
           {classes.map((c) => {
-            const total = getBookingTotal(c);
+            const total = getBookingTotalCents(c);
             const studentCount = c.studentIds.length;
             return (
               <div

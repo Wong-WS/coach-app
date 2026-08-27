@@ -3,6 +3,7 @@ import { getAdminDb } from '@/lib/firebase-admin';
 import type { Booking, ClassException, LessonLog, Wallet, AwayPeriod } from '@/types';
 import { getWalletHealth, type WalletHealth } from '@/lib/wallet-alerts';
 import { sessionKeyFromDescription } from '@/lib/portal-charges';
+import { centsFromLegacy, mapRmToCents, rmToCents } from '@/lib/money';
 import type { Firestore, Timestamp } from 'firebase-admin/firestore';
 
 export const PORTAL_PAGE_SIZE = 10;
@@ -10,14 +11,14 @@ export const PORTAL_PAGE_SIZE = 10;
 export type PortalChargeRow = {
   date: string;
   studentName: string;          // empty when wallet has ≤1 student
-  amount: number;               // positive RM
+  amountCents: number;          // positive, in cents
   sessionKey: string;           // lesson start time — two students share one session
   cursor: number;               // createdAt ms — opaque pagination key
 };
 
 export type PortalTopUpRow = {
   date: string;
-  amount: number;
+  amountCents: number;
   cursor: number;
 };
 
@@ -25,9 +26,9 @@ export type PortalPayload = {
   coach: { displayName: string };
   wallet: {
     name: string;
-    balance: number;
+    balanceCents: number;
     status: WalletHealth;
-    rate: number;
+    rateCents: number;
     hideStudentNames: boolean;
   };
   charges: { items: PortalChargeRow[]; hasMore: boolean };
@@ -138,7 +139,9 @@ export async function fetchChargesPage(
     return {
       date: t.date as string,
       studentName: hideStudentNames ? '' : (sid ? studentNames.get(sid) ?? '' : ''),
-      amount: Math.abs((t.amount as number) ?? 0),
+      amountCents: Math.abs(
+        centsFromLegacy(t.amountCents as number | undefined, t.amountCents as number | undefined),
+      ),
       sessionKey: sessionKeyFromDescription(t.description),
       cursor: createdAt,
     };
@@ -166,7 +169,10 @@ export async function fetchTopUpsPage(
     const createdAt = (t.createdAt as Timestamp | undefined)?.toMillis?.() ?? 0;
     return {
       date: t.date as string,
-      amount: (t.amount as number) ?? 0,
+      amountCents: centsFromLegacy(
+        t.amountCents as number | undefined,
+        t.amountCents as number | undefined,
+      ),
       cursor: createdAt,
     };
   });
@@ -212,12 +218,20 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
   const wallet: Wallet = {
     id: walletSnap.id,
     name: (wd.name as string) ?? 'Wallet',
-    balance: (wd.balance as number) ?? 0,
+    balanceCents: centsFromLegacy(
+      wd.balanceCents as number | undefined,
+      wd.balanceCents as number | undefined,
+    ),
     studentIds: (wd.studentIds as string[]) ?? [],
     archived: false,
     tabMode: (wd.tabMode as boolean) ?? false,
     portalToken: (wd.portalToken as string) ?? undefined,
-    usualTopUp: typeof wd.usualTopUp === 'number' ? wd.usualTopUp : undefined,
+    usualTopUpCents:
+      typeof wd.usualTopUpCents === 'number'
+        ? wd.usualTopUpCents
+        : typeof wd.usualTopUpCents === 'number'
+          ? rmToCents(wd.usualTopUpCents)
+          : undefined,
     createdAt: wd.createdAt?.toDate?.() ?? new Date(),
     updatedAt: wd.updatedAt?.toDate?.() ?? new Date(),
   };
@@ -235,7 +249,8 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
       className: b.className ?? '',
       notes: b.notes ?? '',
       studentIds: b.studentIds ?? [],
-      studentPrices: b.studentPrices ?? {},
+      studentPriceCents:
+        b.studentPriceCents ?? mapRmToCents(b.studentPriceCents ?? {}),
       studentWallets: b.studentWallets ?? {},
       startDate: b.startDate ?? undefined,
       endDate: b.endDate ?? undefined,
@@ -259,7 +274,9 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
       newNote: e.newNote,
       newClassName: e.newClassName,
       newStudentIds: e.newStudentIds,
-      newStudentPrices: e.newStudentPrices,
+      newStudentPriceCents:
+        e.newStudentPriceCents ??
+        (e.newStudentPriceCents ? mapRmToCents(e.newStudentPriceCents) : undefined),
       newStudentWallets: e.newStudentWallets,
       createdAt: e.createdAt?.toDate?.() ?? new Date(),
     };
@@ -289,20 +306,20 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
       locationName: l.locationName ?? '',
       startTime: l.startTime ?? '',
       endTime: l.endTime ?? '',
-      price: l.price ?? 0,
+      priceCents: centsFromLegacy(l.priceCents, l.priceCents),
       createdAt: l.createdAt?.toDate?.() ?? new Date(),
     };
   });
 
-  const { health, rate } = getWalletHealth(wallet, bookings, exceptions, todayLogs, today, awayPeriods);
+  const { health, rateCents } = getWalletHealth(wallet, bookings, exceptions, todayLogs, today, awayPeriods);
 
   return {
     coach: { displayName },
     wallet: {
       name: wallet.name,
-      balance: wallet.balance,
+      balanceCents: wallet.balanceCents,
       status: health,
-      rate,
+      rateCents,
       hideStudentNames,
     },
     charges,

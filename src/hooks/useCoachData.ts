@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, where, orderBy, limit, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Booking, Location, Student, LessonLog, ClassException, Wallet, WalletTransaction, AwayPeriod } from '@/types';
+import { centsFromLegacy, mapRmToCents, rmToCents } from '@/lib/money';
 
 export function useLocations(coachId: string | undefined) {
   const [locations, setLocations] = useState<Location[]>([]);
@@ -67,7 +68,8 @@ export function useBookings(coachId: string | undefined, statusFilter?: 'confirm
         className: d.data().className ?? '',
         notes: d.data().notes ?? '',
         studentIds: d.data().studentIds ?? [],
-        studentPrices: d.data().studentPrices ?? {},
+        studentPriceCents:
+          d.data().studentPriceCents ?? mapRmToCents(d.data().studentPriceCents ?? {}),
         studentWallets: d.data().studentWallets ?? {},
         startDate: d.data().startDate ?? undefined,
         endDate: d.data().endDate ?? undefined,
@@ -173,7 +175,7 @@ export function useLessonLogs(coachId: string | undefined, dateFilter?: string, 
           locationName: d.data().locationName,
           startTime: d.data().startTime,
           endTime: d.data().endTime,
-          price: d.data().price ?? 0,
+          priceCents: centsFromLegacy(d.data().priceCents, d.data().priceCents),
           note: d.data().note ?? undefined,
           createdAt: d.data().createdAt?.toDate() || new Date(),
         }));
@@ -240,7 +242,11 @@ export function useClassExceptions(coachId: string | undefined, referenceDate?: 
         newNote: d.data().newNote,
         newClassName: d.data().newClassName,
         newStudentIds: d.data().newStudentIds,
-        newStudentPrices: d.data().newStudentPrices,
+        newStudentPriceCents:
+          d.data().newStudentPriceCents ??
+          (d.data().newStudentPriceCents
+            ? mapRmToCents(d.data().newStudentPriceCents)
+            : undefined),
         newStudentWallets: d.data().newStudentWallets,
         createdAt: d.data().createdAt?.toDate() || new Date(),
       }));
@@ -275,12 +281,16 @@ export function useWallets(coachId: string | undefined) {
       const items: Wallet[] = snapshot.docs.map((d) => ({
         id: d.id,
         name: d.data().name,
-        balance: d.data().balance ?? 0,
+        balanceCents: centsFromLegacy(d.data().balanceCents, d.data().balanceCents),
         studentIds: d.data().studentIds ?? [],
         archived: d.data().archived ?? false,
         tabMode: d.data().tabMode ?? false,
         portalToken: d.data().portalToken ?? undefined,
-        usualTopUp: d.data().usualTopUp ?? undefined,
+        usualTopUpCents:
+          d.data().usualTopUpCents ??
+          (typeof d.data().usualTopUpCents === 'number'
+            ? rmToCents(d.data().usualTopUpCents)
+            : undefined),
         createdAt: d.data().createdAt?.toDate() || new Date(),
         updatedAt: d.data().updatedAt?.toDate() || new Date(),
       }));
@@ -325,8 +335,11 @@ export function useWalletTransactions(coachId: string | undefined, walletId: str
       const items: WalletTransaction[] = snapshot.docs.map((d) => ({
         id: d.id,
         type: d.data().type,
-        amount: d.data().amount ?? 0,
-        balanceAfter: d.data().balanceAfter ?? 0,
+        amountCents: centsFromLegacy(d.data().amountCents, d.data().amountCents),
+        balanceAfterCents: centsFromLegacy(
+          d.data().balanceAfterCents,
+          d.data().balanceAfterCents,
+        ),
         description: d.data().description ?? '',
         studentId: d.data().studentId ?? undefined,
         lessonLogId: d.data().lessonLogId ?? undefined,

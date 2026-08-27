@@ -23,8 +23,10 @@ import {
   PaperModal,
   IconCheck,
   IconClose,
+  MoneyInput,
 } from '@/components/paper';
 import { FieldLabel } from './FieldLabel';
+import { formatCents } from '@/lib/money';
 
 // Private style constants (private copy — same as in page.tsx)
 const paperInputClass =
@@ -48,7 +50,7 @@ export type StudentRowState = {
   walletOption: 'none' | 'existing' | 'create';
   existingWalletId: string; // can be wallet id or `pending:<row-index>`
   newWalletName: string;
-  price: number;
+  priceCents: number;
 };
 
 function makeEmptyRow(): StudentRowState {
@@ -60,7 +62,7 @@ function makeEmptyRow(): StudentRowState {
     walletOption: 'create',
     existingWalletId: '',
     newWalletName: '',
-    price: 0,
+    priceCents: 0,
   };
 }
 
@@ -140,7 +142,7 @@ export function AddLessonModal({
   // Wallet: first non-archived wallet that has the student in studentIds.
   // Price: most recent studentPrices[sid] from bookings (sorted by createdAt desc).
   const studentDefaults = useMemo(() => {
-    const map = new Map<string, { walletId: string | null; price: number }>();
+    const map = new Map<string, { walletId: string | null; priceCents: number }>();
 
     const walletByStudent = new Map<string, string>();
     for (const w of wallets) {
@@ -155,8 +157,8 @@ export function AddLessonModal({
     );
     const priceByStudent = new Map<string, number>();
     for (const b of sortedBookings) {
-      if (!b.studentPrices) continue;
-      for (const [sid, price] of Object.entries(b.studentPrices)) {
+      if (!b.studentPriceCents) continue;
+      for (const [sid, price] of Object.entries(b.studentPriceCents)) {
         if (!priceByStudent.has(sid) && typeof price === 'number') {
           priceByStudent.set(sid, price);
         }
@@ -166,7 +168,7 @@ export function AddLessonModal({
     for (const s of students) {
       map.set(s.id, {
         walletId: walletByStudent.get(s.id) ?? null,
-        price: priceByStudent.get(s.id) ?? 0,
+        priceCents: priceByStudent.get(s.id) ?? 0,
       });
     }
     return map;
@@ -178,7 +180,7 @@ export function AddLessonModal({
       return;
     }
     const d = studentDefaults.get(studentId);
-    const patch: Partial<StudentRowState> = { studentId, price: d?.price ?? 0 };
+    const patch: Partial<StudentRowState> = { studentId, priceCents: d?.priceCents ?? 0 };
     if (d?.walletId) {
       patch.walletOption = 'existing';
       patch.existingWalletId = d.walletId;
@@ -189,7 +191,7 @@ export function AddLessonModal({
     updateRow(i, patch);
   };
 
-  const total = rows.reduce((s, r) => s + (Number(r.price) || 0), 0);
+  const total = rows.reduce((s, r) => s + (Number(r.priceCents) || 0), 0);
   const creatingLocation = locationId === '__new';
 
   // Surface students who already have lessons at the picked location first.
@@ -316,7 +318,7 @@ export function AddLessonModal({
           collection(firestore, 'coaches', coachId, 'wallets'),
           {
             name: r.newWalletName.trim(),
-            balance: 0,
+            balanceCents: 0,
             studentIds: sharedStudentIds,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
@@ -331,7 +333,7 @@ export function AddLessonModal({
       for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
         const sid = resolvedStudentIds[i];
-        studentPrices[sid] = Number(r.price) || 0;
+        studentPrices[sid] = Number(r.priceCents) || 0;
         if (r.walletOption === 'existing') {
           if (r.existingWalletId.startsWith('pending:')) {
             const refIdx = parseInt(r.existingWalletId.split(':')[1], 10);
@@ -718,7 +720,7 @@ function StudentRow({
               .filter((w) => !w.archived)
               .map((w) => (
                 <option key={w.id} value={w.id}>
-                  {w.name} — RM {w.balance.toFixed(0)}
+                  {w.name} — RM {formatCents(w.balanceCents)}
                 </option>
               ))}
             {pendingAbove.map(({ r, i }) => (
@@ -751,12 +753,9 @@ function StudentRow({
           <span className="text-[12px]" style={{ color: 'var(--ink-3)' }}>
             RM
           </span>
-          <input
-            type="number"
-            inputMode="numeric"
-            value={row.price === 0 ? '' : row.price}
-            placeholder="0"
-            onChange={(e) => onChange({ price: e.target.value === '' ? 0 : Number(e.target.value) })}
+          <MoneyInput
+            valueCents={row.priceCents}
+            onChangeCents={(priceCents) => onChange({ priceCents })}
             className={`${paperInputClass} mono tnum text-right`}
             style={{ ...paperInputStyle, width: 90 }}
           />

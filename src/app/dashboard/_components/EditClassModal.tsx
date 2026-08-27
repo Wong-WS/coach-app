@@ -1,10 +1,11 @@
 'use client';
 
-import { Btn, PaperModal, IconClose, IconSearch } from '@/components/paper';
+import { Btn, PaperModal, IconClose, IconSearch, MoneyInput } from '@/components/paper';
 import { parseDateString, formatDateFull, formatDateShort } from '@/lib/date-format';
 import { getDayOfWeekForDate } from '@/lib/class-schedule';
 import type { Booking, Student, Wallet, Location } from '@/types';
 import { FieldLabel } from './FieldLabel';
+import { formatCents } from '@/lib/money';
 
 const paperInputClass =
   'w-full px-3 py-2.5 rounded-[10px] border text-[13.5px] outline-none focus:border-[color:var(--accent)]';
@@ -37,7 +38,7 @@ export function EditClassModal({
   note,
   onNoteChange,
   studentIds,
-  studentPrices,
+  studentPriceCents,
   studentWallets,
   onRemoveStudent,
   onStudentPriceChange,
@@ -76,7 +77,7 @@ export function EditClassModal({
   note: string;
   onNoteChange: (v: string) => void;
   studentIds: string[];
-  studentPrices: Record<string, number>;
+  studentPriceCents: Record<string, number>;
   studentWallets: Record<string, string>;
   onRemoveStudent: (sid: string) => void;
   onStudentPriceChange: (sid: string, v: number) => void;
@@ -193,7 +194,7 @@ export function EditClassModal({
                 Students ({studentIds.length})
               </div>
               <div className="mono tnum text-[12.5px]" style={{ color: 'var(--ink-2)' }}>
-                Total RM {totalPrice.toFixed(0)}
+                Total RM {formatCents(totalPrice)}
               </div>
             </div>
 
@@ -237,13 +238,9 @@ export function EditClassModal({
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <FieldLabel>Price</FieldLabel>
-                        <input
-                          type="number"
-                          min={0}
-                          value={String(studentPrices[sid] ?? 0)}
-                          onChange={(e) =>
-                            onStudentPriceChange(sid, parseFloat(e.target.value) || 0)
-                          }
+                        <MoneyInput
+                          valueCents={studentPriceCents[sid] ?? 0}
+                          onChangeCents={(cents) => onStudentPriceChange(sid, cents)}
                           className={`${paperInputClass} mono tnum`}
                           style={paperInputStyle}
                         />
@@ -259,7 +256,7 @@ export function EditClassModal({
                           <option value="">Auto (student&rsquo;s own)</option>
                           {wallets.map((w) => (
                             <option key={w.id} value={w.id}>
-                              {w.name} (RM {w.balance.toFixed(0)})
+                              {w.name} (RM {formatCents(w.balanceCents)})
                             </option>
                           ))}
                         </select>

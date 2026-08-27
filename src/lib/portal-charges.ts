@@ -22,7 +22,7 @@ export type PortalChargeGroup = {
   /** Distinct lessons that day — two students in one session count once. */
   sessions: number;
   /** Sum of the group's charges, positive RM. */
-  amount: number;
+  amountCents: number;
 };
 
 /**
@@ -44,7 +44,7 @@ export function groupCharges(rows: PortalChargeRow[]): PortalChargeGroup[] {
   for (const r of rows) {
     const existing = byDate.get(r.date);
     if (existing) {
-      existing.amount += r.amount;
+      existing.amountCents += r.amountCents;
       if (r.studentName && !existing.names.includes(r.studentName)) {
         existing.names.push(r.studentName);
       }
@@ -54,7 +54,7 @@ export function groupCharges(rows: PortalChargeRow[]): PortalChargeGroup[] {
         date: r.date,
         names: r.studentName ? [r.studentName] : [],
         sessions: 0,
-        amount: r.amount,
+        amountCents: r.amountCents,
       });
       sessionsByDate.set(r.date, new Set());
     }

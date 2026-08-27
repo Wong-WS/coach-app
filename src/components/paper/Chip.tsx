@@ -1,4 +1,5 @@
 import { ReactNode } from 'react';
+import { formatCents } from '@/lib/money';
 
 type Tone = 'soft' | 'accent' | 'good' | 'warn' | 'bad';
 
@@ -31,7 +32,7 @@ export function BalancePill({ balance, compact = false }: { balance: number; com
       className={`mono tnum inline-flex items-center rounded-lg font-medium ${compact ? 'text-[11.5px] px-2 py-0.5' : 'text-[13px] px-2.5 py-1'}`}
       style={{ color, background: bg, letterSpacing: '-0.01em' }}
     >
-      {positive ? '' : '−'}RM {Math.abs(balance).toFixed(0)}
+      {positive ? '' : '−'}RM {formatCents(Math.abs(balance))}
     </span>
   );
 }

@@ -9,10 +9,10 @@ export function getDayOfWeekForDate(dateStr: string): DayOfWeek {
   return DAY_NAMES[date.getDay()];
 }
 
-export function getBookingTotal(
-  booking: Pick<Booking, 'studentPrices'>,
+export function getBookingTotalCents(
+  booking: Pick<Booking, 'studentPriceCents'>,
 ): number {
-  return Object.values(booking.studentPrices).reduce((sum, p) => sum + (p ?? 0), 0);
+  return Object.values(booking.studentPriceCents).reduce((sum, p) => sum + (p ?? 0), 0);
 }
 
 export function isGroupBooking(
@@ -63,7 +63,8 @@ export function getClassesForDate(
       if (exception.newNote !== undefined) overrides.notes = exception.newNote;
       if (exception.newClassName !== undefined) overrides.className = exception.newClassName;
       if (exception.newStudentIds !== undefined) overrides.studentIds = exception.newStudentIds;
-      if (exception.newStudentPrices !== undefined) overrides.studentPrices = exception.newStudentPrices;
+      if (exception.newStudentPriceCents !== undefined)
+        overrides.studentPriceCents = exception.newStudentPriceCents;
       if (exception.newStudentWallets !== undefined) overrides.studentWallets = exception.newStudentWallets;
 
       const existingIdx = classes.findIndex((c) => c.id === originalBooking.id);
@@ -82,14 +83,14 @@ export function getClassesForDate(
 }
 
 /**
- * Sum of `getBookingTotal` for every class scheduled between `start` and `end`
+ * Sum of `getBookingTotalCents` for every class scheduled between `start` and `end`
  * (both inclusive, YYYY-MM-DD). Uses `getClassesForDate` per day, so this
  * respects:
  *   - day-of-week + startDate/endDate filters (incl. one-off bookings where
  *     startDate === endDate)
  *   - cancellation exceptions (removed)
  *   - reschedule exceptions (counted on newDate, removed from originalDate)
- *   - price overrides on rescheduled exceptions (newStudentPrices)
+ *   - price overrides on rescheduled exceptions (newStudentPriceCents)
  */
 export function getScheduledRevenueForDateRange(
   start: string,
@@ -108,7 +109,7 @@ export function getScheduledRevenueForDateRange(
   for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
     const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     for (const c of getClassesForDate(dateStr, bookings, exceptions, awayPeriods)) {
-      total += getBookingTotal(c);
+      total += getBookingTotalCents(c);
     }
   }
   return total;

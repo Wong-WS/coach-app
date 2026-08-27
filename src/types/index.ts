@@ -26,7 +26,7 @@ export interface Booking {
   className: string;
   notes: string;
   studentIds: string[];
-  studentPrices: Record<string, number>;
+  studentPriceCents: Record<string, number>;
   studentWallets: Record<string, string>;
   startDate?: string;
   endDate?: string;
@@ -58,7 +58,7 @@ export interface LessonLog {
   locationName: string;
   startTime: string;
   endTime: string;
-  price: number;
+  priceCents: number;
   note?: string;
   createdAt: Date;
 }
@@ -76,7 +76,7 @@ export interface ClassException {
   newNote?: string;
   newClassName?: string;
   newStudentIds?: string[];
-  newStudentPrices?: Record<string, number>;
+  newStudentPriceCents?: Record<string, number>;
   newStudentWallets?: Record<string, string>;
   createdAt: Date;
 }
@@ -84,12 +84,12 @@ export interface ClassException {
 export interface Wallet {
   id: string;
   name: string;
-  balance: number;
+  balanceCents: number;
   studentIds: string[];
   archived?: boolean;           // default false. hides from default list, disables alerts.
   tabMode?: boolean;            // default false. student pays after each lesson; wallet sits near zero, skip Low alerts.
   portalToken?: string;         // 10-char nanoid, set once when coach shares portal link
-  usualTopUp?: number;          // coach-set default top-up, in whole RM
+  usualTopUpCents?: number;     // coach-set default top-up, in cents
   createdAt: Date;
   updatedAt: Date;
 }
@@ -99,8 +99,8 @@ export type WalletTransactionType = 'top-up' | 'charge' | 'refund' | 'adjustment
 export interface WalletTransaction {
   id: string;
   type: WalletTransactionType;
-  amount: number;
-  balanceAfter: number;
+  amountCents: number;
+  balanceAfterCents: number;
   description: string;
   studentId?: string;
   lessonLogId?: string;

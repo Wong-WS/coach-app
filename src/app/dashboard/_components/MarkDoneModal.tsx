@@ -6,6 +6,7 @@ import {
   Avatar,
   IconCheck,
   IconClose,
+  MoneyInput,
 } from '@/components/paper';
 import { resolveWallet } from '@/lib/wallets';
 import { formatTimeDisplay } from '@/lib/time-format';
@@ -101,7 +102,7 @@ export function MarkDoneModal({
               {isAttending ? (
                 w && (
                   <div className="text-[11px] mono tnum" style={{ color: 'var(--ink-3)' }}>
-                    Wallet: RM {Math.round(w.balance)}
+                    Wallet: RM {Math.round(w.balanceCents)}
                   </div>
                 )
               ) : (
@@ -116,11 +117,10 @@ export function MarkDoneModal({
                   <span className="mono text-[12px]" style={{ color: 'var(--ink-3)' }}>
                     RM
                   </span>
-                  <input
-                    type="number"
-                    value={amounts[sid] ?? 0}
-                    onChange={(e) =>
-                      onAmountsChange({ ...amounts, [sid]: Number(e.target.value) })
+                  <MoneyInput
+                    valueCents={amounts[sid] ?? 0}
+                    onChangeCents={(cents) =>
+                      onAmountsChange({ ...amounts, [sid]: cents })
                     }
                     className="mono text-right"
                     style={{

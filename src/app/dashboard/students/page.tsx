@@ -33,6 +33,7 @@ import {
 import { Button, Input, PhoneInput } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateMedium, parseDateString } from '@/lib/date-format';
+import { centsFromLegacy, formatCents } from '@/lib/money';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -298,10 +299,10 @@ function StudentDetail({
           label="Wallet"
           value={
             wallet
-              ? `${wallet.balance < 0 ? '−' : ''}RM ${Math.abs(wallet.balance).toFixed(0)}`
+              ? `${wallet.balanceCents < 0 ? '−' : ''}RM ${formatCents(Math.abs(wallet.balanceCents))}`
               : '—'
           }
-          tone={wallet && wallet.balance < 0 ? 'bad' : undefined}
+          tone={wallet && wallet.balanceCents < 0 ? 'bad' : undefined}
         />
         <MiniStat label="Weekly" value={studentBookings.length} />
         <MiniStat
@@ -385,7 +386,7 @@ function StudentDetail({
                   className="mono tnum text-[12.5px]"
                   style={{ color: 'var(--ink)' }}
                 >
-                  RM {b.studentPrices[student.id] ?? 0}
+                  RM {b.studentPriceCents[student.id] ?? 0}
                 </div>
               </div>
             ))}
@@ -451,7 +452,7 @@ function StudentDetail({
                   className="mono tnum text-[12.5px]"
                   style={{ color: 'var(--ink)' }}
                 >
-                  RM {log.price}
+                  RM {log.priceCents}
                 </span>
                 <button
                   onClick={() => onDeleteLog(log.id)}
@@ -636,7 +637,7 @@ function DeleteLessonModal({
 
       // Find the wallet transaction tied to this lesson, if any.
       let matchedWalletId: string | null = null;
-      let matchedTxn: { amount: number; description: string; studentId?: string } | null = null;
+      let matchedTxn: { amountCents: number; description: string; studentId?: string } | null = null;
       let matchedNewBalance = 0;
       for (const walletDoc of wallets) {
         const txnQuery = query(
@@ -652,14 +653,20 @@ function DeleteLessonModal({
         );
         const txnSnap = await getDocs(txnQuery);
         if (!txnSnap.empty) {
-          const originalTxn = txnSnap.docs[0].data() as {
-            amount: number;
+          const raw = txnSnap.docs[0].data() as {
+            amountCents?: number;
+            amount?: number;
             description: string;
             studentId?: string;
           };
+          const originalTxn = {
+            amountCents: centsFromLegacy(raw.amountCents, raw.amount),
+            description: raw.description,
+            studentId: raw.studentId,
+          };
           matchedWalletId = walletDoc.id;
           matchedTxn = originalTxn;
-          matchedNewBalance = walletDoc.balance + Math.abs(originalTxn.amount);
+          matchedNewBalance = walletDoc.balanceCents + Math.abs(originalTxn.amountCents);
           break;
         }
       }
@@ -668,7 +675,7 @@ function DeleteLessonModal({
       const batch = writeBatch(firestore);
       batch.delete(doc(firestore, 'coaches', coachId, 'lessonLogs', logId));
       if (matchedWalletId && matchedTxn) {
-        const refundAmount = Math.abs(matchedTxn.amount);
+        const refundAmount = Math.abs(matchedTxn.amountCents);
         const now = new Date();
         const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         const newTxnRef = doc(
@@ -683,8 +690,8 @@ function DeleteLessonModal({
         );
         batch.set(newTxnRef, {
           type: 'refund',
-          amount: refundAmount,
-          balanceAfter: matchedNewBalance,
+          amountCents: refundAmount,
+          balanceAfterCents: matchedNewBalance,
           description: `Reversed: ${matchedTxn.description}`,
           studentId: matchedTxn.studentId,
           date: dateStr,
@@ -693,7 +700,7 @@ function DeleteLessonModal({
         batch.update(
           doc(firestore, 'coaches', coachId, 'wallets', matchedWalletId),
           {
-            balance: increment(refundAmount),
+            balanceCents: increment(refundAmount),
             updatedAt: serverTimestamp(),
           },
         );
@@ -872,7 +879,7 @@ export default function StudentsPage() {
   const owingStudentIds = useMemo(() => {
     const ids = new Set<string>();
     for (const w of wallets) {
-      if (w.balance < 0) {
+      if (w.balanceCents < 0) {
         for (const sid of w.studentIds) ids.add(sid);
       }
     }
@@ -893,7 +900,7 @@ export default function StudentsPage() {
     for (const w of wallets) {
       for (const sid of w.studentIds) {
         // First wallet wins if a student is in multiple (unusual).
-        if (!m.has(sid)) m.set(sid, w.balance);
+        if (!m.has(sid)) m.set(sid, w.balanceCents);
       }
     }
     return m;

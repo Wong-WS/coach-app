@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { PortalChargeRow } from '@/lib/portal-data';
 import { formatDateShort, parseDateString } from '@/lib/date-format';
 import { groupCharges, formatNameList } from '@/lib/portal-charges';
+import { formatCents } from '@/lib/money';
 
 export default function ChargesList({
   token,
@@ -77,7 +78,7 @@ export default function ChargesList({
                 className="mono tnum text-[13px] font-medium shrink-0"
                 style={{ color: 'var(--ink)' }}
               >
-                −RM {g.amount.toFixed(0)}
+                −RM {formatCents(g.amountCents)}
               </div>
             </div>
           ))

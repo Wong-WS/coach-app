@@ -1,6 +1,7 @@
 'use client';
 
 import { Btn, PaperModal } from '@/components/paper';
+import { formatCents } from '@/lib/money';
 
 export type DepletedAlert = {
   wallets: Array<{
@@ -57,8 +58,8 @@ export function DepletedWalletAlert({
                     style={{ color: isOwing ? 'var(--bad)' : 'var(--warn)' }}
                   >
                     {isOwing
-                      ? `Now owes RM ${Math.abs(w.newBalance).toFixed(0)}`
-                      : `Balance RM ${w.newBalance.toFixed(0)} — below next lesson`}
+                      ? `Now owes RM ${formatCents(Math.abs(w.newBalance))}`
+                      : `Balance RM ${formatCents(w.newBalance)} — below next lesson`}
                   </div>
                 </div>
               );

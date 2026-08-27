@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { PortalTopUpRow } from '@/lib/portal-data';
 import { formatDateShort, parseDateString } from '@/lib/date-format';
+import { formatCents } from '@/lib/money';
 
 export default function TopUpsList({
   token,
@@ -71,7 +72,7 @@ export default function TopUpsList({
                 className="mono tnum text-[13px] font-medium shrink-0"
                 style={{ color: 'var(--good)' }}
               >
-                +RM {t.amount.toFixed(0)}
+                +RM {formatCents(t.amountCents)}
               </div>
             </div>
           ))

@@ -31,7 +31,7 @@ import { useToast } from '@/components/ui/Toast';
 import type { AwayPeriod, Booking, ClassException, LessonLog, Student, Wallet } from '@/types';
 import {
   getClassesForDate,
-  getBookingTotal,
+  getBookingTotalCents,
   getBackingException,
   getCancelledClassesForDate,
   getDayOfWeekForDate,
@@ -68,6 +68,7 @@ import { AddLessonModal, type StudentRowState, type AddLessonPrefill } from './_
 import { MarkDoneModal } from './_components/MarkDoneModal';
 import { BulkMarkDoneConfirmModal } from './_components/BulkMarkDoneConfirmModal';
 import { DepletedWalletAlert, type DepletedAlert } from './_components/DepletedWalletAlert';
+import { formatCents } from '@/lib/money';
 
 const SHORT_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 
@@ -106,7 +107,7 @@ function makeCompletedLogsWithPending(
     locationName: '',
     startTime: '',
     endTime: '',
-    price: 0,
+    priceCents: 0,
     createdAt: new Date(),
   }));
   return [...existing, ...stubs];
@@ -163,7 +164,7 @@ export default function DashboardPage() {
     const m = new Map<string, number>();
     for (const l of lessonLogs) {
       if (!l.bookingId) continue;
-      m.set(l.bookingId, (m.get(l.bookingId) ?? 0) + l.price);
+      m.set(l.bookingId, (m.get(l.bookingId) ?? 0) + l.priceCents);
     }
     return m;
   }, [lessonLogs]);
@@ -185,16 +186,16 @@ export default function DashboardPage() {
     () => todaysClasses.filter((c) => !doneByBookingId.has(c.id)),
     [todaysClasses, doneByBookingId],
   );
-  const todayRevenue = lessonLogs.reduce((s, l) => s + l.price, 0);
+  const todayRevenue = lessonLogs.reduce((s, l) => s + l.priceCents, 0);
   const expectedRevenue = todaysClasses.reduce((s, c) => {
     if (doneByBookingId.has(c.id)) return s + (doneByBookingId.get(c.id) ?? 0);
-    return s + getBookingTotal(c);
+    return s + getBookingTotalCents(c);
   }, 0);
 
   const lowWallets = useMemo(() => {
     return wallets
       .filter((w) => isLowBalance(w, bookings, classExceptions, lessonLogs, todayStr, awayPeriods))
-      .sort((a, b) => a.balance - b.balance);
+      .sort((a, b) => a.balanceCents - b.balanceCents);
   }, [wallets, bookings, classExceptions, lessonLogs, todayStr, awayPeriods]);
 
   const weekDays = useMemo(() => {
@@ -259,7 +260,7 @@ export default function DashboardPage() {
   const openMarkDone = (c: Booking) => {
     setMarkDoneBooking(c);
     const init: Record<string, number> = {};
-    for (const sid of c.studentIds) init[sid] = c.studentPrices[sid] ?? 0;
+    for (const sid of c.studentIds) init[sid] = c.studentPriceCents[sid] ?? 0;
     setMarkDoneAmounts(init);
     setMarkDoneAttending([...c.studentIds]);
   };
@@ -287,7 +288,7 @@ export default function DashboardPage() {
       const batch = writeBatch(firestore);
 
       for (const studentId of attendingIds) {
-        const price = markDoneAmounts[studentId] ?? booking.studentPrices[studentId] ?? 0;
+        const price = markDoneAmounts[studentId] ?? booking.studentPriceCents[studentId] ?? 0;
         const studentName = students.find((s) => s.id === studentId)?.clientName ?? '';
 
         const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
@@ -299,7 +300,7 @@ export default function DashboardPage() {
           locationName: booking.locationName,
           startTime: booking.startTime,
           endTime: booking.endTime,
-          price,
+          priceCents: price,
           createdAt: serverTimestamp(),
         });
 
@@ -309,14 +310,14 @@ export default function DashboardPage() {
           if (existing) existing.charge += price;
           else walletImpacts.set(wallet.id, { wallet, charge: price });
 
-          const newBalance = wallet.balance - price;
+          const newBalance = wallet.balanceCents - price;
           const txnRef = doc(
             collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'),
           );
           batch.set(txnRef, {
             type: 'charge',
-            amount: -price,
-            balanceAfter: newBalance,
+            amountCents: -price,
+            balanceAfterCents: newBalance,
             description: `Lesson — ${studentName} (${booking.startTime})`,
             studentId,
             lessonLogId: logRef.id,
@@ -324,7 +325,7 @@ export default function DashboardPage() {
             createdAt: serverTimestamp(),
           });
           batch.update(doc(firestore, 'coaches', coach.id, 'wallets', wallet.id), {
-            balance: increment(-price),
+            balanceCents: increment(-price),
             updatedAt: serverTimestamp(),
           });
         }
@@ -361,7 +362,7 @@ export default function DashboardPage() {
           awayPeriods,
         );
         if (rate <= 0) continue;
-        const prevBalance = wallet.balance;
+        const prevBalance = wallet.balanceCents;
         const newBalance = prevBalance - charge;
         if (prevBalance >= rate && newBalance < rate) {
           depleted.push({
@@ -394,7 +395,7 @@ export default function DashboardPage() {
 
       for (const booking of remainingClasses) {
         for (const studentId of booking.studentIds) {
-          const price = booking.studentPrices[studentId] ?? 0;
+          const price = booking.studentPriceCents[studentId] ?? 0;
           const studentName = students.find((s) => s.id === studentId)?.clientName ?? '';
 
           const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
@@ -406,7 +407,7 @@ export default function DashboardPage() {
             locationName: booking.locationName,
             startTime: booking.startTime,
             endTime: booking.endTime,
-            price,
+            priceCents: price,
             createdAt: serverTimestamp(),
           });
           lessonsLogged += 1;
@@ -417,14 +418,14 @@ export default function DashboardPage() {
             if (existing) existing.charge += price;
             else walletImpacts.set(wallet.id, { wallet, charge: price });
 
-            const newBalance = wallet.balance - price;
+            const newBalance = wallet.balanceCents - price;
             const txnRef = doc(
               collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'),
             );
             batch.set(txnRef, {
               type: 'charge',
-              amount: -price,
-              balanceAfter: newBalance,
+              amountCents: -price,
+              balanceAfterCents: newBalance,
               description: `Lesson — ${studentName} (${booking.startTime})`,
               studentId,
               lessonLogId: logRef.id,
@@ -432,7 +433,7 @@ export default function DashboardPage() {
               createdAt: serverTimestamp(),
             });
             batch.update(doc(firestore, 'coaches', coach.id, 'wallets', wallet.id), {
-              balance: increment(-price),
+              balanceCents: increment(-price),
               updatedAt: serverTimestamp(),
             });
           }
@@ -474,7 +475,7 @@ export default function DashboardPage() {
           awayPeriods,
         );
         if (rate <= 0) continue;
-        const prevBalance = wallet.balance;
+        const prevBalance = wallet.balanceCents;
         const newBalance = prevBalance - charge;
         if (prevBalance >= rate && newBalance < rate) {
           depleted.push({
@@ -579,22 +580,22 @@ export default function DashboardPage() {
       for (const l of logs) {
         batch.delete(doc(firestore, 'coaches', coach.id, 'lessonLogs', l.id));
         const wallet = resolveWallet(c, l.studentId, wallets);
-        if (wallet && l.price > 0) {
-          const newBalance = wallet.balance + l.price;
+        if (wallet && l.priceCents > 0) {
+          const newBalance = wallet.balanceCents + l.priceCents;
           const txnRef = doc(
             collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'),
           );
           batch.set(txnRef, {
             type: 'refund',
-            amount: l.price,
-            balanceAfter: newBalance,
+            amountCents: l.priceCents,
+            balanceAfterCents: newBalance,
             description: `Reversed — ${l.studentName}`,
             studentId: l.studentId,
             date: selectedDateStr,
             createdAt: serverTimestamp(),
           });
           batch.update(doc(firestore, 'coaches', coach.id, 'wallets', wallet.id), {
-            balance: increment(l.price),
+            balanceCents: increment(l.priceCents),
             updatedAt: serverTimestamp(),
           });
         }
@@ -630,7 +631,7 @@ export default function DashboardPage() {
       walletOption: c.studentWallets?.[sid] ? 'existing' : 'none',
       existingWalletId: c.studentWallets?.[sid] ?? '',
       newWalletName: '',
-      price: c.studentPrices?.[sid] ?? 0,
+      priceCents: c.studentPriceCents?.[sid] ?? 0,
     }));
     setDuplicatePrefill({
       className: c.className ?? '',
@@ -653,7 +654,7 @@ export default function DashboardPage() {
   const [editEndTime, setEditEndTime] = useState('');
   const [editNote, setEditNote] = useState('');
   const [editStudentIds, setEditStudentIds] = useState<string[]>([]);
-  const [editStudentPrices, setEditStudentPrices] = useState<Record<string, number>>({});
+  const [editStudentPriceCents, setEditStudentPrices] = useState<Record<string, number>>({});
   const [editStudentWallets, setEditStudentWallets] = useState<Record<string, string>>({});
   const [editAddStudentOpen, setEditAddStudentOpen] = useState(false);
   const [editAddStudentSearch, setEditAddStudentSearch] = useState('');
@@ -670,7 +671,7 @@ export default function DashboardPage() {
     setEditEndTime(booking.endTime);
     setEditNote(booking.notes || '');
     setEditStudentIds([...booking.studentIds]);
-    setEditStudentPrices({ ...booking.studentPrices });
+    setEditStudentPrices({ ...booking.studentPriceCents });
     setEditStudentWallets({ ...booking.studentWallets });
     setEditAddStudentOpen(false);
     setEditAddStudentSearch('');
@@ -688,7 +689,7 @@ export default function DashboardPage() {
       (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
     );
     for (const b of sorted) {
-      const p = b.studentPrices[studentId];
+      const p = b.studentPriceCents[studentId];
       if (p !== undefined && p > 0) return p;
     }
     return 0;
@@ -706,7 +707,7 @@ export default function DashboardPage() {
     if (editStudentIds.length !== origIds.length) return true;
     for (const id of editStudentIds) if (!origIds.includes(id)) return true;
     for (const id of editStudentIds) {
-      if ((editBooking.studentPrices[id] ?? 0) !== (editStudentPrices[id] ?? 0)) return true;
+      if ((editBooking.studentPriceCents[id] ?? 0) !== (editStudentPriceCents[id] ?? 0)) return true;
       if ((editBooking.studentWallets[id] ?? '') !== (editStudentWallets[id] ?? '')) return true;
     }
     return false;
@@ -729,7 +730,7 @@ export default function DashboardPage() {
       const newLocationName = newLocation?.name || editBooking.locationName;
 
       const studentPricesOut: Record<string, number> = {};
-      for (const id of editStudentIds) studentPricesOut[id] = editStudentPrices[id] ?? 0;
+      for (const id of editStudentIds) studentPricesOut[id] = editStudentPriceCents[id] ?? 0;
       const studentWalletsOut: Record<string, string> = {};
       for (const id of editStudentIds) {
         const w = editStudentWallets[id];
@@ -752,7 +753,7 @@ export default function DashboardPage() {
           endTime: editEndTime,
           notes: editNote,
           studentIds: editStudentIds,
-          studentPrices: studentPricesOut,
+          studentPriceCents: studentPricesOut,
           studentWallets: studentWalletsOut,
           updatedAt: serverTimestamp(),
         };
@@ -775,7 +776,7 @@ export default function DashboardPage() {
             newNote: editNote,
             newClassName: editClassName.trim(),
             newStudentIds: editStudentIds,
-            newStudentPrices: studentPricesOut,
+            newStudentPriceCents: studentPricesOut,
             newStudentWallets: studentWalletsOut,
           },
         );
@@ -794,7 +795,7 @@ export default function DashboardPage() {
           newNote: editNote,
           newClassName: editClassName.trim(),
           newStudentIds: editStudentIds,
-          newStudentPrices: studentPricesOut,
+          newStudentPriceCents: studentPricesOut,
           newStudentWallets: studentWalletsOut,
           createdAt: serverTimestamp(),
         });
@@ -828,7 +829,7 @@ export default function DashboardPage() {
             className: editClassName.trim(),
             notes: editNote,
             studentIds: editStudentIds,
-            studentPrices: studentPricesOut,
+            studentPriceCents: studentPricesOut,
             studentWallets: studentWalletsOut,
             startDate: effectiveDate,
             createdAt: serverTimestamp(),
@@ -844,7 +845,7 @@ export default function DashboardPage() {
             className: editClassName.trim(),
             notes: editNote,
             studentIds: editStudentIds,
-            studentPrices: studentPricesOut,
+            studentPriceCents: studentPricesOut,
             studentWallets: studentWalletsOut,
             startDate: effectiveDate,
             updatedAt: serverTimestamp(),
@@ -863,7 +864,7 @@ export default function DashboardPage() {
   };
 
   const editTotalPrice = editStudentIds.reduce(
-    (sum, id) => sum + (editStudentPrices[id] ?? 0),
+    (sum, id) => sum + (editStudentPriceCents[id] ?? 0),
     0,
   );
 
@@ -1185,7 +1186,7 @@ export default function DashboardPage() {
         note={editNote}
         onNoteChange={setEditNote}
         studentIds={editStudentIds}
-        studentPrices={editStudentPrices}
+        studentPriceCents={editStudentPriceCents}
         studentWallets={editStudentWallets}
         onRemoveStudent={(sid) => {
           setEditStudentIds((ids) => ids.filter((i) => i !== sid));
@@ -1201,7 +1202,7 @@ export default function DashboardPage() {
           });
         }}
         onStudentPriceChange={(sid, v) =>
-          setEditStudentPrices({ ...editStudentPrices, [sid]: v })
+          setEditStudentPrices({ ...editStudentPriceCents, [sid]: v })
         }
         onStudentWalletChange={(sid, v) =>
           setEditStudentWallets({ ...editStudentWallets, [sid]: v })
@@ -1214,7 +1215,7 @@ export default function DashboardPage() {
           const lastPrice = getLastPriceForStudent(s.id);
           const linkedWallet = wallets.find((w) => w.studentIds.includes(s.id));
           setEditStudentIds([...editStudentIds, s.id]);
-          setEditStudentPrices({ ...editStudentPrices, [s.id]: lastPrice });
+          setEditStudentPrices({ ...editStudentPriceCents, [s.id]: lastPrice });
           setEditStudentWallets({
             ...editStudentWallets,
             [s.id]: linkedWallet?.id || '',
@@ -1588,7 +1589,7 @@ function ClassCard({
 }) {
   const effectiveIds = isDone && attendedIds ? attendedIds : cls.studentIds;
   const isGroup = effectiveIds.length > 1;
-  const total = isDone ? doneTotal : getBookingTotal(cls);
+  const total = isDone ? doneTotal : getBookingTotalCents(cls);
   const attendees = effectiveIds
     .map((sid) => students.find((s) => s.id === sid))
     .filter((s): s is Student => !!s);
@@ -1802,9 +1803,9 @@ function CancelledList({
 
 function LowWalletsCard({ wallets }: { wallets: Wallet[] }) {
   const describe = (w: Wallet) => {
-    if (w.balance < 0) return `Owes RM ${Math.abs(w.balance).toFixed(0)}`;
-    if (w.balance === 0) return 'Needs top-up';
-    return `RM ${w.balance.toFixed(0)}`;
+    if (w.balanceCents < 0) return `Owes RM ${formatCents(Math.abs(w.balanceCents))}`;
+    if (w.balanceCents === 0) return 'Needs top-up';
+    return `RM ${formatCents(w.balanceCents)}`;
   };
 
   return (
@@ -1838,7 +1839,7 @@ function LowWalletsCard({ wallets }: { wallets: Wallet[] }) {
                   {describe(w)}
                 </div>
               </div>
-              <BalancePill balance={w.balance} compact />
+              <BalancePill balance={w.balanceCents} compact />
             </div>
           ))}
         </div>
