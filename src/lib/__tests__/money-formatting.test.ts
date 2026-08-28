@@ -53,3 +53,23 @@ describe('money rendering', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe('cents into input state', () => {
+  it('never stringifies a cents value directly — inputs are ringgit-denominated', () => {
+    // String(xCents) puts cents into a field that will be re-parsed as ringgit:
+    // the RM 500 preset filled the top-up box with "50000". Converting cents to
+    // input text must go through centsToInputValue (or formatCents for display).
+    const offenders: string[] = [];
+    for (const file of [...walk('src/app'), ...walk('src/components')]) {
+      if (ALLOWED.includes(file)) continue;
+      readFileSync(file, 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          if (/String\([^)]*[Cc]ents/.test(line)) {
+            offenders.push(`${file}:${i + 1}  ${line.trim()}`);
+          }
+        });
+    }
+    expect(offenders).toEqual([]);
+  });
+});

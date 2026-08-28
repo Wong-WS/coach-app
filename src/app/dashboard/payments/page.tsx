@@ -53,7 +53,7 @@ import {
   IconTrash,
 } from '@/components/paper';
 import type { AwayPeriod, Wallet, WalletTransaction, DayOfWeek } from '@/types';
-import { formatCents, formatCentsGrouped, parseMoneyToCents } from '@/lib/money';
+import { centsToInputValue, formatCents, formatCentsGrouped, parseMoneyToCents } from '@/lib/money';
 
 const PORTAL_BASE_URL = 'https://coach-simplify.com';
 
@@ -299,7 +299,7 @@ function WalletDetailBody({
 
   const [editingTopUp, setEditingTopUp] = useState(false);
   const [topUpValue, setTopUpValue] = useState(
-    wallet.usualTopUpCents != null ? String(wallet.usualTopUpCents) : '',
+    wallet.usualTopUpCents != null ? centsToInputValue(wallet.usualTopUpCents) : '',
   );
   const [savingTopUp, setSavingTopUp] = useState(false);
 
@@ -476,7 +476,7 @@ function WalletDetailBody({
               variant="outline"
               onClick={() => {
                 setEditingTopUp(false);
-                setTopUpValue(wallet.usualTopUpCents != null ? String(wallet.usualTopUpCents) : '');
+                setTopUpValue(wallet.usualTopUpCents != null ? centsToInputValue(wallet.usualTopUpCents) : '');
               }}
               disabled={savingTopUp}
             >
@@ -497,7 +497,7 @@ function WalletDetailBody({
           )}
           <button
             onClick={() => {
-              setTopUpValue(wallet.usualTopUpCents != null ? String(wallet.usualTopUpCents) : '');
+              setTopUpValue(wallet.usualTopUpCents != null ? centsToInputValue(wallet.usualTopUpCents) : '');
               setEditingTopUp(true);
             }}
             className="text-[12px] font-medium"
@@ -858,7 +858,7 @@ export default function PaymentsPage() {
 
   const openEditTxn = (txn: WalletTransaction) => {
     setEditingTxn(txn);
-    setEditTxnAmount(String(Math.abs(txn.amountCents)));
+    setEditTxnAmount(centsToInputValue(Math.abs(txn.amountCents)));
     setConfirmDeleteTxn(false);
   };
 
@@ -1688,12 +1688,12 @@ export default function PaymentsPage() {
                 }
               >
                 {topUpPresets.map((preset, i) => {
-                  const active = topUpAmount === String(preset.amountCents);
+                  const active = topUpAmount === centsToInputValue(preset.amountCents);
                   return (
                     <button
                       key={i}
                       type="button"
-                      onClick={() => setTopUpAmount(String(preset.amountCents))}
+                      onClick={() => setTopUpAmount(centsToInputValue(preset.amountCents))}
                       className="rounded-[10px] border py-2 px-2 text-left transition-colors"
                       style={{
                         background: active ? 'var(--ink)' : 'var(--panel)',
