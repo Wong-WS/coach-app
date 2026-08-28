@@ -4,6 +4,7 @@ import {
   formatDateMedium,
   formatDateShort,
   parseDateString,
+  canMarkDoneOn,
 } from '@/lib/date-format';
 
 // ---------------------------------------------------------------------------
@@ -119,5 +120,25 @@ describe('cross-format consistency', () => {
     // Full and medium should contain the year
     expect(full).toContain('2026');
     expect(medium).toContain('2026');
+  });
+});
+
+describe('canMarkDoneOn', () => {
+  it('allows today', () => {
+    expect(canMarkDoneOn('2026-08-28', '2026-08-28')).toBe(true);
+  });
+
+  it('allows past dates — coaches catch up on yesterday', () => {
+    expect(canMarkDoneOn('2026-08-27', '2026-08-28')).toBe(true);
+    expect(canMarkDoneOn('2025-12-31', '2026-08-28')).toBe(true);
+  });
+
+  it('blocks future dates — a lesson cannot be done before it happens', () => {
+    expect(canMarkDoneOn('2026-08-29', '2026-08-28')).toBe(false);
+    expect(canMarkDoneOn('2027-01-01', '2026-08-28')).toBe(false);
+  });
+
+  it('blocks tomorrow across a month boundary', () => {
+    expect(canMarkDoneOn('2026-09-01', '2026-08-31')).toBe(false);
   });
 });

@@ -1251,7 +1251,7 @@ export default function PaymentsPage() {
       );
       await updateDoc(
         doc(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id),
-        { balance: increment(-editingTxn.amountCents), updatedAt: serverTimestamp() },
+        { balanceCents: increment(-editingTxn.amountCents), updatedAt: serverTimestamp() },
       );
       showToast('Transaction deleted', 'success');
       setEditingTxn(null);

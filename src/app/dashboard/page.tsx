@@ -42,7 +42,7 @@ import { computeCancelFuture } from '@/lib/cancel-scope';
 import { isDateInAwayPeriod } from '@/lib/away-periods';
 import { shiftEndTime } from '@/lib/time-input';
 import { formatTimeDisplay } from '@/lib/time-format';
-import { formatDateFull, formatDateShort, parseDateString } from '@/lib/date-format';
+import { formatDateFull, formatDateShort, parseDateString, canMarkDoneOn } from '@/lib/date-format';
 import {
   Btn,
   Chip,
@@ -215,6 +215,8 @@ export default function DashboardPage() {
   const displayName = coach?.displayName || 'Coach';
   const firstName = displayName.split(' ')[0] || 'Coach';
   const isToday = selectedDateStr === todayStr;
+  // Future dates: viewable, but lessons there can't be marked done (would charge early).
+  const canMarkDone = canMarkDoneOn(selectedDateStr, todayStr);
 
   // Mark-done modal state
   const [markDoneBooking, setMarkDoneBooking] = useState<Booking | null>(null);
@@ -258,6 +260,10 @@ export default function DashboardPage() {
   };
 
   const openMarkDone = (c: Booking) => {
+    if (!canMarkDone) {
+      showToast("Can't mark a future lesson as done", 'error');
+      return;
+    }
     setMarkDoneBooking(c);
     const init: Record<string, number> = {};
     for (const sid of c.studentIds) init[sid] = c.studentPriceCents[sid] ?? 0;
@@ -275,6 +281,7 @@ export default function DashboardPage() {
     const booking = markDoneBooking;
     if (!coach || !db || !booking) return;
     if (markDoneAttending.length === 0) return;
+    if (!canMarkDone) return;
     setMarkingDone(true);
     const attendingIds = markDoneAttending;
     closeMarkDone();
@@ -952,6 +959,7 @@ export default function DashboardPage() {
                   doneLoading={doneStateLoading}
                   doneTotal={doneByBookingId.get(c.id) ?? 0}
                   attendedIds={doneStudentsByBookingId.get(c.id)}
+                  canMarkDone={canMarkDone}
                   onMarkDone={() => openMarkDone(c)}
                   onCancel={() => openCancelFlow(c)}
                   onUndo={() => handleUndoMarkDone(c)}
@@ -1064,6 +1072,7 @@ export default function DashboardPage() {
                 doneLoading={doneStateLoading}
                 doneTotal={doneByBookingId.get(c.id) ?? 0}
                 attendedIds={doneStudentsByBookingId.get(c.id)}
+                canMarkDone={canMarkDone}
                 onMarkDone={() => openMarkDone(c)}
                 onCancel={() => openCancelFlow(c)}
                 onUndo={() => handleUndoMarkDone(c)}
@@ -1471,11 +1480,13 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
 }
 
 function ClassActionsMenu({
+  canMarkDone,
   onMarkDone,
   onEdit,
   onDuplicate,
   onCancel,
 }: {
+  canMarkDone: boolean;
   onMarkDone: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
@@ -1499,7 +1510,9 @@ function ClassActionsMenu({
     onClick: () => void;
     danger?: boolean;
   }[] = [
-    { label: 'Mark done', icon: <IconCheck size={14} />, onClick: onMarkDone },
+    ...(canMarkDone
+      ? [{ label: 'Mark done', icon: <IconCheck size={14} />, onClick: onMarkDone }]
+      : []),
     { label: 'Edit', icon: <IconEdit size={14} />, onClick: onEdit },
     { label: 'Duplicate', icon: <IconCopy size={14} />, onClick: onDuplicate },
     { label: 'Cancel lesson', icon: <IconTrash size={14} />, onClick: onCancel, danger: true },
@@ -1560,6 +1573,7 @@ function ClassCard({
   doneLoading = false,
   doneTotal,
   attendedIds,
+  canMarkDone,
   onMarkDone,
   onCancel,
   onUndo,
@@ -1580,6 +1594,7 @@ function ClassCard({
   doneLoading?: boolean;
   doneTotal: number;
   attendedIds?: string[];
+  canMarkDone: boolean;
   onMarkDone: () => void;
   onCancel: () => void;
   onUndo: () => void;
@@ -1703,11 +1718,13 @@ function ClassCard({
         {!compact && (
           <div className="flex gap-2 mt-1.5" style={{ minHeight: 28 }}>
             {doneLoading ? null : !isDone ? (
-              <span className="fade-in inline-flex">
-                <Btn size="sm" variant="primary" onClick={onMarkDone}>
-                  <IconCheck size={13} /> Mark done
-                </Btn>
-              </span>
+              canMarkDone && (
+                <span className="fade-in inline-flex">
+                  <Btn size="sm" variant="primary" onClick={onMarkDone}>
+                    <IconCheck size={13} /> Mark done
+                  </Btn>
+                </span>
+              )
             ) : (
               <span className="fade-in inline-flex">
                 <Btn size="sm" variant="ghost" onClick={onUndo}>
@@ -1743,6 +1760,7 @@ function ClassCard({
           ) : (
             <span className="fade-in inline-flex">
               <ClassActionsMenu
+                canMarkDone={canMarkDone}
                 onMarkDone={onMarkDone}
                 onEdit={onEdit}
                 onDuplicate={onDuplicate}

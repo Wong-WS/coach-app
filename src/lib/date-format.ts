@@ -41,3 +41,13 @@ export function formatDateShort(date: Date): string {
 export function parseDateString(dateStr: string): Date {
   return new Date(dateStr + 'T00:00:00');
 }
+
+/**
+ * Whether a class on `dateStr` may be marked done, given today's date.
+ * Past and present are fine — coaches catch up on yesterday's classes — but a
+ * future lesson can't be done before it happens, and marking it would charge
+ * the wallet early. Both args are YYYY-MM-DD, so string order is date order.
+ */
+export function canMarkDoneOn(dateStr: string, todayStr: string): boolean {
+  return dateStr <= todayStr;
+}

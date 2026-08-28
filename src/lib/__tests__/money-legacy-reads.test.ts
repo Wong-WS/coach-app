@@ -78,8 +78,10 @@ describe('money writes', () => {
             if (trimmed === `${name},`) {
               offenders.push(`${file}:${i + 1}  shorthand write of legacy field "${name}"`);
             }
-            // Explicit key: `studentPrices: value`.
-            if (new RegExp(`^${name}\\s*:`).test(trimmed)) {
+            // Explicit key: `studentPrices: value` — at line start OR inside an
+            // inline object literal (`{ balance: ... }`, `, balance: ...`). The
+            // line-start-only check missed the delete-transaction handler.
+            if (new RegExp(`(^|[{,(]\\s*)${name}\\s*:`).test(trimmed)) {
               offenders.push(`${file}:${i + 1}  writes legacy field "${name}"`);
             }
           }
