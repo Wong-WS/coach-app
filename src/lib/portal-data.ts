@@ -2,7 +2,6 @@ import 'server-only';
 import { getAdminDb } from '@/lib/firebase-admin';
 import type { Booking, ClassException, LessonLog, Wallet, AwayPeriod } from '@/types';
 import { getWalletHealth, type WalletHealth } from '@/lib/wallet-alerts';
-import { sessionKeyFromDescription } from '@/lib/portal-charges';
 import { centsFromLegacy, mapRmToCents, rmToCents } from '@/lib/money';
 import type { Firestore, Timestamp } from 'firebase-admin/firestore';
 
@@ -39,6 +38,7 @@ export type PortalTokenResolution = {
   db: Firestore;
   coachId: string;
   walletId: string;
+  studentIds: string[];
   hideStudentNames: boolean;
 };
 
@@ -84,38 +84,32 @@ export async function resolvePortalToken(
     db,
     coachId,
     walletId,
+    studentIds,
     hideStudentNames: studentIds.length <= 1,
   };
 }
 
-async function fetchStudentNames(
-  db: Firestore,
-  coachId: string,
-  studentIds: string[],
-): Promise<Map<string, string>> {
-  const names = new Map<string, string>();
-  await Promise.all(
-    studentIds.map(async (sid) => {
-      const s = await db.doc(`coaches/${coachId}/students/${sid}`).get();
-      if (s.exists) names.set(sid, (s.data()?.clientName as string) ?? '');
-    }),
-  );
-  return names;
-}
-
 /**
- * Fetch a page of charges (oldest cursor = newest shown; pass `cursor` to load
- * older entries). Requests one extra row to derive `hasMore`.
+ * Fetch a page of the wallet's lessons (oldest cursor = newest shown; pass
+ * `cursor` to load older entries). Requests one extra row to derive `hasMore`.
+ *
+ * Sourced from lessonLogs — the record of lessons that actually happened —
+ * NOT from charge transactions. A reversed (undone) lesson keeps its charge +
+ * refund pair in the coach's ledger, but its log is deleted, so it must not
+ * appear on the parent-facing page. This also keeps the portal in step with
+ * the dashboard overview, which reads the same logs.
  */
 export async function fetchChargesPage(
   ctx: PortalTokenResolution,
   cursor: number | null,
   limit: number = PORTAL_PAGE_SIZE,
 ): Promise<{ items: PortalChargeRow[]; hasMore: boolean }> {
-  const { db, coachId, walletId, hideStudentNames } = ctx;
+  const { db, coachId, studentIds, hideStudentNames } = ctx;
+  if (studentIds.length === 0) return { items: [], hasMore: false };
   let q = db
-    .collection(`coaches/${coachId}/wallets/${walletId}/transactions`)
-    .where('type', '==', 'charge')
+    .collection(`coaches/${coachId}/lessonLogs`)
+    // Firestore caps 'in' at 30; a shared wallet holds a handful of students.
+    .where('studentId', 'in', studentIds.slice(0, 30))
     .orderBy('createdAt', 'desc');
   if (cursor != null) q = q.startAfter(new Date(cursor));
   const snap = await q.limit(limit + 1).get();
@@ -123,26 +117,17 @@ export async function fetchChargesPage(
   const rows = snap.docs.slice(0, limit);
   const hasMore = snap.docs.length > limit;
 
-  const studentIds = new Set<string>();
-  for (const d of rows) {
-    const sid = d.data().studentId as string | undefined;
-    if (sid) studentIds.add(sid);
-  }
-  const studentNames = hideStudentNames
-    ? new Map<string, string>()
-    : await fetchStudentNames(db, coachId, Array.from(studentIds));
-
   const items: PortalChargeRow[] = rows.map((d) => {
-    const t = d.data();
-    const createdAt = (t.createdAt as Timestamp | undefined)?.toMillis?.() ?? 0;
-    const sid = t.studentId as string | undefined;
+    const l = d.data();
+    const createdAt = (l.createdAt as Timestamp | undefined)?.toMillis?.() ?? 0;
     return {
-      date: t.date as string,
-      studentName: hideStudentNames ? '' : (sid ? studentNames.get(sid) ?? '' : ''),
+      date: l.date as string,
+      studentName: hideStudentNames ? '' : ((l.studentName as string) ?? ''),
       amountCents: Math.abs(
-        centsFromLegacy(t.amountCents as number | undefined, t.amount as number | undefined),
+        centsFromLegacy(l.priceCents as number | undefined, l.price as number | undefined),
       ),
-      sessionKey: sessionKeyFromDescription(t.description),
+      // Two students in the same session share a start time — one lesson row.
+      sessionKey: (l.startTime as string) ?? '',
       cursor: createdAt,
     };
   });
