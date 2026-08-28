@@ -1122,7 +1122,7 @@ export default function PaymentsPage() {
       const newBalance = selectedWallet.balanceCents + amount;
       await addDoc(txnCol, {
         type: 'top-up',
-        amount,
+        amountCents: amount,
         balanceAfterCents: newBalance,
         description: 'Top up',
         date: topUpDate,

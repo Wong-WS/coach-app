@@ -69,7 +69,7 @@ export function useBookings(coachId: string | undefined, statusFilter?: 'confirm
         notes: d.data().notes ?? '',
         studentIds: d.data().studentIds ?? [],
         studentPriceCents:
-          d.data().studentPriceCents ?? mapRmToCents(d.data().studentPriceCents ?? {}),
+          d.data().studentPriceCents ?? mapRmToCents(d.data().studentPrices ?? {}),
         studentWallets: d.data().studentWallets ?? {},
         startDate: d.data().startDate ?? undefined,
         endDate: d.data().endDate ?? undefined,
@@ -175,7 +175,7 @@ export function useLessonLogs(coachId: string | undefined, dateFilter?: string, 
           locationName: d.data().locationName,
           startTime: d.data().startTime,
           endTime: d.data().endTime,
-          priceCents: centsFromLegacy(d.data().priceCents, d.data().priceCents),
+          priceCents: centsFromLegacy(d.data().priceCents, d.data().price),
           note: d.data().note ?? undefined,
           createdAt: d.data().createdAt?.toDate() || new Date(),
         }));
@@ -244,8 +244,8 @@ export function useClassExceptions(coachId: string | undefined, referenceDate?: 
         newStudentIds: d.data().newStudentIds,
         newStudentPriceCents:
           d.data().newStudentPriceCents ??
-          (d.data().newStudentPriceCents
-            ? mapRmToCents(d.data().newStudentPriceCents)
+          (d.data().newStudentPrices
+            ? mapRmToCents(d.data().newStudentPrices)
             : undefined),
         newStudentWallets: d.data().newStudentWallets,
         createdAt: d.data().createdAt?.toDate() || new Date(),
@@ -281,15 +281,15 @@ export function useWallets(coachId: string | undefined) {
       const items: Wallet[] = snapshot.docs.map((d) => ({
         id: d.id,
         name: d.data().name,
-        balanceCents: centsFromLegacy(d.data().balanceCents, d.data().balanceCents),
+        balanceCents: centsFromLegacy(d.data().balanceCents, d.data().balance),
         studentIds: d.data().studentIds ?? [],
         archived: d.data().archived ?? false,
         tabMode: d.data().tabMode ?? false,
         portalToken: d.data().portalToken ?? undefined,
         usualTopUpCents:
           d.data().usualTopUpCents ??
-          (typeof d.data().usualTopUpCents === 'number'
-            ? rmToCents(d.data().usualTopUpCents)
+          (typeof d.data().usualTopUp === 'number'
+            ? rmToCents(d.data().usualTopUp)
             : undefined),
         createdAt: d.data().createdAt?.toDate() || new Date(),
         updatedAt: d.data().updatedAt?.toDate() || new Date(),
@@ -335,10 +335,10 @@ export function useWalletTransactions(coachId: string | undefined, walletId: str
       const items: WalletTransaction[] = snapshot.docs.map((d) => ({
         id: d.id,
         type: d.data().type,
-        amountCents: centsFromLegacy(d.data().amountCents, d.data().amountCents),
+        amountCents: centsFromLegacy(d.data().amountCents, d.data().amount),
         balanceAfterCents: centsFromLegacy(
           d.data().balanceAfterCents,
-          d.data().balanceAfterCents,
+          d.data().balanceAfter,
         ),
         description: d.data().description ?? '',
         studentId: d.data().studentId ?? undefined,

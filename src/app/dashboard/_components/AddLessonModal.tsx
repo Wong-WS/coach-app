@@ -327,13 +327,13 @@ export function AddLessonModal({
         pendingWalletIds[i] = walletRef.id;
       }
 
-      // 4. Build studentPrices + studentWallets keyed by resolved student id.
-      const studentPrices: Record<string, number> = {};
+      // 4. Build per-student prices (cents) + wallets keyed by resolved student id.
+      const studentPriceCents: Record<string, number> = {};
       const studentWallets: Record<string, string> = {};
       for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
         const sid = resolvedStudentIds[i];
-        studentPrices[sid] = Number(r.priceCents) || 0;
+        studentPriceCents[sid] = Number(r.priceCents) || 0;
         if (r.walletOption === 'existing') {
           if (r.existingWalletId.startsWith('pending:')) {
             const refIdx = parseInt(r.existingWalletId.split(':')[1], 10);
@@ -359,7 +359,7 @@ export function AddLessonModal({
         className: className.trim(),
         notes: '',
         studentIds: resolvedStudentIds,
-        studentPrices,
+        studentPriceCents,
         studentWallets,
         startDate: date,
         createdAt: serverTimestamp(),

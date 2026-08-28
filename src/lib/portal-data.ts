@@ -140,7 +140,7 @@ export async function fetchChargesPage(
       date: t.date as string,
       studentName: hideStudentNames ? '' : (sid ? studentNames.get(sid) ?? '' : ''),
       amountCents: Math.abs(
-        centsFromLegacy(t.amountCents as number | undefined, t.amountCents as number | undefined),
+        centsFromLegacy(t.amountCents as number | undefined, t.amount as number | undefined),
       ),
       sessionKey: sessionKeyFromDescription(t.description),
       cursor: createdAt,
@@ -171,7 +171,7 @@ export async function fetchTopUpsPage(
       date: t.date as string,
       amountCents: centsFromLegacy(
         t.amountCents as number | undefined,
-        t.amountCents as number | undefined,
+        t.amount as number | undefined,
       ),
       cursor: createdAt,
     };
@@ -220,7 +220,7 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
     name: (wd.name as string) ?? 'Wallet',
     balanceCents: centsFromLegacy(
       wd.balanceCents as number | undefined,
-      wd.balanceCents as number | undefined,
+      wd.balance as number | undefined,
     ),
     studentIds: (wd.studentIds as string[]) ?? [],
     archived: false,
@@ -229,8 +229,8 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
     usualTopUpCents:
       typeof wd.usualTopUpCents === 'number'
         ? wd.usualTopUpCents
-        : typeof wd.usualTopUpCents === 'number'
-          ? rmToCents(wd.usualTopUpCents)
+        : typeof wd.usualTopUp === 'number'
+          ? rmToCents(wd.usualTopUp)
           : undefined,
     createdAt: wd.createdAt?.toDate?.() ?? new Date(),
     updatedAt: wd.updatedAt?.toDate?.() ?? new Date(),
@@ -250,7 +250,7 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
       notes: b.notes ?? '',
       studentIds: b.studentIds ?? [],
       studentPriceCents:
-        b.studentPriceCents ?? mapRmToCents(b.studentPriceCents ?? {}),
+        b.studentPriceCents ?? mapRmToCents(b.studentPrices ?? {}),
       studentWallets: b.studentWallets ?? {},
       startDate: b.startDate ?? undefined,
       endDate: b.endDate ?? undefined,
@@ -276,7 +276,7 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
       newStudentIds: e.newStudentIds,
       newStudentPriceCents:
         e.newStudentPriceCents ??
-        (e.newStudentPriceCents ? mapRmToCents(e.newStudentPriceCents) : undefined),
+        (e.newStudentPrices ? mapRmToCents(e.newStudentPrices) : undefined),
       newStudentWallets: e.newStudentWallets,
       createdAt: e.createdAt?.toDate?.() ?? new Date(),
     };
@@ -306,7 +306,7 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
       locationName: l.locationName ?? '',
       startTime: l.startTime ?? '',
       endTime: l.endTime ?? '',
-      priceCents: centsFromLegacy(l.priceCents, l.priceCents),
+      priceCents: centsFromLegacy(l.priceCents, l.price),
       createdAt: l.createdAt?.toDate?.() ?? new Date(),
     };
   });
