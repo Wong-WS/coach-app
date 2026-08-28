@@ -16,6 +16,7 @@ import {
   Firestore,
   onSnapshot,
   query,
+  where,
   orderBy,
   limit,
 } from 'firebase/firestore';
@@ -1119,19 +1120,22 @@ export default function PaymentsPage() {
         selectedWallet.id,
         'transactions',
       );
-      const newBalance = selectedWallet.balanceCents + amount;
-      await addDoc(txnCol, {
+      // One batch: a receipt without its balance change (or vice versa) must
+      // be impossible, however the connection fails mid-save.
+      const batch = writeBatch(firestore);
+      batch.set(doc(txnCol), {
         type: 'top-up',
         amountCents: amount,
-        balanceAfterCents: newBalance,
+        balanceAfterCents: selectedWallet.balanceCents + amount,
         description: 'Top up',
         date: topUpDate,
         createdAt: serverTimestamp(),
       });
-      await updateDoc(walletRef, {
+      batch.update(walletRef, {
         balanceCents: increment(amount),
         updatedAt: serverTimestamp(),
       });
+      await batch.commit();
       showToast(`RM ${formatCents(amount)} added to ${selectedWallet.name}`, 'success');
       setShowTopUpModal(false);
       setTopUpAmount('');
@@ -1163,19 +1167,20 @@ export default function PaymentsPage() {
         selectedWallet.id,
         'transactions',
       );
-      const newBalance = selectedWallet.balanceCents + delta;
-      await addDoc(txnCol, {
+      const batch = writeBatch(firestore);
+      batch.set(doc(txnCol), {
         type: 'adjustment',
         amountCents: delta,
-        balanceAfterCents: newBalance,
+        balanceAfterCents: selectedWallet.balanceCents + delta,
         description,
         date: todayYMD(),
         createdAt: serverTimestamp(),
       });
-      await updateDoc(walletRef, {
+      batch.update(walletRef, {
         balanceCents: increment(delta),
         updatedAt: serverTimestamp(),
       });
+      await batch.commit();
       showToast('Adjustment applied', 'success');
       setShowAdjustModal(false);
       setAdjAmount('');
@@ -1214,14 +1219,29 @@ export default function PaymentsPage() {
         'transactions',
         editingTxn.id,
       );
-      await updateDoc(txnRef, {
+      // Changing an amount shifts the running balance of this receipt AND
+      // every receipt after it — otherwise the ledger stops adding up.
+      // (Receipts sharing this one's exact timestamp are not shifted; their
+      // order relative to it is undefined anyway.)
+      const laterSnap = await getDocs(
+        query(
+          collection(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id, 'transactions'),
+          where('createdAt', '>', editingTxn.createdAt),
+        ),
+      );
+      const batch = writeBatch(firestore);
+      batch.update(txnRef, {
         amountCents: newAmount,
         balanceAfterCents: editingTxn.balanceAfterCents + delta,
       });
-      await updateDoc(
+      for (const d of laterSnap.docs) {
+        batch.update(d.ref, { balanceAfterCents: increment(delta) });
+      }
+      batch.update(
         doc(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id),
         { balanceCents: increment(delta), updatedAt: serverTimestamp() },
       );
+      await batch.commit();
       showToast('Transaction updated', 'success');
       setEditingTxn(null);
       setEditTxnAmount('');
@@ -1238,7 +1258,15 @@ export default function PaymentsPage() {
     setDeletingTxn(true);
     try {
       const firestore = db as Firestore;
-      await deleteDoc(
+      const removed = -editingTxn.amountCents;
+      const laterSnap = await getDocs(
+        query(
+          collection(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id, 'transactions'),
+          where('createdAt', '>', editingTxn.createdAt),
+        ),
+      );
+      const batch = writeBatch(firestore);
+      batch.delete(
         doc(
           firestore,
           'coaches',
@@ -1249,10 +1277,14 @@ export default function PaymentsPage() {
           editingTxn.id,
         ),
       );
-      await updateDoc(
+      for (const d of laterSnap.docs) {
+        batch.update(d.ref, { balanceAfterCents: increment(removed) });
+      }
+      batch.update(
         doc(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id),
-        { balanceCents: increment(-editingTxn.amountCents), updatedAt: serverTimestamp() },
+        { balanceCents: increment(removed), updatedAt: serverTimestamp() },
       );
+      await batch.commit();
       showToast('Transaction deleted', 'success');
       setEditingTxn(null);
       setEditTxnAmount('');

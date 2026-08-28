@@ -29,6 +29,7 @@ import {
 } from '@/hooks/useCoachData';
 import { useToast } from '@/components/ui/Toast';
 import type { AwayPeriod, Booking, ClassException, LessonLog, Student, Wallet } from '@/types';
+import { createBalanceTracker } from '@/lib/wallet-ledger';
 import {
   getClassesForDate,
   getBookingTotalCents,
@@ -68,7 +69,7 @@ import { AddLessonModal, type StudentRowState, type AddLessonPrefill } from './_
 import { MarkDoneModal } from './_components/MarkDoneModal';
 import { BulkMarkDoneConfirmModal } from './_components/BulkMarkDoneConfirmModal';
 import { DepletedWalletAlert, type DepletedAlert } from './_components/DepletedWalletAlert';
-import { formatCents } from '@/lib/money';
+import { centsFromLegacy, formatCents } from '@/lib/money';
 
 const SHORT_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 
@@ -285,7 +286,6 @@ export default function DashboardPage() {
     setMarkingDone(true);
     const attendingIds = markDoneAttending;
     closeMarkDone();
-    showToast(`Marked ${booking.className || 'class'} done`, 'success');
 
     // Track wallet impact so we can alert when this lesson empties a wallet.
     const walletImpacts = new Map<string, { wallet: Wallet; charge: number }>();
@@ -293,6 +293,9 @@ export default function DashboardPage() {
     try {
       const firestore = db as Firestore;
       const batch = writeBatch(firestore);
+      // Sequences balanceAfterCents when several charges hit one wallet in
+      // this batch (siblings on a shared wallet).
+      const tracker = createBalanceTracker(wallets);
 
       for (const studentId of attendingIds) {
         const price = markDoneAmounts[studentId] ?? booking.studentPriceCents[studentId] ?? 0;
@@ -317,14 +320,13 @@ export default function DashboardPage() {
           if (existing) existing.charge += price;
           else walletImpacts.set(wallet.id, { wallet, charge: price });
 
-          const newBalance = wallet.balanceCents - price;
           const txnRef = doc(
             collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'),
           );
           batch.set(txnRef, {
             type: 'charge',
             amountCents: -price,
-            balanceAfterCents: newBalance,
+            balanceAfterCents: tracker.apply(wallet.id, -price),
             description: `Lesson — ${studentName} (${booking.startTime})`,
             studentId,
             lessonLogId: logRef.id,
@@ -343,6 +345,7 @@ export default function DashboardPage() {
       }
 
       await batch.commit();
+      showToast(`Marked ${booking.className || 'class'} done`, 'success');
 
       // After the commit, collect wallets that just crossed below next-lesson
       // cost. "Can cover next" = balance >= rate (or rate == 0). Skip tab-mode
@@ -399,6 +402,7 @@ export default function DashboardPage() {
     try {
       const firestore = db as Firestore;
       const batch = writeBatch(firestore);
+      const tracker = createBalanceTracker(wallets);
 
       for (const booking of remainingClasses) {
         for (const studentId of booking.studentIds) {
@@ -425,14 +429,13 @@ export default function DashboardPage() {
             if (existing) existing.charge += price;
             else walletImpacts.set(wallet.id, { wallet, charge: price });
 
-            const newBalance = wallet.balanceCents - price;
             const txnRef = doc(
               collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'),
             );
             batch.set(txnRef, {
               type: 'charge',
               amountCents: -price,
-              balanceAfterCents: newBalance,
+              balanceAfterCents: tracker.apply(wallet.id, -price),
               description: `Lesson — ${studentName} (${booking.startTime})`,
               studentId,
               lessonLogId: logRef.id,
@@ -583,29 +586,56 @@ export default function DashboardPage() {
       const firestore = db as Firestore;
       const logs = lessonLogs.filter((l) => l.bookingId === c.id && l.date === selectedDateStr);
       if (logs.length === 0) return;
-      const batch = writeBatch(firestore);
-      for (const l of logs) {
-        batch.delete(doc(firestore, 'coaches', coach.id, 'lessonLogs', l.id));
-        const wallet = resolveWallet(c, l.studentId, wallets);
-        if (wallet && l.priceCents > 0) {
-          const newBalance = wallet.balanceCents + l.priceCents;
-          const txnRef = doc(
-            collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'),
-          );
-          batch.set(txnRef, {
-            type: 'refund',
-            amountCents: l.priceCents,
-            balanceAfterCents: newBalance,
-            description: `Reversed — ${l.studentName}`,
-            studentId: l.studentId,
-            date: selectedDateStr,
-            createdAt: serverTimestamp(),
-          });
-          batch.update(doc(firestore, 'coaches', coach.id, 'wallets', wallet.id), {
-            balanceCents: increment(l.priceCents),
-            updatedAt: serverTimestamp(),
+
+      // Refund the wallet that was ACTUALLY charged — found via the charge
+      // transaction's lessonLogId — not whichever wallet the booking points at
+      // now. The coach may have moved the student to a different wallet since
+      // the lesson was marked done.
+      const logIds = logs.map((l) => l.id);
+      const charges: Array<{ walletId: string; amountCents: number; description: string; studentId?: string }> = [];
+      for (const w of wallets) {
+        // Firestore caps 'in' at 30 values; a class never has that many logs.
+        const snap = await getDocs(
+          query(
+            collection(firestore, 'coaches', coach.id, 'wallets', w.id, 'transactions'),
+            where('lessonLogId', 'in', logIds.slice(0, 30)),
+          ),
+        );
+        for (const d of snap.docs) {
+          const t = d.data();
+          charges.push({
+            walletId: w.id,
+            amountCents: centsFromLegacy(t.amountCents, t.amount),
+            description: t.description ?? '',
+            studentId: t.studentId,
           });
         }
+      }
+
+      const batch = writeBatch(firestore);
+      const tracker = createBalanceTracker(wallets);
+      for (const l of logs) {
+        batch.delete(doc(firestore, 'coaches', coach.id, 'lessonLogs', l.id));
+      }
+      for (const ch of charges) {
+        const refund = Math.abs(ch.amountCents);
+        if (refund <= 0) continue;
+        const txnRef = doc(
+          collection(firestore, 'coaches', coach.id, 'wallets', ch.walletId, 'transactions'),
+        );
+        batch.set(txnRef, {
+          type: 'refund',
+          amountCents: refund,
+          balanceAfterCents: tracker.apply(ch.walletId, refund),
+          description: `Reversed: ${ch.description}`,
+          studentId: ch.studentId,
+          date: selectedDateStr,
+          createdAt: serverTimestamp(),
+        });
+        batch.update(doc(firestore, 'coaches', coach.id, 'wallets', ch.walletId), {
+          balanceCents: increment(refund),
+          updatedAt: serverTimestamp(),
+        });
       }
       await batch.commit();
       showToast('Reopened class', 'success');
