@@ -28,3 +28,47 @@ export function createBalanceTracker(wallets: Wallet[]): {
     },
   };
 }
+
+export type UndoLedgerEntry = {
+  lessonLogId: string;
+  walletId: string;
+  type: 'charge' | 'refund';
+  amountCents: number;
+  description: string;
+  studentId?: string;
+};
+
+export type PlannedRefund = {
+  walletId: string;
+  lessonLogId: string;
+  amountCents: number;
+  description: string;
+  studentId?: string;
+};
+
+/**
+ * Given every transaction tagged with the lesson logs being undone (charges
+ * AND refunds), plan which refunds to post: one per charge that has no refund
+ * yet. This is what makes undo idempotent — a double-fired undo (spam-click,
+ * a second tab) sees the first run's refunds and plans nothing, instead of
+ * paying the student twice.
+ */
+export function planUndoRefunds(entries: UndoLedgerEntry[]): PlannedRefund[] {
+  const alreadyRefunded = new Set(
+    entries.filter((e) => e.type === 'refund').map((e) => e.lessonLogId),
+  );
+  return entries
+    .filter(
+      (e) =>
+        e.type === 'charge' &&
+        Math.abs(e.amountCents) > 0 &&
+        !alreadyRefunded.has(e.lessonLogId),
+    )
+    .map((e) => ({
+      walletId: e.walletId,
+      lessonLogId: e.lessonLogId,
+      amountCents: Math.abs(e.amountCents),
+      description: e.description,
+      studentId: e.studentId,
+    }));
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createBalanceTracker } from '@/lib/wallet-ledger';
+import { createBalanceTracker, planUndoRefunds } from '@/lib/wallet-ledger';
 import type { Wallet } from '@/types';
 
 function makeWallet(overrides: Partial<Wallet> = {}): Wallet {
@@ -58,5 +58,46 @@ describe('createBalanceTracker', () => {
     const t = createBalanceTracker([makeWallet({ id: 'w1' })]);
 
     expect(() => t.apply('nope', -100)).toThrow();
+  });
+});
+
+describe('planUndoRefunds', () => {
+  const charge = (lessonLogId: string, walletId: string, amountCents: number) => ({
+    lessonLogId, walletId, amountCents, type: 'charge' as const, description: `Lesson x`, studentId: 's1',
+  });
+  const refund = (lessonLogId: string, walletId: string) => ({
+    lessonLogId, walletId, amountCents: 7000, type: 'refund' as const, description: 'Reversed', studentId: 's1',
+  });
+
+  it('plans one refund per charge', () => {
+    const plan = planUndoRefunds([charge('log1', 'w1', -7000)]);
+    expect(plan).toEqual([
+      { walletId: 'w1', lessonLogId: 'log1', amountCents: 7000, description: 'Lesson x', studentId: 's1' },
+    ]);
+  });
+
+  it('skips a charge that already has a refund — undo must be idempotent', () => {
+    // A double-fired undo (spam-click, two tabs) found the charge twice.
+    // The second pass must see the first refund and do nothing.
+    const plan = planUndoRefunds([charge('log1', 'w1', -7000), refund('log1', 'w1')]);
+    expect(plan).toEqual([]);
+  });
+
+  it('refunds only the unreversed charges in a mixed set', () => {
+    const plan = planUndoRefunds([
+      charge('log1', 'w1', -7000),
+      refund('log1', 'w1'),
+      charge('log2', 'w2', -6000),
+    ]);
+    expect(plan.map((p) => p.lessonLogId)).toEqual(['log2']);
+  });
+
+  it('ignores zero-amount charges', () => {
+    expect(planUndoRefunds([charge('log1', 'w1', 0)])).toEqual([]);
+  });
+
+  it('uses the charged magnitude, not a sign', () => {
+    const plan = planUndoRefunds([charge('log1', 'w1', -12345)]);
+    expect(plan[0].amountCents).toBe(12345);
   });
 });

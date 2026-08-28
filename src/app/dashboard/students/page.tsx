@@ -694,6 +694,7 @@ function DeleteLessonModal({
           balanceAfterCents: matchedNewBalance,
           description: `Reversed: ${matchedTxn.description}`,
           studentId: matchedTxn.studentId,
+          lessonLogId: logId,
           date: dateStr,
           createdAt: serverTimestamp(),
         });

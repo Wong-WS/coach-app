@@ -29,7 +29,8 @@ import {
 } from '@/hooks/useCoachData';
 import { useToast } from '@/components/ui/Toast';
 import type { AwayPeriod, Booking, ClassException, LessonLog, Student, Wallet } from '@/types';
-import { createBalanceTracker } from '@/lib/wallet-ledger';
+import { createBalanceTracker, planUndoRefunds } from '@/lib/wallet-ledger';
+import type { UndoLedgerEntry } from '@/lib/wallet-ledger';
 import {
   getClassesForDate,
   getBookingTotalCents,
@@ -221,6 +222,10 @@ export default function DashboardPage() {
 
   // Mark-done modal state
   const [markDoneBooking, setMarkDoneBooking] = useState<Booking | null>(null);
+  // Undo is money-moving: it needs a confirm step and a strict in-flight
+  // guard — a spam-clicked bare button once posted five duplicate refunds.
+  const [undoCtx, setUndoCtx] = useState<Booking | null>(null);
+  const [undoing, setUndoing] = useState(false);
   const [markDoneAmounts, setMarkDoneAmounts] = useState<Record<string, number>>({});
   const [markDoneAttending, setMarkDoneAttending] = useState<string[]>([]);
   const [markingDone, setMarkingDone] = useState(false);
@@ -582,17 +587,20 @@ export default function DashboardPage() {
 
   const handleUndoMarkDone = async (c: Booking) => {
     if (!coach || !db) return;
+    if (undoing) return; // in-flight guard: extra clicks must not re-run
+    setUndoing(true);
     try {
       const firestore = db as Firestore;
       const logs = lessonLogs.filter((l) => l.bookingId === c.id && l.date === selectedDateStr);
       if (logs.length === 0) return;
 
-      // Refund the wallet that was ACTUALLY charged — found via the charge
-      // transaction's lessonLogId — not whichever wallet the booking points at
-      // now. The coach may have moved the student to a different wallet since
-      // the lesson was marked done.
+      // Refund the wallets that were ACTUALLY charged — found via the charge
+      // transactions' lessonLogId — not whichever wallet the booking points at
+      // now. The query also returns refunds tagged with the same lessonLogId,
+      // which planUndoRefunds uses to skip charges already reversed, so a
+      // double-fired undo cannot pay a student twice.
       const logIds = logs.map((l) => l.id);
-      const charges: Array<{ walletId: string; amountCents: number; description: string; studentId?: string }> = [];
+      const entries: UndoLedgerEntry[] = [];
       for (const w of wallets) {
         // Firestore caps 'in' at 30 values; a class never has that many logs.
         const snap = await getDocs(
@@ -603,45 +611,50 @@ export default function DashboardPage() {
         );
         for (const d of snap.docs) {
           const t = d.data();
-          charges.push({
+          entries.push({
+            lessonLogId: t.lessonLogId,
             walletId: w.id,
+            type: t.type,
             amountCents: centsFromLegacy(t.amountCents, t.amount),
             description: t.description ?? '',
             studentId: t.studentId,
           });
         }
       }
+      const refunds = planUndoRefunds(entries);
 
       const batch = writeBatch(firestore);
       const tracker = createBalanceTracker(wallets);
       for (const l of logs) {
         batch.delete(doc(firestore, 'coaches', coach.id, 'lessonLogs', l.id));
       }
-      for (const ch of charges) {
-        const refund = Math.abs(ch.amountCents);
-        if (refund <= 0) continue;
+      for (const r of refunds) {
         const txnRef = doc(
-          collection(firestore, 'coaches', coach.id, 'wallets', ch.walletId, 'transactions'),
+          collection(firestore, 'coaches', coach.id, 'wallets', r.walletId, 'transactions'),
         );
         batch.set(txnRef, {
           type: 'refund',
-          amountCents: refund,
-          balanceAfterCents: tracker.apply(ch.walletId, refund),
-          description: `Reversed: ${ch.description}`,
-          studentId: ch.studentId,
+          amountCents: r.amountCents,
+          balanceAfterCents: tracker.apply(r.walletId, r.amountCents),
+          description: `Reversed: ${r.description}`,
+          studentId: r.studentId,
+          lessonLogId: r.lessonLogId,
           date: selectedDateStr,
           createdAt: serverTimestamp(),
         });
-        batch.update(doc(firestore, 'coaches', coach.id, 'wallets', ch.walletId), {
-          balanceCents: increment(refund),
+        batch.update(doc(firestore, 'coaches', coach.id, 'wallets', r.walletId), {
+          balanceCents: increment(r.amountCents),
           updatedAt: serverTimestamp(),
         });
       }
       await batch.commit();
       showToast('Reopened class', 'success');
+      setUndoCtx(null);
     } catch (e) {
       console.error(e);
       showToast('Failed to undo', 'error');
+    } finally {
+      setUndoing(false);
     }
   };
 
@@ -996,7 +1009,7 @@ export default function DashboardPage() {
                   canMarkDone={canMarkDone}
                   onMarkDone={() => openMarkDone(c)}
                   onCancel={() => openCancelFlow(c)}
-                  onUndo={() => handleUndoMarkDone(c)}
+                  onUndo={() => setUndoCtx(c)}
                   onEdit={() => openEditBooking(c)}
                   onDuplicate={() => handleDuplicate(c)}
                   compact={false}
@@ -1109,7 +1122,7 @@ export default function DashboardPage() {
                 canMarkDone={canMarkDone}
                 onMarkDone={() => openMarkDone(c)}
                 onCancel={() => openCancelFlow(c)}
-                onUndo={() => handleUndoMarkDone(c)}
+                onUndo={() => setUndoCtx(c)}
                 onEdit={() => openEditBooking(c)}
                 onDuplicate={() => handleDuplicate(c)}
                 compact
@@ -1140,6 +1153,45 @@ export default function DashboardPage() {
           />
         </div>
       </div>
+
+      <PaperModal
+        open={!!undoCtx}
+        onClose={() => !undoing && setUndoCtx(null)}
+        title="Reopen class?"
+        width={420}
+      >
+        {undoCtx && (() => {
+          const logs = lessonLogs.filter(
+            (l) => l.bookingId === undoCtx.id && l.date === selectedDateStr,
+          );
+          const total = logs.reduce((sum, l) => sum + l.priceCents, 0);
+          return (
+            <div className="flex flex-col gap-3">
+              <p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>
+                This removes {logs.length === 1 ? "today's lesson record" : `${logs.length} lesson records`} for{' '}
+                <span style={{ color: 'var(--ink)', fontWeight: 600 }}>
+                  {undoCtx.className || 'this class'}
+                </span>
+                {total > 0 ? (
+                  <>
+                    {' '}and refunds <span className="mono tnum" style={{ color: 'var(--ink)', fontWeight: 600 }}>RM {formatCents(total)}</span> to the charged wallet{logs.length === 1 ? '' : 's'}.
+                  </>
+                ) : (
+                  '.'
+                )}
+              </p>
+              <div className="flex gap-2">
+                <Btn variant="primary" full onClick={() => handleUndoMarkDone(undoCtx)} disabled={undoing}>
+                  {undoing ? 'Reopening…' : 'Reopen & refund'}
+                </Btn>
+                <Btn variant="ghost" full onClick={() => setUndoCtx(null)} disabled={undoing}>
+                  Cancel
+                </Btn>
+              </div>
+            </div>
+          );
+        })()}
+      </PaperModal>
 
       <MarkDoneModal
         open={!!markDoneBooking}
