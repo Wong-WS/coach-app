@@ -5,6 +5,7 @@ import {
   isRescheduledToDate,
   getCancelledClassesForDate,
   getScheduledRevenueForDateRange,
+  findOverlappingClasses,
 } from '@/lib/class-schedule';
 import { Booking, ClassException, AwayPeriod } from '@/types';
 
@@ -619,5 +620,43 @@ describe('getScheduledRevenueForDateRange with away periods', () => {
     });
     const total = getScheduledRevenueForDateRange('2026-03-15', '2026-04-01', [booking], []);
     expect(total).toBe(30000);
+  });
+});
+
+describe('findOverlappingClasses', () => {
+  const cls = (id: string, startTime: string, endTime: string) =>
+    makeBooking({ id, startTime, endTime });
+
+  it('finds a class overlapping the middle of the range', () => {
+    const hits = findOverlappingClasses([cls('a', '16:00', '17:00')], '16:30', '17:30');
+    expect(hits.map((c) => c.id)).toEqual(['a']);
+  });
+
+  it('ignores a class that merely touches the boundary', () => {
+    // Back-to-back lessons are normal scheduling, not a clash.
+    expect(findOverlappingClasses([cls('a', '15:00', '16:00')], '16:00', '17:00')).toEqual([]);
+    expect(findOverlappingClasses([cls('a', '17:00', '18:00')], '16:00', '17:00')).toEqual([]);
+  });
+
+  it('finds a class fully inside the range', () => {
+    const hits = findOverlappingClasses([cls('a', '16:15', '16:45')], '16:00', '17:00');
+    expect(hits.map((c) => c.id)).toEqual(['a']);
+  });
+
+  it('finds a class fully containing the range', () => {
+    const hits = findOverlappingClasses([cls('a', '15:00', '18:00')], '16:00', '17:00');
+    expect(hits.map((c) => c.id)).toEqual(['a']);
+  });
+
+  it('returns every clash, in order', () => {
+    const hits = findOverlappingClasses(
+      [cls('a', '16:00', '17:00'), cls('b', '18:30', '19:30'), cls('c', '16:30', '17:30')],
+      '16:30', '18:30',
+    );
+    expect(hits.map((c) => c.id)).toEqual(['a', 'c']);
+  });
+
+  it('returns empty for a clear slot', () => {
+    expect(findOverlappingClasses([cls('a', '09:00', '10:00')], '16:00', '17:00')).toEqual([]);
   });
 });

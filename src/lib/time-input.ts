@@ -126,3 +126,11 @@ export function nearbySteppedTimes(anchor: string, step: number, count = 7): str
   }
   return slots;
 }
+
+/**
+ * True when `end` is strictly after `start`. Both are 24h "HH:MM", so string
+ * order is time order. Zero-length lessons are rejected too.
+ */
+export function isEndAfterStart(start: string, end: string): boolean {
+  return end > start;
+}

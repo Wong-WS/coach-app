@@ -41,7 +41,7 @@ import { resolveWallet } from '@/lib/wallets';
 import { isLowBalance, getNextLessonCost } from '@/lib/wallet-alerts';
 import { computeCancelFuture } from '@/lib/cancel-scope';
 import { isDateInAwayPeriod } from '@/lib/away-periods';
-import { shiftEndTime } from '@/lib/time-input';
+import { shiftEndTime, isEndAfterStart } from '@/lib/time-input';
 import { formatTimeDisplay } from '@/lib/time-format';
 import { formatDateFull, formatDateShort, parseDateString, canMarkDoneOn } from '@/lib/date-format';
 import {
@@ -760,6 +760,10 @@ export default function DashboardPage() {
       showToast('Class name is required', 'error');
       return;
     }
+    if (!isEndAfterStart(editStartTime, editEndTime)) {
+      showToast('End time must be after start time', 'error');
+      return;
+    }
     setEditSaving(true);
     try {
       const firestore = db as Firestore;
@@ -1197,6 +1201,8 @@ export default function DashboardPage() {
         wallets={wallets}
         locations={locations}
         bookings={bookings}
+        exceptions={classExceptions}
+        awayPeriods={awayPeriods}
         defaultDate={selectedDateStr}
         prefill={duplicatePrefill}
       />

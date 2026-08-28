@@ -9,14 +9,16 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useToast } from '@/components/ui/Toast';
-import type { Student, Wallet, Location, Booking } from '@/types';
+import type { Student, Wallet, Location, Booking, ClassException, AwayPeriod } from '@/types';
 import {
   getDayOfWeekForDate,
+  getClassesForDate,
+  findOverlappingClasses,
 } from '@/lib/class-schedule';
 import { findOrCreateStudent } from '@/lib/students';
 import { groupStudentsByLocation } from '@/lib/student-location-history';
 import type { OptionGroup } from '@/lib/combobox-filter';
-import { shiftEndTime } from '@/lib/time-input';
+import { shiftEndTime, isEndAfterStart } from '@/lib/time-input';
 import {
   Btn,
   ComboBox,
@@ -84,6 +86,8 @@ export function AddLessonModal({
   wallets,
   locations,
   bookings,
+  exceptions,
+  awayPeriods,
   defaultDate,
   prefill,
 }: {
@@ -94,6 +98,8 @@ export function AddLessonModal({
   wallets: Wallet[];
   locations: Location[];
   bookings: Booking[];
+  exceptions: ClassException[];
+  awayPeriods: AwayPeriod[];
   defaultDate: string;
   prefill?: AddLessonPrefill | null;
 }) {
@@ -221,12 +227,39 @@ export function AddLessonModal({
     ];
   }, [studentGroups, selectedLocationName]);
 
+  // #11 — same-slot clash warning. Checks the chosen date only (for a weekly
+  // repeat that's the first occurrence — enough of a signal). Warn, don't
+  // block: adjacent-court double-ups can be deliberate.
+  const overlaps = useMemo(() => {
+    if (!date || !isEndAfterStart(startTime, endTime)) return [];
+    return findOverlappingClasses(
+      getClassesForDate(date, bookings, exceptions, awayPeriods),
+      startTime,
+      endTime,
+    );
+  }, [date, startTime, endTime, bookings, exceptions, awayPeriods]);
+
+  // #12 — students about to be saved with no price. Legitimate (free trial),
+  // but silent RM 0 lessons are usually a forgotten field.
+  const unpricedNames = rows
+    .filter((r) => (Number(r.priceCents) || 0) === 0)
+    .map((r, i) =>
+      r.mode === 'existing'
+        ? students.find((st) => st.id === r.studentId)?.clientName ?? `Student ${i + 1}`
+        : r.newName.trim() || `Student ${i + 1}`,
+    );
+
   const handleSave = async () => {
     if (!coachId || !db) {
       showToast('Account still loading — refresh the page and try again', 'error');
       return;
     }
     if (rows.length === 0) return;
+
+    if (!isEndAfterStart(startTime, endTime)) {
+      showToast('End time must be after start time', 'error');
+      return;
+    }
 
     // Validate rows
     for (let i = 0; i < rows.length; i++) {
@@ -511,6 +544,25 @@ export function AddLessonModal({
           </button>
         </div>
 
+        {overlaps.length > 0 && (
+          <div
+            className="rounded-[10px] text-[12px]"
+            style={{ padding: '8px 12px', background: 'var(--warn-soft)', color: 'var(--warn)' }}
+          >
+            Clashes with {overlaps
+              .map((o) => `${o.className || 'a class'} (${o.startTime}–${o.endTime})`)
+              .join(', ')}{' '}
+            on this date. You can still save it.
+          </div>
+        )}
+        {unpricedNames.length > 0 && (
+          <div
+            className="rounded-[10px] text-[12px]"
+            style={{ padding: '8px 12px', background: 'var(--warn-soft)', color: 'var(--warn)' }}
+          >
+            No price set for {unpricedNames.join(', ')} — this lesson will charge RM 0.
+          </div>
+        )}
         <div
           className="flex items-center justify-between rounded-[10px] border"
           style={{

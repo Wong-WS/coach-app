@@ -164,3 +164,16 @@ export function getCancelledClassesForDate(
 
   return result.sort((a, b) => a.booking.startTime.localeCompare(b.booking.startTime));
 }
+
+/**
+ * Classes whose time range overlaps [startTime, endTime) — used to warn before
+ * saving a lesson into an occupied slot. Boundary touches (back-to-back
+ * lessons) are not overlaps. Times are 24h "HH:MM"; string order is time order.
+ */
+export function findOverlappingClasses<T extends Pick<Booking, 'startTime' | 'endTime'>>(
+  classes: T[],
+  startTime: string,
+  endTime: string,
+): T[] {
+  return classes.filter((c) => c.startTime < endTime && startTime < c.endTime);
+}

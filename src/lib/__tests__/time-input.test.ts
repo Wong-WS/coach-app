@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { parseTimeInput, nearbySteppedTimes, snapToStep, shiftEndTime } from '@/lib/time-input';
+import { parseTimeInput, nearbySteppedTimes, snapToStep, shiftEndTime,
+  isEndAfterStart,
+} from '@/lib/time-input';
 
 describe('parseTimeInput — suffix forms', () => {
   it('parses "9a" as 09:00', () => {
@@ -163,5 +165,24 @@ describe('shiftEndTime', () => {
   });
   it('returns the original end if duration is negative', () => {
     expect(shiftEndTime('11:00', '10:00', '14:00')).toBe('10:00');
+  });
+});
+
+describe('isEndAfterStart', () => {
+  it('accepts a normal range', () => {
+    expect(isEndAfterStart('16:00', '17:00')).toBe(true);
+  });
+
+  it('rejects end before start', () => {
+    expect(isEndAfterStart('17:00', '16:00')).toBe(false);
+  });
+
+  it('rejects a zero-length lesson', () => {
+    expect(isEndAfterStart('16:00', '16:00')).toBe(false);
+  });
+
+  it('compares within the same hour', () => {
+    expect(isEndAfterStart('16:05', '16:30')).toBe(true);
+    expect(isEndAfterStart('16:30', '16:05')).toBe(false);
   });
 });

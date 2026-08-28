@@ -7,6 +7,7 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+  getDoc,
   getDocs,
   writeBatch,
   serverTimestamp,
@@ -1229,11 +1230,24 @@ export default function PaymentsPage() {
           where('createdAt', '>', editingTxn.createdAt),
         ),
       );
+      // A charge born from mark-as-done links its lesson log. Keep the
+      // lesson's recorded price in step, or the student's lesson history and
+      // the wallet ledger tell different stories. getDoc first: the log may
+      // have been deleted since, and a batch.update on a missing doc fails
+      // the whole batch.
+      const logRef = editingTxn.lessonLogId
+        ? doc(firestore, 'coaches', coach.id, 'lessonLogs', editingTxn.lessonLogId)
+        : null;
+      const logSnap = logRef ? await getDoc(logRef) : null;
+
       const batch = writeBatch(firestore);
       batch.update(txnRef, {
         amountCents: newAmount,
         balanceAfterCents: editingTxn.balanceAfterCents + delta,
       });
+      if (logRef && logSnap?.exists()) {
+        batch.update(logRef, { priceCents: Math.abs(newAmount) });
+      }
       for (const d of laterSnap.docs) {
         batch.update(d.ref, { balanceAfterCents: increment(delta) });
       }
@@ -1259,6 +1273,13 @@ export default function PaymentsPage() {
     try {
       const firestore = db as Firestore;
       const removed = -editingTxn.amountCents;
+      // Deleting the charge leaves the lesson itself in place — it still
+      // happened — but it is now unpaid-by-design, so record it as RM 0
+      // rather than letting income reports count money that never moved.
+      const logRef = editingTxn.lessonLogId
+        ? doc(firestore, 'coaches', coach.id, 'lessonLogs', editingTxn.lessonLogId)
+        : null;
+      const logSnap = logRef ? await getDoc(logRef) : null;
       const laterSnap = await getDocs(
         query(
           collection(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id, 'transactions'),
@@ -1279,6 +1300,9 @@ export default function PaymentsPage() {
       );
       for (const d of laterSnap.docs) {
         batch.update(d.ref, { balanceAfterCents: increment(removed) });
+      }
+      if (logRef && logSnap?.exists()) {
+        batch.update(logRef, { priceCents: 0 });
       }
       batch.update(
         doc(firestore, 'coaches', coach.id, 'wallets', selectedWallet.id),
@@ -1973,6 +1997,11 @@ export default function PaymentsPage() {
               />
             </div>
 
+            {editingTxn.lessonLogId && !confirmDeleteTxn && (
+              <p className="text-[11.5px]" style={{ color: 'var(--ink-3)' }}>
+                Linked to a lesson — saving also updates that lesson&rsquo;s price.
+              </p>
+            )}
             {!confirmDeleteTxn ? (
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <Btn
@@ -1995,6 +2024,8 @@ export default function PaymentsPage() {
                   Delete this transaction? The wallet balance will be adjusted by{' '}
                   {editingTxn.amountCents < 0 ? '+' : '−'}RM{' '}
                   {formatCents(Math.abs(editingTxn.amountCents))}.
+                  {editingTxn.lessonLogId &&
+                    ' The linked lesson stays in the history, marked RM 0.'}
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   <Btn
