@@ -29,7 +29,12 @@ import {
 } from '@/hooks/useCoachData';
 import { useToast } from '@/components/ui/Toast';
 import type { AwayPeriod, Booking, ClassException, LessonLog, Student, Wallet } from '@/types';
-import { collectWalletLedgerEntries, createBalanceTracker, planUndoRefunds } from '@/lib/wallet-ledger';
+import {
+  collectWalletLedgerEntries,
+  createBalanceTracker,
+  planUndoRefunds,
+  selectUndoWalletIds,
+} from '@/lib/wallet-ledger';
 import type { UndoLedgerEntry } from '@/lib/wallet-ledger';
 import {
   getClassesForDate,
@@ -306,6 +311,12 @@ export default function DashboardPage() {
         const price = markDoneAmounts[studentId] ?? booking.studentPriceCents[studentId] ?? 0;
         const studentName = students.find((s) => s.id === studentId)?.clientName ?? '';
 
+        // Resolved before the log is written so the log's walletId and the
+        // charge below can never name different wallets — undo trusts it to
+        // find the refund target without interrogating every wallet.
+        const wallet = resolveWallet(booking, studentId, wallets);
+        const charged = wallet && price > 0 ? wallet : null;
+
         const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
         batch.set(logRef, {
           date: selectedDateStr,
@@ -316,29 +327,29 @@ export default function DashboardPage() {
           startTime: booking.startTime,
           endTime: booking.endTime,
           priceCents: price,
+          walletId: charged?.id ?? null,
           createdAt: serverTimestamp(),
         });
 
-        const wallet = resolveWallet(booking, studentId, wallets);
-        if (wallet && price > 0) {
-          const existing = walletImpacts.get(wallet.id);
+        if (charged) {
+          const existing = walletImpacts.get(charged.id);
           if (existing) existing.charge += price;
-          else walletImpacts.set(wallet.id, { wallet, charge: price });
+          else walletImpacts.set(charged.id, { wallet: charged, charge: price });
 
           const txnRef = doc(
-            collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'),
+            collection(firestore, 'coaches', coach.id, 'wallets', charged.id, 'transactions'),
           );
           batch.set(txnRef, {
             type: 'charge',
             amountCents: -price,
-            balanceAfterCents: tracker.apply(wallet.id, -price),
+            balanceAfterCents: tracker.apply(charged.id, -price),
             description: `Lesson — ${studentName} (${booking.startTime})`,
             studentId,
             lessonLogId: logRef.id,
             date: selectedDateStr,
             createdAt: serverTimestamp(),
           });
-          batch.update(doc(firestore, 'coaches', coach.id, 'wallets', wallet.id), {
+          batch.update(doc(firestore, 'coaches', coach.id, 'wallets', charged.id), {
             balanceCents: increment(-price),
             updatedAt: serverTimestamp(),
           });
@@ -414,6 +425,11 @@ export default function DashboardPage() {
           const price = booking.studentPriceCents[studentId] ?? 0;
           const studentName = students.find((s) => s.id === studentId)?.clientName ?? '';
 
+          // Same ordering as the single mark-done: the log records the wallet
+          // it charged, so undo can go straight to it.
+          const wallet = resolveWallet(booking, studentId, wallets);
+          const charged = wallet && price > 0 ? wallet : null;
+
           const logRef = doc(collection(firestore, 'coaches', coach.id, 'lessonLogs'));
           batch.set(logRef, {
             date: selectedDateStr,
@@ -424,30 +440,30 @@ export default function DashboardPage() {
             startTime: booking.startTime,
             endTime: booking.endTime,
             priceCents: price,
+            walletId: charged?.id ?? null,
             createdAt: serverTimestamp(),
           });
           lessonsLogged += 1;
 
-          const wallet = resolveWallet(booking, studentId, wallets);
-          if (wallet && price > 0) {
-            const existing = walletImpacts.get(wallet.id);
+          if (charged) {
+            const existing = walletImpacts.get(charged.id);
             if (existing) existing.charge += price;
-            else walletImpacts.set(wallet.id, { wallet, charge: price });
+            else walletImpacts.set(charged.id, { wallet: charged, charge: price });
 
             const txnRef = doc(
-              collection(firestore, 'coaches', coach.id, 'wallets', wallet.id, 'transactions'),
+              collection(firestore, 'coaches', coach.id, 'wallets', charged.id, 'transactions'),
             );
             batch.set(txnRef, {
               type: 'charge',
               amountCents: -price,
-              balanceAfterCents: tracker.apply(wallet.id, -price),
+              balanceAfterCents: tracker.apply(charged.id, -price),
               description: `Lesson — ${studentName} (${booking.startTime})`,
               studentId,
               lessonLogId: logRef.id,
               date: selectedDateStr,
               createdAt: serverTimestamp(),
             });
-            batch.update(doc(firestore, 'coaches', coach.id, 'wallets', wallet.id), {
+            batch.update(doc(firestore, 'coaches', coach.id, 'wallets', charged.id), {
               balanceCents: increment(-price),
               updatedAt: serverTimestamp(),
             });
@@ -594,14 +610,16 @@ export default function DashboardPage() {
       const logs = lessonLogs.filter((l) => l.bookingId === c.id && l.date === selectedDateStr);
       if (logs.length === 0) return;
 
-      // Refund the wallets that were ACTUALLY charged — found via the charge
-      // transactions' lessonLogId — not whichever wallet the booking points at
-      // now. The query also returns refunds tagged with the same lessonLogId,
-      // which planUndoRefunds uses to skip charges already reversed, so a
+      // Refund the wallets that were ACTUALLY charged — not whichever wallet
+      // the booking points at now, since the coach may have moved the student
+      // since. The log records the wallet it charged; only logs written before
+      // that field existed make this fall back to asking every wallet. The
+      // query also returns refunds tagged with the same lessonLogId, which
+      // planUndoRefunds uses to skip charges already reversed, so a
       // double-fired undo cannot pay a student twice.
       const logIds = logs.map((l) => l.id);
       const entries = await collectWalletLedgerEntries<UndoLedgerEntry>(
-        wallets.map((w) => w.id),
+        selectUndoWalletIds(logs, wallets.map((w) => w.id)),
         async (walletId) => {
           // Firestore caps 'in' at 30 values; a class never has that many logs.
           const snap = await getDocs(

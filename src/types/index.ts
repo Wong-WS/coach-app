@@ -60,6 +60,16 @@ export interface LessonLog {
   endTime: string;
   priceCents: number;
   note?: string;
+  /**
+   * Wallet this lesson's charge was posted to, or null when nothing was
+   * charged (no wallet attached, or a RM 0 lesson). Undo reads it to refund
+   * the one wallet instead of interrogating all of them.
+   *
+   * Absent — not null — on logs written before 2026-10-18, which carry no
+   * record of where their charge went; those still need the full scan. The
+   * three states are load-bearing, so don't collapse null into undefined.
+   */
+  walletId?: string | null;
   createdAt: Date;
 }
 

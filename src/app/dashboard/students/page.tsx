@@ -34,7 +34,7 @@ import { Button, Input, PhoneInput } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateMedium, parseDateString } from '@/lib/date-format';
 import { centsFromLegacy, formatCents } from '@/lib/money';
-import { collectWalletLedgerEntries } from '@/lib/wallet-ledger';
+import { collectWalletLedgerEntries, selectUndoWalletIds } from '@/lib/wallet-ledger';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -238,7 +238,7 @@ function StudentDetail({
   logsLoading: boolean;
   logLimit: number;
   onEdit: () => void;
-  onDeleteLog: (logId: string) => void;
+  onDeleteLog: (log: LessonLog) => void;
   onDeleteStudent: () => void;
   onLoadMore: () => void;
 }) {
@@ -456,7 +456,7 @@ function StudentDetail({
                   RM {formatCents(log.priceCents)}
                 </span>
                 <button
-                  onClick={() => onDeleteLog(log.id)}
+                  onClick={() => onDeleteLog(log)}
                   aria-label="Delete lesson"
                   style={{
                     border: 'none',
@@ -616,13 +616,13 @@ function EditDetailsModal({
 
 function DeleteLessonModal({
   open,
-  logId,
+  log,
   coachId,
   wallets,
   onClose,
 }: {
   open: boolean;
-  logId: string | null;
+  log: LessonLog | null;
   coachId: string | undefined;
   wallets: Wallet[];
   onClose: () => void;
@@ -631,22 +631,23 @@ function DeleteLessonModal({
   const [deleting, setDeleting] = useState(false);
 
   const handleDelete = async () => {
-    if (!coachId || !db || !logId) return;
+    if (!coachId || !db || !log) return;
     setDeleting(true);
     try {
       const firestore = db as Firestore;
 
-      // Find the wallet transaction tied to this lesson, if any. Every wallet
-      // has to be asked — the student may have been moved since the lesson was
-      // charged — but the questions go out together, not one round trip at a
-      // time; in series this froze the button for minutes on a long wallet list.
+      // Find the wallet transaction tied to this lesson, if any. The log
+      // records the wallet it charged, so this is normally a single query;
+      // only logs written before that field existed fall back to asking every
+      // wallet, and then the questions go out together rather than one round
+      // trip at a time — in series that froze the button for minutes.
       const matches = await collectWalletLedgerEntries(
-        wallets.map((w) => w.id),
+        selectUndoWalletIds([log], wallets.map((w) => w.id)),
         async (walletId) => {
           const txnSnap = await getDocs(
             query(
               collection(firestore, 'coaches', coachId, 'wallets', walletId, 'transactions'),
-              where('lessonLogId', '==', logId),
+              where('lessonLogId', '==', log.id),
             ),
           );
           return txnSnap.docs.map((d) => {
@@ -679,7 +680,7 @@ function DeleteLessonModal({
 
       // Atomically delete the lesson log + post refund + bump wallet balance.
       const batch = writeBatch(firestore);
-      batch.delete(doc(firestore, 'coaches', coachId, 'lessonLogs', logId));
+      batch.delete(doc(firestore, 'coaches', coachId, 'lessonLogs', log.id));
       if (matchedWalletId && matchedTxn) {
         const refundAmount = Math.abs(matchedTxn.amountCents);
         const now = new Date();
@@ -700,7 +701,7 @@ function DeleteLessonModal({
           balanceAfterCents: matchedNewBalance,
           description: `Reversed: ${matchedTxn.description}`,
           studentId: matchedTxn.studentId,
-          lessonLogId: logId,
+          lessonLogId: log.id,
           date: dateStr,
           createdAt: serverTimestamp(),
         });
@@ -842,7 +843,7 @@ export default function StudentsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [logLimit, setLogLimit] = useState(20);
   const [editOpen, setEditOpen] = useState(false);
-  const [deleteLogId, setDeleteLogId] = useState<string | null>(null);
+  const [deleteLog, setDeleteLog] = useState<LessonLog | null>(null);
   const [deleteStudentOpen, setDeleteStudentOpen] = useState(false);
 
   const { lessonLogs: studentLogs, loading: logsLoading } = useLessonLogs(
@@ -1140,7 +1141,7 @@ export default function StudentsPage() {
                 logsLoading={logsLoading}
                 logLimit={logLimit}
                 onEdit={() => setEditOpen(true)}
-                onDeleteLog={(id) => setDeleteLogId(id)}
+                onDeleteLog={(l) => setDeleteLog(l)}
                 onDeleteStudent={() => setDeleteStudentOpen(true)}
                 onLoadMore={() => setLogLimit(logLimit + 20)}
               />
@@ -1172,7 +1173,7 @@ export default function StudentsPage() {
             logsLoading={logsLoading}
             logLimit={logLimit}
             onEdit={() => setEditOpen(true)}
-            onDeleteLog={(id) => setDeleteLogId(id)}
+            onDeleteLog={(l) => setDeleteLog(l)}
             onDeleteStudent={() => setDeleteStudentOpen(true)}
             onLoadMore={() => setLogLimit(logLimit + 20)}
           />
@@ -1187,11 +1188,11 @@ export default function StudentsPage() {
         onClose={() => setEditOpen(false)}
       />
       <DeleteLessonModal
-        open={deleteLogId !== null}
-        logId={deleteLogId}
+        open={deleteLog !== null}
+        log={deleteLog}
         coachId={coach?.id}
         wallets={wallets}
-        onClose={() => setDeleteLogId(null)}
+        onClose={() => setDeleteLog(null)}
       />
       <DeleteStudentModal
         open={deleteStudentOpen}

@@ -177,6 +177,10 @@ export function useLessonLogs(coachId: string | undefined, dateFilter?: string, 
           endTime: d.data().endTime,
           priceCents: centsFromLegacy(d.data().priceCents, d.data().price),
           note: d.data().note ?? undefined,
+          // Passed through raw on purpose: undefined (pre-2026-10-18 log, wallet
+          // unknown) and null (nothing was charged) mean different things to
+          // selectUndoWalletIds. `?? undefined` here would erase that.
+          walletId: d.data().walletId,
           createdAt: d.data().createdAt?.toDate() || new Date(),
         }));
         setLessonLogs(items);

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { collectWalletLedgerEntries, createBalanceTracker, planUndoRefunds } from '@/lib/wallet-ledger';
+import {
+  collectWalletLedgerEntries,
+  createBalanceTracker,
+  planUndoRefunds,
+  selectUndoWalletIds,
+} from '@/lib/wallet-ledger';
+import type { UndoLedgerEntry } from '@/lib/wallet-ledger';
 import type { Wallet } from '@/types';
 
 function makeWallet(overrides: Partial<Wallet> = {}): Wallet {
@@ -139,5 +145,111 @@ describe('collectWalletLedgerEntries', () => {
 
   it('returns nothing when no wallet holds a matching transaction', async () => {
     expect(await collectWalletLedgerEntries(['w1', 'w2'], async () => [])).toEqual([]);
+  });
+});
+
+describe('selectUndoWalletIds', () => {
+  const ALL = ['w1', 'w2', 'w3'];
+
+  it('asks only the wallet the lesson was charged to', () => {
+    expect(selectUndoWalletIds([{ walletId: 'w2' }], ALL)).toEqual(['w2']);
+  });
+
+  it('dedupes siblings sharing one wallet', () => {
+    expect(selectUndoWalletIds([{ walletId: 'w2' }, { walletId: 'w2' }], ALL)).toEqual(['w2']);
+  });
+
+  it('returns the wallets in list order, whatever order the logs came in', () => {
+    expect(selectUndoWalletIds([{ walletId: 'w3' }, { walletId: 'w1' }], ALL)).toEqual(['w1', 'w3']);
+  });
+
+  it('asks nothing when the lesson charged nothing', () => {
+    // null = recorded as "no charge posted" (no wallet attached, or RM 0).
+    expect(selectUndoWalletIds([{ walletId: null }], ALL)).toEqual([]);
+  });
+
+  it('skips the uncharged log but still asks the charged one', () => {
+    expect(selectUndoWalletIds([{ walletId: null }, { walletId: 'w3' }], ALL)).toEqual(['w3']);
+  });
+
+  it('falls back to every wallet when a log predates the field', () => {
+    // undefined = written before walletId existed; where its charge went is
+    // unknowable from the log, so the full scan is the only correct answer.
+    expect(selectUndoWalletIds([{}], ALL)).toEqual(ALL);
+  });
+
+  it('falls back to every wallet if even one log in the class predates it', () => {
+    expect(selectUndoWalletIds([{ walletId: 'w2' }, {}], ALL)).toEqual(ALL);
+  });
+
+  it('drops a wallet that no longer exists', () => {
+    // The balance tracker only knows current wallets — targeting a deleted one
+    // would throw mid-undo instead of simply finding nothing to refund.
+    expect(selectUndoWalletIds([{ walletId: 'gone' }], ALL)).toEqual([]);
+  });
+});
+
+describe('targeted undo matches what the full scan would have refunded', () => {
+  // The whole point of walletId is to skip wallets. These pin the invariant
+  // that skipping them changes nothing about the money.
+  const ALL = ['w1', 'w2', 'w3'];
+  // What each wallet would answer if asked about log1/log2.
+  const LEDGER: Record<string, UndoLedgerEntry[]> = {
+    w1: [],
+    w2: [{ lessonLogId: 'log1', walletId: 'w2', type: 'charge', amountCents: -5000, description: 'Lesson — Jian' }],
+    w3: [{ lessonLogId: 'log2', walletId: 'w3', type: 'charge', amountCents: -5000, description: 'Lesson — Seoan' }],
+  };
+  const ask = async (walletId: string) => LEDGER[walletId];
+
+  async function refundsFor(walletIds: string[]) {
+    return planUndoRefunds(await collectWalletLedgerEntries(walletIds, ask));
+  }
+
+  it('two siblings on different wallets: targeted == full scan', async () => {
+    const logs = [{ walletId: 'w2' }, { walletId: 'w3' }];
+
+    const targeted = await refundsFor(selectUndoWalletIds(logs, ALL));
+
+    expect(targeted).toEqual(await refundsFor(ALL));
+    expect(targeted.map((r) => [r.walletId, r.amountCents])).toEqual([
+      ['w2', 5000],
+      ['w3', 5000],
+    ]);
+  });
+
+  it('a legacy log still gets its refund, via the fallback scan', async () => {
+    const targeted = await refundsFor(selectUndoWalletIds([{}, {}], ALL));
+
+    expect(targeted).toEqual(await refundsFor(ALL));
+    expect(targeted).toHaveLength(2);
+  });
+
+  it('already-reversed charges stay skipped on the fast path', async () => {
+    const reversed = async (walletId: string): Promise<UndoLedgerEntry[]> =>
+      walletId === 'w2'
+        ? [
+            ...LEDGER.w2,
+            { lessonLogId: 'log1', walletId: 'w2', type: 'refund', amountCents: 5000, description: 'Reversed' },
+          ]
+        : LEDGER[walletId];
+
+    const entries = await collectWalletLedgerEntries(selectUndoWalletIds([{ walletId: 'w2' }], ALL), reversed);
+
+    expect(planUndoRefunds(entries)).toEqual([]);
+  });
+
+  it('balances still sequence correctly when the tracker only sees targeted wallets', async () => {
+    // Two siblings sharing one wallet: the second receipt must see the first.
+    const shared = async (): Promise<UndoLedgerEntry[]> => [
+      { lessonLogId: 'log1', walletId: 'w2', type: 'charge', amountCents: -5000, description: 'a' },
+      { lessonLogId: 'log2', walletId: 'w2', type: 'charge', amountCents: -5000, description: 'b' },
+    ];
+    const ids = selectUndoWalletIds([{ walletId: 'w2' }, { walletId: 'w2' }], ALL);
+    expect(ids).toEqual(['w2']);
+
+    const refunds = planUndoRefunds(await collectWalletLedgerEntries(ids, shared));
+    const tracker = createBalanceTracker([makeWallet({ id: 'w2', balanceCents: 0 })]);
+
+    expect(refunds.map((r) => tracker.apply(r.walletId, r.amountCents))).toEqual([5000, 10000]);
   });
 });

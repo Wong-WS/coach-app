@@ -95,3 +95,30 @@ export async function collectWalletLedgerEntries<T>(
   const perWallet = await Promise.all(walletIds.map((id) => loadForWallet(id)));
   return perWallet.flat();
 }
+
+/**
+ * Which wallets undo has to interrogate to find a lesson's charge.
+ *
+ * Mark-as-done records the charged wallet on the lesson log, so the usual
+ * answer is "just that one" — one query instead of one per wallet. Three
+ * states, and the difference matters:
+ *
+ *   - a wallet id  → the charge went there; ask only it
+ *   - null         → nothing was charged (no wallet attached, or RM 0)
+ *   - undefined    → the log predates the field; where its charge went is
+ *                    unknowable from the log, so every wallet must be asked
+ *
+ * One legacy log forces the full scan for the whole class: a class is undone
+ * as a unit, and a half-scan would silently skip a refund.
+ */
+export function selectUndoWalletIds(
+  logs: Array<{ walletId?: string | null }>,
+  allWalletIds: string[],
+): string[] {
+  if (logs.some((l) => l.walletId === undefined)) return allWalletIds;
+  const targeted = new Set(logs.map((l) => l.walletId).filter((id): id is string => !!id));
+  // Intersected with the live list deliberately: a wallet deleted since the
+  // lesson was charged has no balance to credit, and feeding its id to
+  // createBalanceTracker would throw partway through planning the undo.
+  return allWalletIds.filter((id) => targeted.has(id));
+}
