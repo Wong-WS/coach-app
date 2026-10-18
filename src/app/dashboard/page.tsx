@@ -29,7 +29,7 @@ import {
 } from '@/hooks/useCoachData';
 import { useToast } from '@/components/ui/Toast';
 import type { AwayPeriod, Booking, ClassException, LessonLog, Student, Wallet } from '@/types';
-import { createBalanceTracker, planUndoRefunds } from '@/lib/wallet-ledger';
+import { collectWalletLedgerEntries, createBalanceTracker, planUndoRefunds } from '@/lib/wallet-ledger';
 import type { UndoLedgerEntry } from '@/lib/wallet-ledger';
 import {
   getClassesForDate,
@@ -600,27 +600,29 @@ export default function DashboardPage() {
       // which planUndoRefunds uses to skip charges already reversed, so a
       // double-fired undo cannot pay a student twice.
       const logIds = logs.map((l) => l.id);
-      const entries: UndoLedgerEntry[] = [];
-      for (const w of wallets) {
-        // Firestore caps 'in' at 30 values; a class never has that many logs.
-        const snap = await getDocs(
-          query(
-            collection(firestore, 'coaches', coach.id, 'wallets', w.id, 'transactions'),
-            where('lessonLogId', 'in', logIds.slice(0, 30)),
-          ),
-        );
-        for (const d of snap.docs) {
-          const t = d.data();
-          entries.push({
-            lessonLogId: t.lessonLogId,
-            walletId: w.id,
-            type: t.type,
-            amountCents: centsFromLegacy(t.amountCents, t.amount),
-            description: t.description ?? '',
-            studentId: t.studentId,
+      const entries = await collectWalletLedgerEntries<UndoLedgerEntry>(
+        wallets.map((w) => w.id),
+        async (walletId) => {
+          // Firestore caps 'in' at 30 values; a class never has that many logs.
+          const snap = await getDocs(
+            query(
+              collection(firestore, 'coaches', coach.id, 'wallets', walletId, 'transactions'),
+              where('lessonLogId', 'in', logIds.slice(0, 30)),
+            ),
+          );
+          return snap.docs.map((d) => {
+            const t = d.data();
+            return {
+              lessonLogId: t.lessonLogId,
+              walletId,
+              type: t.type,
+              amountCents: centsFromLegacy(t.amountCents, t.amount),
+              description: t.description ?? '',
+              studentId: t.studentId,
+            };
           });
-        }
-      }
+        },
+      );
       const refunds = planUndoRefunds(entries);
 
       const batch = writeBatch(firestore);

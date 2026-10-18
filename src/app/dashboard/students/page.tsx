@@ -34,6 +34,7 @@ import { Button, Input, PhoneInput } from '@/components/ui';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateMedium, parseDateString } from '@/lib/date-format';
 import { centsFromLegacy, formatCents } from '@/lib/money';
+import { collectWalletLedgerEntries } from '@/lib/wallet-ledger';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -635,41 +636,46 @@ function DeleteLessonModal({
     try {
       const firestore = db as Firestore;
 
-      // Find the wallet transaction tied to this lesson, if any.
-      let matchedWalletId: string | null = null;
-      let matchedTxn: { amountCents: number; description: string; studentId?: string } | null = null;
-      let matchedNewBalance = 0;
-      for (const walletDoc of wallets) {
-        const txnQuery = query(
-          collection(
-            firestore,
-            'coaches',
-            coachId,
-            'wallets',
-            walletDoc.id,
-            'transactions',
-          ),
-          where('lessonLogId', '==', logId),
-        );
-        const txnSnap = await getDocs(txnQuery);
-        if (!txnSnap.empty) {
-          const raw = txnSnap.docs[0].data() as {
-            amountCents?: number;
-            amount?: number;
-            description: string;
-            studentId?: string;
-          };
-          const originalTxn = {
-            amountCents: centsFromLegacy(raw.amountCents, raw.amount),
-            description: raw.description,
-            studentId: raw.studentId,
-          };
-          matchedWalletId = walletDoc.id;
-          matchedTxn = originalTxn;
-          matchedNewBalance = walletDoc.balanceCents + Math.abs(originalTxn.amountCents);
-          break;
-        }
-      }
+      // Find the wallet transaction tied to this lesson, if any. Every wallet
+      // has to be asked — the student may have been moved since the lesson was
+      // charged — but the questions go out together, not one round trip at a
+      // time; in series this froze the button for minutes on a long wallet list.
+      const matches = await collectWalletLedgerEntries(
+        wallets.map((w) => w.id),
+        async (walletId) => {
+          const txnSnap = await getDocs(
+            query(
+              collection(firestore, 'coaches', coachId, 'wallets', walletId, 'transactions'),
+              where('lessonLogId', '==', logId),
+            ),
+          );
+          return txnSnap.docs.map((d) => {
+            const raw = d.data() as {
+              amountCents?: number;
+              amount?: number;
+              description: string;
+              studentId?: string;
+            };
+            return {
+              walletId,
+              amountCents: centsFromLegacy(raw.amountCents, raw.amount),
+              description: raw.description,
+              studentId: raw.studentId,
+            };
+          });
+        },
+      );
+      // Wallet order is preserved, so this is the same transaction the old
+      // sequential scan broke out on.
+      const match = matches[0] ?? null;
+      const matchedWalletId = match?.walletId ?? null;
+      const matchedTxn = match
+        ? { amountCents: match.amountCents, description: match.description, studentId: match.studentId }
+        : null;
+      const matchedNewBalance = match
+        ? (wallets.find((w) => w.id === match.walletId)?.balanceCents ?? 0) +
+          Math.abs(match.amountCents)
+        : 0;
 
       // Atomically delete the lesson log + post refund + bump wallet balance.
       const batch = writeBatch(firestore);

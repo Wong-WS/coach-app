@@ -72,3 +72,26 @@ export function planUndoRefunds(entries: UndoLedgerEntry[]): PlannedRefund[] {
       studentId: e.studentId,
     }));
 }
+
+/**
+ * Load each wallet's ledger entries for an undo — all queries at once.
+ *
+ * The charged wallet can only be found by asking every wallet whether it holds
+ * a transaction tagged with the lesson's id: the coach may have moved the
+ * student to a different wallet since the lesson was marked done, and the old
+ * transaction stays where it was posted. That scan is unavoidable; doing it one
+ * `await` at a time was not. A coach with 70 wallets paid 70 sequential round
+ * trips before a single document was written, and watched the button sit on
+ * "Reopening…" for tens of seconds. Issued together it costs one round trip.
+ *
+ * Results keep wallet order, so `entries[0]` is still the first match in the
+ * wallet list — the same transaction the old sequential scan would have broken
+ * out on.
+ */
+export async function collectWalletLedgerEntries<T>(
+  walletIds: string[],
+  loadForWallet: (walletId: string) => Promise<T[]>,
+): Promise<T[]> {
+  const perWallet = await Promise.all(walletIds.map((id) => loadForWallet(id)));
+  return perWallet.flat();
+}

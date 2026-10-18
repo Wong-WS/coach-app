@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createBalanceTracker, planUndoRefunds } from '@/lib/wallet-ledger';
+import { collectWalletLedgerEntries, createBalanceTracker, planUndoRefunds } from '@/lib/wallet-ledger';
 import type { Wallet } from '@/types';
 
 function makeWallet(overrides: Partial<Wallet> = {}): Wallet {
@@ -99,5 +99,45 @@ describe('planUndoRefunds', () => {
   it('uses the charged magnitude, not a sign', () => {
     const plan = planUndoRefunds([charge('log1', 'w1', -12345)]);
     expect(plan[0].amountCents).toBe(12345);
+  });
+});
+
+describe('collectWalletLedgerEntries', () => {
+  it('queries every wallet at once, not one round trip at a time', async () => {
+    // The bug this pins: awaiting each wallet's query in series made undo cost
+    // one round trip per wallet. At 70 wallets the button sat on "Reopening…"
+    // for tens of seconds before a single document was written.
+    let inFlight = 0;
+    let peak = 0;
+    const loadForWallet = async (walletId: string) => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 1));
+      inFlight -= 1;
+      return [{ walletId }];
+    };
+
+    await collectWalletLedgerEntries(['w1', 'w2', 'w3', 'w4'], loadForWallet);
+
+    expect(peak).toBe(4);
+  });
+
+  it('flattens results in wallet order, so the first entry is the first match', async () => {
+    const byWallet: Record<string, string[]> = { w1: [], w2: ['a', 'b'], w3: ['c'] };
+
+    const entries = await collectWalletLedgerEntries(
+      ['w1', 'w2', 'w3'],
+      async (walletId) => byWallet[walletId].map((id) => ({ id, walletId })),
+    );
+
+    expect(entries).toEqual([
+      { id: 'a', walletId: 'w2' },
+      { id: 'b', walletId: 'w2' },
+      { id: 'c', walletId: 'w3' },
+    ]);
+  });
+
+  it('returns nothing when no wallet holds a matching transaction', async () => {
+    expect(await collectWalletLedgerEntries(['w1', 'w2'], async () => [])).toEqual([]);
   });
 });
