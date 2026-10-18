@@ -45,7 +45,8 @@ function useCoachSlug(coachId: string | undefined) {
 }
 
 function DashboardContent({ children }: { children: React.ReactNode }) {
-  const { user, coach, loading, signOut } = useAuth();
+  const { user, coach, loading, coachFailed, refreshCoach, signOut } = useAuth();
+  const [retrying, setRetrying] = useState(false);
   const { isDark, toggle } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
@@ -55,7 +56,11 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     if (!loading && !user) router.push('/login');
   }, [user, loading, router]);
 
-  if (loading) {
+  // Wait for auth, and for the coach profile on the happy path — but never on
+  // a profile read that failed or stalled, which is what used to leave this
+  // spinner up indefinitely. coachFailed is the escape hatch; the banner below
+  // explains it and offers a retry.
+  if (loading || (user && !coach && !coachFailed)) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
         <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: 'var(--accent)' }} />
@@ -68,6 +73,15 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   const handleSignOut = async () => {
     await signOut();
     router.push('/');
+  };
+
+  const handleRetryCoach = async () => {
+    setRetrying(true);
+    try {
+      await refreshCoach();
+    } finally {
+      setRetrying(false);
+    }
   };
 
   const displayName = coach?.displayName || user.email || 'Coach';
@@ -222,7 +236,28 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 min-w-0 pb-20 lg:pb-0">{children}</main>
+        <main className="flex-1 min-w-0 pb-20 lg:pb-0">
+          {coachFailed && (
+            <div
+              role="alert"
+              className="flex items-center gap-3 mx-4 mt-4 px-3.5 py-3 rounded-[10px]"
+              style={{ background: 'var(--bad-soft)', border: '1px solid var(--bad)' }}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="text-[13.5px] font-semibold" style={{ color: 'var(--ink)' }}>
+                  Couldn&apos;t load your account
+                </div>
+                <div className="text-[12.5px]" style={{ color: 'var(--ink-2)' }}>
+                  Your lessons and wallets can&apos;t be shown until this succeeds.
+                </div>
+              </div>
+              <Btn size="sm" onClick={handleRetryCoach} disabled={retrying}>
+                {retrying ? 'Retrying…' : 'Retry'}
+              </Btn>
+            </div>
+          )}
+          {children}
+        </main>
       </div>
 
       {/* Mobile bottom tab bar */}
