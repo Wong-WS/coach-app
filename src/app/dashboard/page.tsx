@@ -44,7 +44,7 @@ import {
   getDayOfWeekForDate,
 } from '@/lib/class-schedule';
 import { resolveWallet } from '@/lib/wallets';
-import { isLowBalance, getNextLessonCost } from '@/lib/wallet-alerts';
+import { isLowBalance, getNextLessonCost, getWalletHealth } from '@/lib/wallet-alerts';
 import { computeCancelFuture } from '@/lib/cancel-scope';
 import { isDateInAwayPeriod } from '@/lib/away-periods';
 import { shiftEndTime, isEndAfterStart } from '@/lib/time-input';
@@ -1719,9 +1719,17 @@ function ClassCard({
   const walletsFor = cls.studentIds
     .map((sid) => resolveWallet(cls, sid, wallets))
     .filter((w): w is Wallet => !!w);
-  const anyLow = walletsFor.some((w) =>
-    isLowBalance(w, bookings, exceptions, completedLogs, todayStr, awayPeriods),
+  // Worst wallet state across the class's payers drives the chip.
+  const walletHealths = walletsFor.map(
+    (w) => getWalletHealth(w, bookings, exceptions, completedLogs, todayStr, awayPeriods).health,
   );
+  const walletAlert = walletHealths.includes('owing')
+    ? 'owing'
+    : walletHealths.includes('empty')
+      ? 'empty'
+      : walletHealths.includes('low')
+        ? 'low'
+        : null;
   const duration = minutesBetween(cls.startTime, cls.endTime);
   // A "this only" override (rescheduled exception backing this date) is a
   // one-off divergence from the series, so don't paint it as recurring.
@@ -1805,7 +1813,15 @@ function ClassCard({
             </span>
           )}
           {isGroup && <Chip tone="accent">Group · {effectiveIds.length}</Chip>}
-          {anyLow && !isDone && !doneLoading && <Chip tone="warn">Low wallet</Chip>}
+          {walletAlert && !isDone && !doneLoading && (
+            <Chip tone={walletAlert === 'low' ? 'warn' : 'bad'}>
+              {walletAlert === 'owing'
+                ? 'Owing'
+                : walletAlert === 'empty'
+                  ? 'Empty wallet'
+                  : 'Low wallet'}
+            </Chip>
+          )}
         </div>
         <div
           className="flex items-center gap-2.5 text-[12.5px] flex-wrap"

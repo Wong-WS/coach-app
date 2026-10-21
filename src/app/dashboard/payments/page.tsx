@@ -36,7 +36,6 @@ import { usePointerType } from '@/hooks/usePointerType';
 import { useToast } from '@/components/ui/Toast';
 import { getScheduledRevenueForDateRange } from '@/lib/class-schedule';
 import {
-  isLowBalance,
   getWalletStatus,
   getWalletHealth,
 } from '@/lib/wallet-alerts';
@@ -882,7 +881,7 @@ export default function PaymentsPage() {
   // Filters.
   const [walletSearch, setWalletSearch] = useState('');
   const [walletDayFilter, setWalletDayFilter] = useState<
-    DayOfWeek | 'all' | 'adhoc' | 'negative' | 'low'
+    DayOfWeek | 'all' | 'adhoc' | 'negative' | 'empty' | 'low'
   >('all');
   const [showArchived, setShowArchived] = useState(false);
 
@@ -934,15 +933,30 @@ export default function PaymentsPage() {
 
   const todayStr = useMemo(() => todayYMD(), []);
 
-  const lowCount = useMemo(
-    () =>
-      wallets.filter(
-        (w) =>
-          !(w.archived ?? false) &&
-          isLowBalance(w, bookings, classExceptions, lessonLogs, todayStr, awayPeriods),
-      ).length,
-    [wallets, bookings, classExceptions, lessonLogs, todayStr, awayPeriods],
-  );
+  // Health per wallet, so Empty and Low stay disjoint buckets (Negative is
+  // filtered on raw balance).
+  const healthById = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof getWalletHealth>['health']>();
+    for (const w of wallets) {
+      map.set(
+        w.id,
+        getWalletHealth(w, bookings, classExceptions, lessonLogs, todayStr, awayPeriods).health,
+      );
+    }
+    return map;
+  }, [wallets, bookings, classExceptions, lessonLogs, todayStr, awayPeriods]);
+
+  const { emptyCount, lowCount } = useMemo(() => {
+    let empty = 0;
+    let low = 0;
+    for (const w of wallets) {
+      if (w.archived ?? false) continue;
+      const health = healthById.get(w.id);
+      if (health === 'empty') empty++;
+      else if (health === 'low') low++;
+    }
+    return { emptyCount: empty, lowCount: low };
+  }, [wallets, healthById]);
 
   const filteredWallets = useMemo(() => {
     let result = wallets;
@@ -951,10 +965,8 @@ export default function PaymentsPage() {
       result = result.filter((w) => !activeWalletIds.has(w.id));
     } else if (walletDayFilter === 'negative') {
       result = result.filter((w) => w.balanceCents < 0);
-    } else if (walletDayFilter === 'low') {
-      result = result.filter((w) =>
-        isLowBalance(w, bookings, classExceptions, lessonLogs, todayStr, awayPeriods),
-      );
+    } else if (walletDayFilter === 'empty' || walletDayFilter === 'low') {
+      result = result.filter((w) => healthById.get(w.id) === walletDayFilter);
     } else if (walletDayFilter !== 'all') {
       const dayWallets = walletDayMap.get(walletDayFilter);
       result = dayWallets ? result.filter((w) => dayWallets.has(w.id)) : [];
@@ -976,11 +988,7 @@ export default function PaymentsPage() {
     walletSearch,
     studentNameById,
     showArchived,
-    bookings,
-    classExceptions,
-    lessonLogs,
-    todayStr,
-    awayPeriods,
+    healthById,
   ]);
 
   useEffect(() => {
@@ -988,6 +996,7 @@ export default function PaymentsPage() {
       walletDayFilter !== 'all' &&
       walletDayFilter !== 'adhoc' &&
       walletDayFilter !== 'negative' &&
+      walletDayFilter !== 'empty' &&
       walletDayFilter !== 'low' &&
       !activeDays.includes(walletDayFilter)
     ) {
@@ -1473,6 +1482,13 @@ export default function PaymentsPage() {
                 Negative
               </FilterPill>
               <FilterPill
+                active={walletDayFilter === 'empty'}
+                onClick={() => setWalletDayFilter('empty')}
+                tone="bad"
+              >
+                Empty{emptyCount > 0 ? ` (${emptyCount})` : ''}
+              </FilterPill>
+              <FilterPill
                 active={walletDayFilter === 'low'}
                 onClick={() => setWalletDayFilter('low')}
                 tone="warn"
@@ -1549,11 +1565,13 @@ export default function PaymentsPage() {
                 ? 'All wallets have recurring bookings.'
                 : walletDayFilter === 'negative'
                   ? 'No wallets in the negative.'
-                  : walletDayFilter === 'low'
-                    ? 'No wallets need topping up.'
-                    : walletDayFilter !== 'all'
-                      ? `No wallets on ${walletDayFilter.charAt(0).toUpperCase() + walletDayFilter.slice(1)}.`
-                      : 'No wallets match your search.'}
+                  : walletDayFilter === 'empty'
+                    ? 'No empty wallets.'
+                    : walletDayFilter === 'low'
+                      ? 'No wallets running low.'
+                      : walletDayFilter !== 'all'
+                        ? `No wallets on ${walletDayFilter.charAt(0).toUpperCase() + walletDayFilter.slice(1)}.`
+                        : 'No wallets match your search.'}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
