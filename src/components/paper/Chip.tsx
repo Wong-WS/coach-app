@@ -23,10 +23,18 @@ export function Chip({ tone = 'soft', children }: { tone?: Tone; children: React
   );
 }
 
-export function BalancePill({ balance, compact = false }: { balance: number; compact?: boolean }) {
+export function BalancePill({
+  balance,
+  compact = false,
+  tone,
+}: {
+  balance: number;
+  compact?: boolean;
+  /** Overrides the sign-based colour, e.g. a wallet that's positive but can't cover a lesson. */
+  tone?: 'good' | 'warn' | 'bad';
+}) {
   const positive = balance >= 0;
-  const color = positive ? 'var(--good)' : 'var(--bad)';
-  const bg = positive ? 'var(--good-soft)' : 'var(--bad-soft)';
+  const { color, bg } = toneStyles[tone ?? (positive ? 'good' : 'bad')];
   return (
     <span
       className={`mono tnum inline-flex items-center rounded-lg font-medium ${compact ? 'text-[11.5px] px-2 py-0.5' : 'text-[13px] px-2.5 py-1'}`}

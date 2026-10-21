@@ -44,7 +44,12 @@ import {
   getDayOfWeekForDate,
 } from '@/lib/class-schedule';
 import { resolveWallet } from '@/lib/wallets';
-import { isLowBalance, getNextLessonCost, getWalletHealth } from '@/lib/wallet-alerts';
+import {
+  isLowBalance,
+  getNextLessonCost,
+  getWalletHealth,
+  type WalletHealth,
+} from '@/lib/wallet-alerts';
 import { computeCancelFuture } from '@/lib/cancel-scope';
 import { isDateInAwayPeriod } from '@/lib/away-periods';
 import { shiftEndTime, isEndAfterStart } from '@/lib/time-input';
@@ -202,7 +207,12 @@ export default function DashboardPage() {
   const lowWallets = useMemo(() => {
     return wallets
       .filter((w) => isLowBalance(w, bookings, classExceptions, lessonLogs, todayStr, awayPeriods))
-      .sort((a, b) => a.balanceCents - b.balanceCents);
+      .map((wallet) => ({
+        wallet,
+        health: getWalletHealth(wallet, bookings, classExceptions, lessonLogs, todayStr, awayPeriods)
+          .health,
+      }))
+      .sort((a, b) => a.wallet.balanceCents - b.wallet.balanceCents);
   }, [wallets, bookings, classExceptions, lessonLogs, todayStr, awayPeriods]);
 
   const weekDays = useMemo(() => {
@@ -1943,11 +1953,16 @@ function CancelledList({
   );
 }
 
-function LowWalletsCard({ wallets }: { wallets: Wallet[] }) {
-  const describe = (w: Wallet) => {
+function LowWalletsCard({
+  wallets,
+}: {
+  wallets: { wallet: Wallet; health: WalletHealth }[];
+}) {
+  // Same wording and tones as the Payments wallet cards.
+  const describe = (w: Wallet, health: WalletHealth) => {
     if (w.balanceCents < 0) return `Owes RM ${formatCents(Math.abs(w.balanceCents))}`;
-    if (w.balanceCents === 0) return 'Needs top-up';
-    return `RM ${formatCents(w.balanceCents)}`;
+    if (health === 'empty') return "Can't cover next lesson";
+    return '1 lesson left';
   };
 
   return (
@@ -1967,7 +1982,7 @@ function LowWalletsCard({ wallets }: { wallets: Wallet[] }) {
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          {wallets.slice(0, 4).map((w) => (
+          {wallets.slice(0, 4).map(({ wallet: w, health }) => (
             <div key={w.id} className="flex items-center gap-2.5">
               <Avatar name={w.name} size={28} />
               <div className="flex-1 min-w-0">
@@ -1978,10 +1993,14 @@ function LowWalletsCard({ wallets }: { wallets: Wallet[] }) {
                   {w.name}
                 </div>
                 <div className="text-[11.5px]" style={{ color: 'var(--ink-3)' }}>
-                  {describe(w)}
+                  {describe(w, health)}
                 </div>
               </div>
-              <BalancePill balance={w.balanceCents} compact />
+              <BalancePill
+                balance={w.balanceCents}
+                compact
+                tone={health === 'low' ? 'warn' : 'bad'}
+              />
             </div>
           ))}
         </div>
