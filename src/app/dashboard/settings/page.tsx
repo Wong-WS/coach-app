@@ -66,9 +66,6 @@ export default function SettingsPage() {
   const { showToast } = useToast();
   const { locations, loading: locationsLoading } = useLocations(coach?.id);
 
-  const [showResetModal, setShowResetModal] = useState(false);
-  const [resetting, setResetting] = useState(false);
-
   const [showEditName, setShowEditName] = useState(false);
   const [editName, setEditName] = useState('');
   const [savingName, setSavingName] = useState(false);
@@ -200,29 +197,6 @@ export default function SettingsPage() {
       showToast('Failed to update name', 'error');
     } finally {
       setSavingName(false);
-    }
-  };
-
-  const handleReset = async () => {
-    if (!coach) return;
-    setResetting(true);
-    try {
-      const res = await fetch('/api/reset-account', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ coachId: coach.id }),
-      });
-      const data = await res.json();
-      const total = Object.values(data.deleted as Record<string, number>).reduce(
-        (a, b) => a + b,
-        0,
-      );
-      showToast(`Account reset — ${total} records deleted`, 'success');
-      setShowResetModal(false);
-    } catch {
-      showToast('Failed to reset account', 'error');
-    } finally {
-      setResetting(false);
     }
   };
 
@@ -420,48 +394,6 @@ export default function SettingsPage() {
 
       {coach && <TimeOffSection coachId={coach.id} />}
 
-      {/* ── Danger zone ── */}
-      <section
-        className="mt-10 pt-7"
-        style={{ borderTop: '1px solid var(--line)' }}
-      >
-        <Eyebrow tone="bad">Danger zone</Eyebrow>
-        <div
-          className="mt-2.5 rounded-[12px] border p-4 flex items-start gap-4"
-          style={{
-            background: 'var(--bad-soft)',
-            borderColor: 'var(--bad-soft)',
-          }}
-        >
-          <div className="flex-1 min-w-0">
-            <div
-              className="text-[13.5px] font-semibold"
-              style={{ color: 'var(--bad)' }}
-            >
-              Reset account
-            </div>
-            <p
-              className="text-[12.5px] mt-1"
-              style={{ color: 'var(--ink-2)' }}
-            >
-              Permanently deletes all students, bookings, lessons, wallets, and
-              locations. Your profile is kept. This can&apos;t be undone.
-            </p>
-          </div>
-          <button
-            onClick={() => setShowResetModal(true)}
-            className="shrink-0 inline-flex items-center justify-center rounded-[8px] text-[13px] font-medium px-3 py-2 border transition-colors hover:brightness-105"
-            style={{
-              background: 'var(--panel)',
-              color: 'var(--bad)',
-              borderColor: 'var(--line-2)',
-            }}
-          >
-            Reset…
-          </button>
-        </div>
-      </section>
-
       {/* ── Edit name modal ── */}
       <PaperModal
         open={showEditName}
@@ -646,59 +578,6 @@ export default function SettingsPage() {
         )}
       </PaperModal>
 
-      {/* ── Reset confirmation modal ── */}
-      <PaperModal
-        open={showResetModal}
-        onClose={() => !resetting && setShowResetModal(false)}
-        title="Reset account?"
-      >
-        <div className="space-y-4">
-          <p className="text-[13.5px]" style={{ color: 'var(--ink)' }}>
-            This will permanently delete:
-          </p>
-          <ul
-            className="text-[13px] space-y-1.5 pl-4 list-disc"
-            style={{ color: 'var(--ink-2)' }}
-          >
-            <li>All students</li>
-            <li>All bookings</li>
-            <li>All lesson logs</li>
-            <li>All wallets and transactions</li>
-            <li>All locations</li>
-          </ul>
-          <div
-            className="rounded-[10px] px-3 py-2 text-[12.5px] font-medium"
-            style={{
-              background: 'var(--bad-soft)',
-              color: 'var(--bad)',
-            }}
-          >
-            Your profile is kept, but everything else is gone forever.
-          </div>
-          <div className="flex gap-2 pt-1">
-            <Btn
-              variant="ghost"
-              full
-              onClick={() => setShowResetModal(false)}
-              disabled={resetting}
-            >
-              Cancel
-            </Btn>
-            <button
-              onClick={handleReset}
-              disabled={resetting}
-              className="w-full inline-flex items-center justify-center rounded-[8px] text-[13.5px] font-medium px-3.5 py-2 border transition-colors disabled:opacity-55 disabled:cursor-not-allowed hover:brightness-110"
-              style={{
-                background: 'var(--bad)',
-                color: '#fff',
-                borderColor: 'transparent',
-              }}
-            >
-              {resetting ? 'Resetting…' : 'Yes, reset everything'}
-            </button>
-          </div>
-        </div>
-      </PaperModal>
     </div>
   );
 }

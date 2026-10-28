@@ -55,15 +55,14 @@ src/
 │   │   ├── bookings/page.tsx               # Recurring + ad-hoc schedule mgmt
 │   │   ├── students/page.tsx               # Student list + wallet top-up + lesson history
 │   │   ├── payments/page.tsx               # Wallets + health alerts + portal link share
-│   │   └── settings/page.tsx               # Danger Zone (reset account)
+│   │   └── settings/page.tsx               # Account name, locations, time off
 │   ├── portal/[token]/                     # Parent/student-facing wallet portal (public via token URL)
 │   │   ├── page.tsx                        # Server component: header, balance card, suggestion
 │   │   ├── ChargesList.tsx                 # Client: paginated lesson charges (Load more)
 │   │   ├── TopUpsList.tsx                  # Client: paginated top-ups (Load more)
 │   │   └── not-found.tsx
 │   └── api/
-│       ├── portal/[token]/transactions/route.ts   # Portal pagination endpoint
-│       └── reset-account/route.ts                 # Dev/testing nuke
+│       └── portal/[token]/transactions/route.ts   # Portal pagination endpoint
 ├── lib/
 │   ├── firebase.ts                         # Web SDK init
 │   ├── firebase-admin.ts                   # Admin SDK init (server-only)
@@ -97,7 +96,7 @@ src/
 - **Styling**: Tailwind CSS 4
 - **DB**: Firebase Firestore
 - **Auth**: Firebase Authentication
-- **Admin SDK**: Firebase Admin SDK 13 (server-only, used by portal + reset route)
+- **Admin SDK**: Firebase Admin SDK 13 (server-only, used by portal only)
 - **Tests**: Vitest 4
 - **Dates**: date-fns 4
 - **Tokens**: nanoid 5 (10-char portal tokens)
@@ -182,7 +181,6 @@ coaches/{coachId}/wallets/{walletId}/transactions/{txnId}
 - **Wallet portal**: parent/student-facing at `/portal/[token]` (shareable via WhatsApp). Shows balance, status chip, coach-set top-up suggestion, paginated charges + top-ups (10 per page with Load more). Read-only; uses Admin SDK to bypass owner rules.
 - **Income dashboard**: projected (from recurring bookings) vs. actual (from lessonLogs)
 - **Time off (away periods)**: full-day blackouts for travel/leave (Settings → Time off). Recurring classes inside the range are skipped automatically; ad-hoc + rescheduled lessons surface in a conflict resolver. Persists indefinitely as a labelled record visible on dashboard + schedule.
-- **Account reset** (settings → Danger Zone): dev-only nuke via API route
 
 ### Security Rules
 
@@ -209,7 +207,7 @@ NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
 NEXT_PUBLIC_FIREBASE_APP_ID=
 
-# Admin SDK (server-only — portal data, reset route)
+# Admin SDK (server-only — portal data)
 FIREBASE_ADMIN_PROJECT_ID=
 FIREBASE_ADMIN_CLIENT_EMAIL=
 FIREBASE_ADMIN_PRIVATE_KEY=
