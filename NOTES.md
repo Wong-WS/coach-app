@@ -25,6 +25,21 @@
 
 9. (2026-03-23) **Recurring booking model vs. individual instances** — currently bookings are recurring (one doc per weekly slot) with exceptions tracked separately. This requires loading all bookings + all exceptions to render any single day. Would flattening to individual booking instances be better as data grows?
 
+## Security — Before Public Launch / Marketing
+
+Security review on 2026-10-28. Fine for now: users are just me plus a few coaches I invite personally. Revisit these before marketing the app or opening it to strangers.
+
+- ✅ (2026-10-28) **Unauthenticated `/api/reset-account`** — anyone who sent a coach's UID could wipe that coach's whole ledger through the Admin SDK. Route + Settings Danger Zone removed (cabb9f8). Verified 404 on coach-simplify.com.
+- (2026-10-28) **Free-tier quota can be burned by strangers** — the Firebase web config is public by design, so anyone can sign up from a script (bypassing `/signup`) and write unlimited docs into their own `coaches/{uid}`. Spark limits (50k reads / 20k writes per day) are shared by every coach, so one bad actor = whole-app outage until ~3 PM MYT. Not a money risk on Spark; it becomes one on Blaze. `/portal/<anything>` also costs ≥1 read per hit, dozens per refresh of a real link (force-dynamic). Options, cheapest first:
+  1. Firebase console → Authentication → Settings → uncheck "Enable create (sign-up)" — only if onboarding stays invite-only.
+  2. Cache `/portal/[token]` (~60s revalidate) so refreshes cost ~0 reads.
+  3. Firebase App Check (reCAPTCHA) — Firestore/Auth only accept requests from the real site. Proper fix if keeping self-serve signup.
+  4. If upgrading to Blaze: set a budget alert first (it warns, doesn't cap), and do App Check before upgrading.
+- (2026-10-28) **Backup JSONs not gitignored** — `.gitignore` covers `money-migration-backup-*.json` but not `money-repair-backup-*.json` (5 untracked files in repo root, tiny: a few doc paths with coach UIDs + prices). Repo is public, so a careless `git add .` would publish them. Fix: add `money-*-backup-*.json` to `.gitignore`, or delete the files.
+- (2026-10-28) **Test account password is public** — `CLAUDE.md` holds `testcoach@example.com` / `Test123!` and the GitHub repo is public, so anyone can log in to the test account (not other coaches — rules block that). Removing the line isn't enough; it's in git history. Fix: change the password in Firebase console → Authentication. Also consider making the repo private (one click in GitHub, Vercel keeps deploying).
+
+Already solid: owner-only Firestore rules; `walletPortalTokens` not readable from the client; portal tokens are 10-char nanoid, scoped to one wallet, dead on archive, and don't leak coachId; Admin key server-only and never committed; no XSS sinks; security headers set (framing blocked, HSTS).
+
 ## Next Session
 
 - ✅ (2026-04-28) **Add Vercel domains to Firebase Authorized Domains** — done. Google sign-in works on prod/preview URLs.
