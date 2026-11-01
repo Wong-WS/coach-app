@@ -54,6 +54,7 @@ import {
   Segmented,
 } from '@/components/paper';
 import { parseDateString } from '@/lib/date-format';
+import { countClasses } from '@/lib/lesson-logs';
 import type { AwayPeriod, Wallet, WalletTransaction, DayOfWeek } from '@/types';
 import { centsToInputValue, formatCents, formatCentsGrouped, parseMoneyToCents } from '@/lib/money';
 
@@ -110,8 +111,8 @@ const EMPTY_TOP_UP_TOTALS: TopUpTotals = {
   last: { cents: 0, count: 0 },
 };
 
-function plural(n: number, word: string): string {
-  return `${n} ${word}${n === 1 ? '' : 's'}`;
+function plural(n: number, word: string, pluralWord = `${word}s`): string {
+  return `${n} ${n === 1 ? word : pluralWord}`;
 }
 
 function formatRM(cents: number): string {
@@ -1064,7 +1065,7 @@ export default function PaymentsPage() {
   const taught = useMemo(() => {
     const sum = (range: { start: string; end: string }) => {
       const logs = lessonLogs.filter((l) => l.date >= range.start && l.date <= range.end);
-      return { cents: logs.reduce((s, l) => s + l.priceCents, 0), count: logs.length };
+      return { cents: logs.reduce((s, l) => s + l.priceCents, 0), count: countClasses(logs) };
     };
     return { this: sum(monthRange), last: sum(lastMonthRange) };
   }, [lessonLogs, monthRange, lastMonthRange]);
@@ -1472,7 +1473,7 @@ export default function PaymentsPage() {
           label={`Taught · ${statMonthName}`}
           value={formatRM(taught[statMonth].cents)}
           sub={
-            `${plural(taught[statMonth].count, 'lesson')}` +
+            `${plural(taught[statMonth].count, 'class', 'classes')}` +
             (statMonth === 'this' ? ` · of ${formatRM(monthProjected)} projected` : '')
           }
         />
