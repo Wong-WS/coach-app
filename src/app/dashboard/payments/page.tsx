@@ -51,7 +51,9 @@ import {
   IconArrowDown,
   IconChevR,
   IconTrash,
+  Segmented,
 } from '@/components/paper';
+import { parseDateString } from '@/lib/date-format';
 import type { AwayPeriod, Wallet, WalletTransaction, DayOfWeek } from '@/types';
 import { centsToInputValue, formatCents, formatCentsGrouped, parseMoneyToCents } from '@/lib/money';
 
@@ -94,6 +96,22 @@ function getLastMonthRange(): { start: string; end: string } {
   const fmt = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   return { start: fmt(start), end: fmt(end) };
+}
+
+type StatMonth = 'this' | 'last';
+const STAT_MONTH_OPTIONS = [
+  { value: 'this', label: 'This month' },
+  { value: 'last', label: 'Last month' },
+] as const;
+
+type TopUpTotals = Record<StatMonth, { cents: number; count: number }>;
+const EMPTY_TOP_UP_TOTALS: TopUpTotals = {
+  this: { cents: 0, count: 0 },
+  last: { cents: 0, count: 0 },
+};
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 
 function formatRM(cents: number): string {
@@ -790,18 +808,19 @@ export default function PaymentsPage() {
 
   const walletIds = wallets.map((w) => w.id).join(',');
 
-  // Uncapped listener for this-month top-ups (stat bar).
-  const [monthTopUps, setMonthTopUps] = useState(0);
+  // Listener for this- and last-month top-ups (stat bar "Received").
+  const [topUpTotals, setTopUpTotals] = useState<TopUpTotals>(EMPTY_TOP_UP_TOTALS);
   const monthRange = useMemo(() => getMonthRange(), []);
+  const lastMonthRange = useMemo(() => getLastMonthRange(), []);
 
   useEffect(() => {
     if (!coach?.id || !db || !walletIds) {
-      setMonthTopUps(0);
+      setTopUpTotals(EMPTY_TOP_UP_TOTALS);
       return;
     }
     const firestore = db as Firestore;
     const unsubs: (() => void)[] = [];
-    const byWallet = new Map<string, number>();
+    const byWallet = new Map<string, TopUpTotals>();
 
     for (const wallet of wallets) {
       const q = query(
@@ -810,23 +829,41 @@ export default function PaymentsPage() {
         limit(120),
       );
       const unsub = onSnapshot(q, (snap) => {
-        let sum = 0;
+        const sums: TopUpTotals = {
+          this: { cents: 0, count: 0 },
+          last: { cents: 0, count: 0 },
+        };
         for (const d of snap.docs) {
           const data = d.data();
-          if (data.type !== 'top-up') continue;
-          if (!data.date || data.date < monthRange.start || data.date > monthRange.end) continue;
-          sum += data.amountCents ?? 0;
+          if (data.type !== 'top-up' || !data.date) continue;
+          const bucket =
+            data.date >= monthRange.start && data.date <= monthRange.end
+              ? sums.this
+              : data.date >= lastMonthRange.start && data.date <= lastMonthRange.end
+                ? sums.last
+                : null;
+          if (!bucket) continue;
+          bucket.cents += data.amountCents ?? 0;
+          bucket.count += 1;
         }
-        byWallet.set(wallet.id, sum);
-        let total = 0;
-        for (const v of byWallet.values()) total += v;
-        setMonthTopUps(total);
+        byWallet.set(wallet.id, sums);
+        const total: TopUpTotals = {
+          this: { cents: 0, count: 0 },
+          last: { cents: 0, count: 0 },
+        };
+        for (const v of byWallet.values()) {
+          for (const k of ['this', 'last'] as const) {
+            total[k].cents += v[k].cents;
+            total[k].count += v[k].count;
+          }
+        }
+        setTopUpTotals(total);
       });
       unsubs.push(unsub);
     }
     return () => unsubs.forEach((u) => u());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [coach?.id, walletIds, monthRange.start, monthRange.end]);
+  }, [coach?.id, walletIds, monthRange.start, monthRange.end, lastMonthRange.start, lastMonthRange.end]);
 
   // Wallet detail panel.
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
@@ -1010,7 +1047,7 @@ export default function PaymentsPage() {
   }, [activeDays, walletDayFilter]);
 
   // Stats.
-  const lastMonthRange = useMemo(() => getLastMonthRange(), []);
+  const [statMonth, setStatMonth] = useState<StatMonth>('this');
   const owedToYou = useMemo(() => {
     let total = 0;
     let count = 0;
@@ -1023,20 +1060,17 @@ export default function PaymentsPage() {
     }
     return { total, count };
   }, [wallets]);
-  const monthActual = useMemo(
-    () =>
-      lessonLogs
-        .filter((l) => l.date >= monthRange.start && l.date <= monthRange.end)
-        .reduce((sum, l) => sum + l.priceCents, 0),
-    [lessonLogs, monthRange],
-  );
-  const lastMonthActual = useMemo(
-    () =>
-      lessonLogs
-        .filter((l) => l.date >= lastMonthRange.start && l.date <= lastMonthRange.end)
-        .reduce((sum, l) => sum + l.priceCents, 0),
-    [lessonLogs, lastMonthRange],
-  );
+  // "Taught" = lessons marked done in the month, at the price they were charged.
+  const taught = useMemo(() => {
+    const sum = (range: { start: string; end: string }) => {
+      const logs = lessonLogs.filter((l) => l.date >= range.start && l.date <= range.end);
+      return { cents: logs.reduce((s, l) => s + l.priceCents, 0), count: logs.length };
+    };
+    return { this: sum(monthRange), last: sum(lastMonthRange) };
+  }, [lessonLogs, monthRange, lastMonthRange]);
+  const statMonthName = parseDateString(
+    (statMonth === 'this' ? monthRange : lastMonthRange).start,
+  ).toLocaleDateString('en-MY', { month: 'long' });
   const monthProjected = useMemo(
     () =>
       getScheduledRevenueForDateRange(
@@ -1412,25 +1446,41 @@ export default function PaymentsPage() {
         </Btn>
       </div>
 
-      {/* Stat row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mb-5">
+      {/* Stat row — Taught + Received always cover the same month so they compare. */}
+      <div className="flex justify-end mb-2.5">
+        <Segmented
+          size="sm"
+          options={STAT_MONTH_OPTIONS}
+          value={statMonth}
+          onChange={setStatMonth}
+        />
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3 mb-5">
+        <div className="col-span-2 lg:col-span-1">
+          <Stat
+            label="Owed to you"
+            value={formatRM(owedToYou.total)}
+            sub={
+              owedToYou.count > 0
+                ? `${owedToYou.count} ${owedToYou.count === 1 ? 'wallet' : 'wallets'}`
+                : 'nothing owed'
+            }
+            tone={owedToYou.count > 0 ? 'bad' : undefined}
+          />
+        </div>
         <Stat
-          label="Owed to you"
-          value={formatRM(owedToYou.total)}
+          label={`Taught · ${statMonthName}`}
+          value={formatRM(taught[statMonth].cents)}
           sub={
-            owedToYou.count > 0
-              ? `${owedToYou.count} ${owedToYou.count === 1 ? 'wallet' : 'wallets'}`
-              : 'nothing owed'
+            `${plural(taught[statMonth].count, 'lesson')}` +
+            (statMonth === 'this' ? ` · of ${formatRM(monthProjected)} projected` : '')
           }
-          tone={owedToYou.count > 0 ? 'bad' : undefined}
         />
-        <Stat label="Last month" value={formatRM(lastMonthActual)} sub="earned" />
         <Stat
-          label="This month"
-          value={formatRM(monthActual)}
-          sub={`of ${formatRM(monthProjected)} projected`}
+          label={`Received · ${statMonthName}`}
+          value={formatRM(topUpTotals[statMonth].cents)}
+          sub={plural(topUpTotals[statMonth].count, 'top-up')}
         />
-        <Stat label="Top-ups" value={formatRM(monthTopUps)} sub="this month" />
       </div>
 
       {/* Wallets */}
