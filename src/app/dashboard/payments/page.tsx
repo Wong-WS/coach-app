@@ -584,6 +584,11 @@ function WalletDetailBody({
             ))}
           </select>
         )}
+        <p className="text-[11.5px] mt-1.5" style={{ color: 'var(--ink-3)' }}>
+          {unlinkedStudents.length > 0
+            ? 'Only students without a wallet are listed.'
+            : 'Every student has a wallet. Remove one from theirs to add them here.'}
+        </p>
       </div>
 
       {/* Recent transactions */}
