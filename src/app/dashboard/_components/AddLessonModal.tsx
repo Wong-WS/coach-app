@@ -15,7 +15,7 @@ import {
   getClassesForDate,
   findOverlappingClasses,
 } from '@/lib/class-schedule';
-import { findOrCreateStudent } from '@/lib/students';
+import { createStudent, findStudentsWithSameName } from '@/lib/students';
 import { groupStudentsByLocation } from '@/lib/student-location-history';
 import type { OptionGroup } from '@/lib/combobox-filter';
 import { shiftEndTime, isEndAfterStart } from '@/lib/time-input';
@@ -197,6 +197,12 @@ export function AddLessonModal({
     updateRow(i, patch);
   };
 
+  // From the same-name warning: flip a "New student" row to the existing one.
+  const handleUseExisting = (i: number, studentId: string) => {
+    updateRow(i, { mode: 'existing', newName: '', newPhone: '' });
+    handlePickStudent(i, studentId);
+  };
+
   const total = rows.reduce((s, r) => s + (Number(r.priceCents) || 0), 0);
   const creatingLocation = locationId === '__new';
 
@@ -321,7 +327,7 @@ export function AddLessonModal({
         if (r.mode === 'existing') {
           resolvedStudentIds.push(r.studentId);
         } else {
-          const sid = await findOrCreateStudent(
+          const sid = await createStudent(
             firestore,
             coachId,
             r.newName.trim(),
@@ -520,10 +526,12 @@ export function AddLessonModal({
                 index={i}
                 count={rows.length}
                 optionGroups={optionGroups}
+                students={students}
                 wallets={wallets}
                 rows={rows}
                 onChange={(patch) => updateRow(i, patch)}
                 onPickStudent={(sid) => handlePickStudent(i, sid)}
+                onUseExisting={(sid) => handleUseExisting(i, sid)}
                 onRemove={() => removeRow(i)}
               />
             ))}
@@ -615,22 +623,29 @@ function StudentRow({
   index,
   count,
   optionGroups,
+  students,
   wallets,
   rows,
   onChange,
   onPickStudent,
+  onUseExisting,
   onRemove,
 }: {
   row: StudentRowState;
   index: number;
   count: number;
   optionGroups: OptionGroup[];
+  students: Student[];
   wallets: Wallet[];
   rows: StudentRowState[];
   onChange: (patch: Partial<StudentRowState>) => void;
   onPickStudent: (studentId: string) => void;
+  onUseExisting: (studentId: string) => void;
   onRemove: () => void;
 }) {
+  const sameName =
+    row.mode === 'new' ? findStudentsWithSameName(students, row.newName) : [];
+
   const pendingAbove = rows
     .slice(0, index)
     .map((r, i) => ({ r, i }))
@@ -724,6 +739,40 @@ function StudentRow({
             className={`${paperInputClass} mono`}
             style={paperInputStyle}
           />
+        </div>
+      )}
+
+      {sameName.length > 0 && (
+        <div
+          className="rounded-[10px] text-[12px] mt-2"
+          style={{ padding: '8px 12px', background: 'var(--warn-soft)', color: 'var(--warn)' }}
+        >
+          <div>
+            You already have {sameName.length === 1 ? 'a student' : `${sameName.length} students`}{' '}
+            named {sameName[0].clientName}. Saving will add another one.
+          </div>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {sameName.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => onUseExisting(s.id)}
+                className="rounded-[6px] border text-[12px] font-medium"
+                style={{
+                  padding: '4px 10px',
+                  background: 'var(--panel)',
+                  borderColor: 'var(--line-2)',
+                  color: 'var(--ink)',
+                }}
+              >
+                Use {s.clientName}
+                <span className="mono" style={{ color: 'var(--ink-3)' }}>
+                  {' · '}
+                  {s.clientPhone || 'no phone'}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

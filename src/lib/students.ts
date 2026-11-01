@@ -1,24 +1,26 @@
-import { collection, query, where, getDocs, addDoc, serverTimestamp, Firestore } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, Firestore } from 'firebase/firestore';
+import type { Student } from '@/types';
 
-export async function findOrCreateStudent(
+function normalizeName(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+// Existing students whose name matches `name` (case/whitespace-insensitive).
+// Drives the "you already have a Sunny" warning in Add Lesson — phone is
+// deliberately ignored so a blank or mistyped phone still surfaces the match.
+export function findStudentsWithSameName(students: Student[], name: string): Student[] {
+  const target = normalizeName(name);
+  if (!target) return [];
+  return students.filter((s) => normalizeName(s.clientName) === target);
+}
+
+export async function createStudent(
   db: Firestore,
   coachId: string,
   clientName: string,
   clientPhone: string
 ): Promise<string> {
-  const studentsRef = collection(db, 'coaches', coachId, 'students');
-  const q = query(
-    studentsRef,
-    where('clientName', '==', clientName),
-    where('clientPhone', '==', clientPhone)
-  );
-  const snapshot = await getDocs(q);
-
-  if (!snapshot.empty) {
-    return snapshot.docs[0].id;
-  }
-
-  const studentDoc = await addDoc(studentsRef, {
+  const studentDoc = await addDoc(collection(db, 'coaches', coachId, 'students'), {
     clientName,
     clientPhone,
     notes: '',
