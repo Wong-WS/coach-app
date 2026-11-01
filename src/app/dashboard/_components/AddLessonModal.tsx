@@ -4,7 +4,10 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   collection,
   addDoc,
+  arrayUnion,
+  doc,
   serverTimestamp,
+  updateDoc,
   Firestore,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -16,6 +19,7 @@ import {
   findOverlappingClasses,
 } from '@/lib/class-schedule';
 import { createStudent, findStudentsWithSameName } from '@/lib/students';
+import { walletMembersToAdd } from '@/lib/wallets';
 import { groupStudentsByLocation } from '@/lib/student-location-history';
 import type { OptionGroup } from '@/lib/combobox-filter';
 import { shiftEndTime, isEndAfterStart } from '@/lib/time-input';
@@ -387,7 +391,16 @@ export function AddLessonModal({
         }
       }
 
-      // 5. Write booking.
+      // 5. Make wallet-less students members of the existing wallet they're
+      //    charged to, so the Students page + Payments search can find it.
+      for (const [walletId, ids] of Object.entries(walletMembersToAdd(studentWallets, wallets))) {
+        await updateDoc(doc(firestore, 'coaches', coachId, 'wallets', walletId), {
+          studentIds: arrayUnion(...ids),
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      // 6. Write booking.
       const payload: Record<string, unknown> = {
         locationId: finalLocationId,
         locationName: finalLocationName,
