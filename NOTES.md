@@ -45,6 +45,18 @@ Already solid: owner-only Firestore rules; `walletPortalTokens` not readable fro
 - ✅ (2026-04-28) **Add Vercel domains to Firebase Authorized Domains** — done. Google sign-in works on prod/preview URLs.
 - ✅ (2026-03-24) Edge case: Woojin + 3 kids class — 4 kids as one student record, one parent pays for all. Holiday scenario (2 kids away) handled by adjusting price on mark-as-done. Switching to pay-per-lesson now clears pending balance. Renamed "due" → "unpaid" labels.
 
+## ⭐ Important — Planned Features
+
+- ⭐ (2026-11-01) **End-of-year summary (my work stats)** — a yearly (and monthly) recap for me as a coach: hours worked, classes taught, RM taught (lessons done) vs. RM received (top-ups), days worked vs. days off (planned time off vs. other), cancellations + reschedules, busiest days/times, active students. Wants it so the data keeps building the longer I use the app.
+  - **Step 1, do first: record everything accurately**, because history that isn't saved now can't be recovered later:
+    - Cancelling a **one-off** class deletes the booking (`handleConfirmCancel` in `dashboard/page.tsx`), so it never counts as cancelled. Soft-cancel instead: `status: 'cancelled'` + `cancelledAt` (both already in the Booking model).
+    - "Cancel this + future" can delete the booking and its exceptions (`computeCancelFuture`), wiping past cancel/reschedule history. Keep the history.
+    - Add a cancellation reason (weather / student / coach) — see "Cancellation reasons/data" under Ideas. Rain is probably the big one for swimming.
+    - Check whether the recorded cancellation counts are right before trusting them (July 2026 shows 82 cancelled vs 90 taught, which looks high — away-period auto-cancels may be inflating it).
+  - **Step 2: the summary page.** Already derivable today: classes = distinct booking+date in `lessonLogs` (`countClasses` in `src/lib/lesson-logs.ts`; logs are per student), RM taught = sum of `priceCents`, days worked = distinct log dates, time off from `awayPeriods`, RM received = `top-up` wallet transactions. Hours = sum of start→end per class.
+  - Snapshot on 2026-11-01 (18 Apr–1 Nov): 148 days worked, 31 away (Europe Trip), 19 other days off; Oct = 106 classes, RM 11,985 taught, RM 13,305 received.
+  - Gotcha: a day taught but never marked done counts as a day off.
+
 ## Ideas (not urgent)
 
 - ✅ (2026-03-25) Run full E2E bug hunt using Chrome MCP — fixed 12 UI/UX bugs, wrote 65 unit tests, fixed prepaidUsed increment bug for non-package students
