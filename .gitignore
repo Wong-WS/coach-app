@@ -45,4 +45,4 @@ yarn-error.log*
 next-env.d.ts
 
 # Money migration backups (contain real balances)
-money-migration-backup-*.json
+money-*-backup-*.json
