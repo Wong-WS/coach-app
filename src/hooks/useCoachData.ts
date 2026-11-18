@@ -39,6 +39,30 @@ export function useLocations(coachId: string | undefined) {
   return { locations, loading };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- raw Firestore doc data
+function bookingFromDoc(id: string, data: any): Booking {
+  return {
+    id,
+    locationId: data.locationId,
+    locationName: data.locationName,
+    dayOfWeek: data.dayOfWeek,
+    startTime: data.startTime,
+    endTime: data.endTime,
+    status: data.status,
+    className: data.className ?? '',
+    notes: data.notes ?? '',
+    studentIds: data.studentIds ?? [],
+    studentPriceCents:
+      data.studentPriceCents ?? mapRmToCents(data.studentPrices ?? {}),
+    studentWallets: data.studentWallets ?? {},
+    startDate: data.startDate ?? undefined,
+    endDate: data.endDate ?? undefined,
+    createdAt: data.createdAt?.toDate() || new Date(),
+    cancelledAt: data.cancelledAt?.toDate(),
+    cancelReason: data.cancelReason ?? undefined,
+  };
+}
+
 export function useBookings(coachId: string | undefined, statusFilter?: 'confirmed' | 'cancelled') {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,25 +81,7 @@ export function useBookings(coachId: string | undefined, statusFilter?: 'confirm
       : query(bookingsRef, orderBy('createdAt', 'desc'));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const books: Booking[] = snapshot.docs.map((d) => ({
-        id: d.id,
-        locationId: d.data().locationId,
-        locationName: d.data().locationName,
-        dayOfWeek: d.data().dayOfWeek,
-        startTime: d.data().startTime,
-        endTime: d.data().endTime,
-        status: d.data().status,
-        className: d.data().className ?? '',
-        notes: d.data().notes ?? '',
-        studentIds: d.data().studentIds ?? [],
-        studentPriceCents:
-          d.data().studentPriceCents ?? mapRmToCents(d.data().studentPrices ?? {}),
-        studentWallets: d.data().studentWallets ?? {},
-        startDate: d.data().startDate ?? undefined,
-        endDate: d.data().endDate ?? undefined,
-        createdAt: d.data().createdAt?.toDate() || new Date(),
-        cancelledAt: d.data().cancelledAt?.toDate(),
-      }));
+      const books: Booking[] = snapshot.docs.map((d) => bookingFromDoc(d.id, d.data()));
       setBookings(books);
       setLoading(false);
     });
@@ -84,6 +90,35 @@ export function useBookings(coachId: string | undefined, statusFilter?: 'confirm
   }, [coachId, statusFilter]);
 
   return { bookings, loading };
+}
+
+
+/**
+ * One-off classes soft-cancelled for `date` (status 'cancelled', startDate ===
+ * date). Feeds the dashboard's "Cancelled for this date" list so a cancelled
+ * one-off can be undone. Equality-only filters, so Firestore serves it from
+ * single-field indexes.
+ */
+export function useCancelledOneOffs(coachId: string | undefined, date: string) {
+  const [bookings, setBookings] = useState<Booking[]>([]);
+
+  useEffect(() => {
+    if (!coachId || !db) return;
+    const firestore = db as Firestore;
+    const q = query(
+      collection(firestore, 'coaches', coachId, 'bookings'),
+      where('status', '==', 'cancelled'),
+      where('startDate', '==', date),
+    );
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => setBookings(snapshot.docs.map((d) => bookingFromDoc(d.id, d.data()))),
+      (err) => console.error('useCancelledOneOffs', err),
+    );
+    return () => unsubscribe();
+  }, [coachId, date]);
+
+  return { cancelledOneOffs: bookings };
 }
 
 
@@ -238,6 +273,7 @@ export function useClassExceptions(coachId: string | undefined, referenceDate?: 
         bookingId: d.data().bookingId,
         originalDate: d.data().originalDate,
         type: d.data().type,
+        reason: d.data().reason ?? undefined,
         newDate: d.data().newDate,
         newStartTime: d.data().newStartTime,
         newEndTime: d.data().newEndTime,

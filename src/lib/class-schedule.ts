@@ -142,24 +142,35 @@ export function getBackingException(
 
 export interface CancelledClass {
   booking: Booking;
-  exceptionId: string;
+  /** What Undo restores: a weekly class's cancel exception, or a one-off booking. */
+  undo: { kind: 'exception' | 'booking'; id: string };
 }
 
+/**
+ * Classes cancelled on `date`: weekly classes with a cancel exception, plus
+ * one-off classes soft-cancelled for that date. `cancelledBookings` may hold
+ * any cancelled bookings; only one-offs on `date` that carry a cancelReason
+ * count — a booking cancelled because its student was deleted has none and
+ * must not be offered for Undo.
+ */
 export function getCancelledClassesForDate(
   date: string,
   bookings: Booking[],
-  exceptions: ClassException[]
+  exceptions: ClassException[],
+  cancelledBookings: Booking[] = [],
 ): CancelledClass[] {
-  const cancelledExceptions = exceptions.filter(
-    (e) => e.originalDate === date && e.type === 'cancelled'
-  );
-
   const result: CancelledClass[] = [];
-  for (const ex of cancelledExceptions) {
+
+  for (const ex of exceptions) {
+    if (ex.originalDate !== date || ex.type !== 'cancelled') continue;
     const booking = bookings.find((b) => b.id === ex.bookingId);
-    if (booking) {
-      result.push({ booking, exceptionId: ex.id });
-    }
+    if (booking) result.push({ booking, undo: { kind: 'exception', id: ex.id } });
+  }
+
+  for (const b of cancelledBookings) {
+    if (b.status !== 'cancelled' || !b.cancelReason) continue;
+    if (b.startDate !== date || b.endDate !== date) continue;
+    result.push({ booking: b, undo: { kind: 'booking', id: b.id } });
   }
 
   return result.sort((a, b) => a.booking.startTime.localeCompare(b.booking.startTime));

@@ -134,6 +134,7 @@ coaches/{coachId}/bookings/{bookingId}     # Recurring weekly OR ad-hoc single-d
   walletId, studentWallets{}               # wallet attachment drives mark-as-done charge target
   startDate, endDate                       # ad-hoc lesson = startDate === endDate
   createdAt, cancelledAt
+  cancelReason?                            # soft-cancelled one-off: 'weather'|'student'|'coach'|'other'|'away' (since 2026-11-18)
 
 coaches/{coachId}/students/{studentId}
   clientName, clientPhone, notes, createdAt, updatedAt
@@ -146,6 +147,7 @@ coaches/{coachId}/lessonLogs/{logId}       # Completed lesson records (written b
 coaches/{coachId}/classExceptions/{exceptionId}   # Per-date overrides of recurring bookings
   bookingId, originalDate
   type                                     # 'cancelled' | 'rescheduled'
+  reason?                                  # on 'cancelled' only: 'weather'|'student'|'coach'|'other'|'away' (since 2026-11-18)
   newDate, newStartTime, newEndTime, newLocationId, newLocationName, newPrice
   createdAt
 

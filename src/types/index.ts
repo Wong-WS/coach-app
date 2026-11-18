@@ -1,3 +1,5 @@
+import type { CancelReason } from '@/lib/cancel-reasons';
+
 export type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 
 export interface Coach {
@@ -32,6 +34,8 @@ export interface Booking {
   endDate?: string;
   createdAt: Date;
   cancelledAt?: Date;
+  /** Set when a one-off class is cancelled (soft-cancel, kept for history). */
+  cancelReason?: CancelReason;
 }
 
 export interface SignupFormData {
@@ -78,6 +82,8 @@ export interface ClassException {
   bookingId: string;
   originalDate: string;
   type: 'cancelled' | 'rescheduled';
+  /** Why it was cancelled — only on type 'cancelled', and only since 2026-11-18. */
+  reason?: CancelReason;
   newDate?: string;
   newStartTime?: string;
   newEndTime?: string;

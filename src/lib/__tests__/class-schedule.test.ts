@@ -371,7 +371,58 @@ describe('getCancelledClassesForDate', () => {
     const result = getCancelledClassesForDate(TUESDAY, bookings, exceptions);
     expect(result).toHaveLength(1);
     expect(result[0].booking.id).toBe('b1');
-    expect(result[0].exceptionId).toBe('ex1');
+    expect(result[0].undo).toEqual({ kind: 'exception', id: 'ex1' });
+  });
+
+  it('includes a one-off class cancelled on that date, undone via its booking', () => {
+    const oneOff = makeBooking({
+      id: 'one',
+      status: 'cancelled',
+      cancelReason: 'weather',
+      startDate: TUESDAY,
+      endDate: TUESDAY,
+    });
+    const result = getCancelledClassesForDate(TUESDAY, [], [], [oneOff]);
+    expect(result).toHaveLength(1);
+    expect(result[0].booking.id).toBe('one');
+    expect(result[0].undo).toEqual({ kind: 'booking', id: 'one' });
+  });
+
+  it('leaves out a cancelled one-off from another date', () => {
+    const oneOff = makeBooking({
+      id: 'one',
+      status: 'cancelled',
+      cancelReason: 'weather',
+      startDate: THURSDAY,
+      endDate: THURSDAY,
+    });
+    expect(getCancelledClassesForDate(TUESDAY, [], [], [oneOff])).toHaveLength(0);
+  });
+
+  it('leaves out a one-off with no cancel reason (cancelled by deleting its student)', () => {
+    const oneOff = makeBooking({
+      id: 'one',
+      status: 'cancelled',
+      startDate: TUESDAY,
+      endDate: TUESDAY,
+    });
+    expect(getCancelledClassesForDate(TUESDAY, [], [], [oneOff])).toHaveLength(0);
+  });
+
+  it('sorts cancelled one-offs together with cancelled weekly classes by startTime', () => {
+    const weekly = makeBooking({ id: 'b1', startTime: '14:00', endTime: '15:00' });
+    const oneOff = makeBooking({
+      id: 'one',
+      status: 'cancelled',
+      cancelReason: 'student',
+      startDate: TUESDAY,
+      endDate: TUESDAY,
+      startTime: '09:00',
+      endTime: '10:00',
+    });
+    const exceptions = [makeException({ type: 'cancelled', originalDate: TUESDAY })];
+    const result = getCancelledClassesForDate(TUESDAY, [weekly], exceptions, [oneOff]);
+    expect(result.map((r) => r.booking.id)).toEqual(['one', 'b1']);
   });
 
   it('returns empty when no cancellations exist', () => {

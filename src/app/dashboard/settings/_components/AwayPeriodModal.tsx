@@ -6,10 +6,7 @@ import {
   deleteDoc,
   doc,
   Firestore,
-  getDocs,
-  query,
   serverTimestamp,
-  where,
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -232,27 +229,22 @@ export default function AwayPeriodModal({
         });
       }
 
-      // 2. Delete ticked ad-hoc bookings (and their referencing exceptions)
+      // 2. Soft-cancel ticked ad-hoc bookings so they still count as
+      //    cancellations (reason 'away') in the yearly summary. Readers all
+      //    filter status === 'confirmed', so they disappear from the schedule.
       for (const bookingId of skipBookingIds) {
-        batch.delete(doc(firestore, 'coaches', coachId, 'bookings', bookingId));
-      }
-      if (skipBookingIds.size > 0) {
-        for (const bookingId of skipBookingIds) {
-          const exQuery = query(
-            collection(firestore, 'coaches', coachId, 'classExceptions'),
-            where('bookingId', '==', bookingId),
-          );
-          const snap = await getDocs(exQuery);
-          for (const d of snap.docs) {
-            batch.delete(doc(firestore, 'coaches', coachId, 'classExceptions', d.id));
-          }
-        }
+        batch.update(doc(firestore, 'coaches', coachId, 'bookings', bookingId), {
+          status: 'cancelled',
+          cancelledAt: serverTimestamp(),
+          cancelReason: 'away',
+        });
       }
 
       // 3. Convert ticked rescheduled exceptions to cancelled
       for (const exId of skipExceptionIds) {
         batch.update(doc(firestore, 'coaches', coachId, 'classExceptions', exId), {
           type: 'cancelled',
+          reason: 'away',
           newDate: null,
           newStartTime: null,
           newEndTime: null,

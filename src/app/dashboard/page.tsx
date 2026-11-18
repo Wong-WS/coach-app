@@ -13,6 +13,7 @@ import {
   query,
   where,
   updateDoc,
+  deleteField,
   setDoc,
   Firestore,
 } from 'firebase/firestore';
@@ -20,6 +21,7 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import {
   useBookings,
+  useCancelledOneOffs,
   useLessonLogs,
   useClassExceptions,
   useStudents,
@@ -41,6 +43,7 @@ import {
   getBookingTotalCents,
   getBackingException,
   getCancelledClassesForDate,
+  type CancelledClass,
   getDayOfWeekForDate,
 } from '@/lib/class-schedule';
 import { resolveWallet } from '@/lib/wallets';
@@ -51,6 +54,7 @@ import {
   type WalletHealth,
 } from '@/lib/wallet-alerts';
 import { computeCancelFuture } from '@/lib/cancel-scope';
+import { PICKABLE_CANCEL_REASONS, canConfirmCancel, type CancelReason } from '@/lib/cancel-reasons';
 import { isDateInAwayPeriod } from '@/lib/away-periods';
 import { shiftEndTime, isEndAfterStart } from '@/lib/time-input';
 import { formatTimeDisplay } from '@/lib/time-format';
@@ -167,9 +171,10 @@ export default function DashboardPage() {
     [selectedDateStr, bookings, classExceptions, awayPeriods],
   );
 
+  const { cancelledOneOffs } = useCancelledOneOffs(coach?.id, selectedDateStr);
   const cancelledToday = useMemo(
-    () => getCancelledClassesForDate(selectedDateStr, bookings, classExceptions),
-    [selectedDateStr, bookings, classExceptions],
+    () => getCancelledClassesForDate(selectedDateStr, bookings, classExceptions, cancelledOneOffs),
+    [selectedDateStr, bookings, classExceptions, cancelledOneOffs],
   );
 
   const doneByBookingId = useMemo(() => {
@@ -264,6 +269,7 @@ export default function DashboardPage() {
     | null
   >(null);
   const [cancelScope, setCancelScope] = useState<'this' | 'future'>('this');
+  const [cancelReason, setCancelReason] = useState<CancelReason | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
   const openCancelFlow = (c: Booking) => {
@@ -271,6 +277,7 @@ export default function DashboardPage() {
     const isOneTime = !!(c.startDate && c.endDate && c.startDate === c.endDate);
     const canScope = !backing && !isOneTime;
     setCancelScope('this');
+    setCancelReason(null);
     setCancelCtx({
       booking: c,
       dateStr: selectedDateStr,
@@ -539,6 +546,7 @@ export default function DashboardPage() {
     if (!coach || !db || !cancelCtx) return;
     const { booking, dateStr, backingExceptionId, isOneTime, canScope } = cancelCtx;
     const scope: 'this' | 'future' = canScope ? cancelScope : 'this';
+    if (!canConfirmCancel(scope, cancelReason)) return;
     setCancelling(true);
     try {
       const firestore = db as Firestore;
@@ -547,27 +555,23 @@ export default function DashboardPage() {
         // Rescheduled single occurrence — just mark that exception cancelled.
         await updateDoc(
           doc(firestore, 'coaches', coach.id, 'classExceptions', backingExceptionId),
-          { type: 'cancelled' },
+          { type: 'cancelled', reason: cancelReason },
         );
       } else if (isOneTime) {
-        // One-time booking — delete booking + its exceptions.
-        const batch = writeBatch(firestore);
-        batch.delete(doc(firestore, 'coaches', coach.id, 'bookings', booking.id));
-        const exQuery = query(
-          collection(firestore, 'coaches', coach.id, 'classExceptions'),
-          where('bookingId', '==', booking.id),
-        );
-        const exSnapshot = await getDocs(exQuery);
-        for (const d of exSnapshot.docs) {
-          batch.delete(doc(firestore, 'coaches', coach.id, 'classExceptions', d.id));
-        }
-        await batch.commit();
+        // One-time booking — soft-cancel so it still counts as a cancellation
+        // in the yearly summary. Every reader filters status === 'confirmed'.
+        await updateDoc(doc(firestore, 'coaches', coach.id, 'bookings', booking.id), {
+          status: 'cancelled',
+          cancelledAt: serverTimestamp(),
+          cancelReason,
+        });
       } else if (scope === 'this') {
         // Recurring → cancel this date only.
         await addDoc(collection(firestore, 'coaches', coach.id, 'classExceptions'), {
           bookingId: booking.id,
           originalDate: dateStr,
           type: 'cancelled',
+          reason: cancelReason,
           createdAt: serverTimestamp(),
         });
       } else {
@@ -688,11 +692,19 @@ export default function DashboardPage() {
     }
   };
 
-  const handleUndoCancel = async (exceptionId: string) => {
+  const handleUndoCancel = async (undo: CancelledClass['undo']) => {
     if (!coach || !db) return;
     try {
       const firestore = db as Firestore;
-      await deleteDoc(doc(firestore, 'coaches', coach.id, 'classExceptions', exceptionId));
+      if (undo.kind === 'booking') {
+        await updateDoc(doc(firestore, 'coaches', coach.id, 'bookings', undo.id), {
+          status: 'confirmed',
+          cancelledAt: deleteField(),
+          cancelReason: deleteField(),
+        });
+      } else {
+        await deleteDoc(doc(firestore, 'coaches', coach.id, 'classExceptions', undo.id));
+      }
       showToast('Cancellation undone', 'success');
     } catch (e) {
       console.error(e);
@@ -1048,7 +1060,7 @@ export default function DashboardPage() {
               {cancelledToday.length > 0 && (
                 <CancelledList
                   items={cancelledToday}
-                  onUndo={(id) => handleUndoCancel(id)}
+                  onUndo={handleUndoCancel}
                 />
               )}
             </div>
@@ -1159,7 +1171,7 @@ export default function DashboardPage() {
               />
             ))}
             {cancelledToday.length > 0 && (
-              <CancelledList items={cancelledToday} onUndo={(id) => handleUndoCancel(id)} />
+              <CancelledList items={cancelledToday} onUndo={handleUndoCancel} />
             )}
           </div>
           <Btn variant="outline" full onClick={() => setShowAdd(true)}>
@@ -1265,6 +1277,8 @@ export default function DashboardPage() {
             ctx={cancelCtx}
             scope={cancelScope}
             setScope={setCancelScope}
+            reason={cancelReason}
+            setReason={setCancelReason}
             cancelling={cancelling}
             onKeep={() => setCancelCtx(null)}
             onConfirm={handleConfirmCancel}
@@ -1912,8 +1926,8 @@ function CancelledList({
   items,
   onUndo,
 }: {
-  items: { booking: Booking; exceptionId: string }[];
-  onUndo: (id: string) => void;
+  items: CancelledClass[];
+  onUndo: (undo: CancelledClass['undo']) => void;
 }) {
   return (
     <div
@@ -1928,7 +1942,7 @@ function CancelledList({
       </div>
       {items.map((c) => (
         <div
-          key={c.exceptionId}
+          key={`${c.undo.kind}:${c.undo.id}`}
           className="flex items-center gap-3 px-1 py-1.5 border-t"
           style={{ borderColor: 'var(--line)' }}
         >
@@ -1944,7 +1958,7 @@ function CancelledList({
           >
             {c.booking.className || 'Untitled class'}
           </div>
-          <Btn size="sm" variant="ghost" onClick={() => onUndo(c.exceptionId)}>
+          <Btn size="sm" variant="ghost" onClick={() => onUndo(c.undo)}>
             <IconUndo size={13} /> Undo
           </Btn>
         </div>
@@ -2093,6 +2107,8 @@ function CancelScopeBody({
   ctx,
   scope,
   setScope,
+  reason,
+  setReason,
   cancelling,
   onKeep,
   onConfirm,
@@ -2106,11 +2122,15 @@ function CancelScopeBody({
   };
   scope: 'this' | 'future';
   setScope: (s: 'this' | 'future') => void;
+  reason: CancelReason | null;
+  setReason: (r: CancelReason) => void;
   cancelling: boolean;
   onKeep: () => void;
   onConfirm: () => void;
 }) {
   const { booking, dateStr, canScope } = ctx;
+  const effectiveScope = canScope ? scope : 'this';
+  const canConfirm = canConfirmCancel(effectiveScope, reason);
   const dateObj = parseDateString(dateStr);
   const dateLabel = formatDateFull(dateObj);
   const title = booking.className?.trim() || 'Lesson';
@@ -2161,13 +2181,45 @@ function CancelScopeBody({
         </>
       )}
 
+      {effectiveScope === 'this' && (
+        <div className="space-y-2">
+          <div
+            className="text-[10.5px] font-semibold uppercase"
+            style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
+          >
+            Why is it cancelled?
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {PICKABLE_CANCEL_REASONS.map((r) => {
+              const selected = reason === r.value;
+              return (
+                <button
+                  key={r.value}
+                  type="button"
+                  onClick={() => setReason(r.value)}
+                  aria-pressed={selected}
+                  className="rounded-[8px] border py-2 text-[13px] font-medium transition-colors"
+                  style={{
+                    background: selected ? 'var(--bg)' : 'var(--panel)',
+                    borderColor: selected ? 'var(--ink)' : 'var(--line-2)',
+                    color: selected ? 'var(--ink)' : 'var(--ink-2)',
+                  }}
+                >
+                  {r.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2 pt-1">
         <Btn variant="outline" onClick={onKeep} disabled={cancelling}>
           Keep lesson
         </Btn>
         <button
           onClick={onConfirm}
-          disabled={cancelling}
+          disabled={cancelling || !canConfirm}
           className="rounded-[8px] py-2 text-[13.5px] font-medium transition-colors disabled:opacity-55 flex items-center justify-center gap-1.5"
           style={{ background: 'var(--bad)', color: '#fff' }}
         >
