@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, where, orderBy, limit, Firestore } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Booking, Location, Student, LessonLog, ClassException, Wallet, WalletTransaction, AwayPeriod } from '@/types';
-import { centsFromLegacy, mapRmToCents, rmToCents } from '@/lib/money';
+import { centsFromLegacy, rmToCents } from '@/lib/money';
+import { bookingFromDoc, exceptionFromDoc, lessonLogFromDoc } from '@/lib/firestore-mappers';
 
 export function useLocations(coachId: string | undefined) {
   const [locations, setLocations] = useState<Location[]>([]);
@@ -37,30 +38,6 @@ export function useLocations(coachId: string | undefined) {
   }, [coachId]);
 
   return { locations, loading };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- raw Firestore doc data
-function bookingFromDoc(id: string, data: any): Booking {
-  return {
-    id,
-    locationId: data.locationId,
-    locationName: data.locationName,
-    dayOfWeek: data.dayOfWeek,
-    startTime: data.startTime,
-    endTime: data.endTime,
-    status: data.status,
-    className: data.className ?? '',
-    notes: data.notes ?? '',
-    studentIds: data.studentIds ?? [],
-    studentPriceCents:
-      data.studentPriceCents ?? mapRmToCents(data.studentPrices ?? {}),
-    studentWallets: data.studentWallets ?? {},
-    startDate: data.startDate ?? undefined,
-    endDate: data.endDate ?? undefined,
-    createdAt: data.createdAt?.toDate() || new Date(),
-    cancelledAt: data.cancelledAt?.toDate(),
-    cancelReason: data.cancelReason ?? undefined,
-  };
 }
 
 export function useBookings(coachId: string | undefined, statusFilter?: 'confirmed' | 'cancelled') {
@@ -201,23 +178,7 @@ export function useLessonLogs(coachId: string | undefined, dateFilter?: string, 
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const items: LessonLog[] = snapshot.docs.map((d) => ({
-          id: d.id,
-          date: d.data().date,
-          bookingId: d.data().bookingId,
-          studentId: d.data().studentId,
-          studentName: d.data().studentName,
-          locationName: d.data().locationName,
-          startTime: d.data().startTime,
-          endTime: d.data().endTime,
-          priceCents: centsFromLegacy(d.data().priceCents, d.data().price),
-          note: d.data().note ?? undefined,
-          // Passed through raw on purpose: undefined (pre-2026-10-18 log, wallet
-          // unknown) and null (nothing was charged) mean different things to
-          // selectUndoWalletIds. `?? undefined` here would erase that.
-          walletId: d.data().walletId,
-          createdAt: d.data().createdAt?.toDate() || new Date(),
-        }));
+        const items: LessonLog[] = snapshot.docs.map((d) => lessonLogFromDoc(d.id, d.data()));
         setLessonLogs(items);
         setLoading(false);
       },
@@ -268,28 +229,7 @@ export function useClassExceptions(coachId: string | undefined, referenceDate?: 
       where('originalDate', '<=', dateWindow.to)
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const items: ClassException[] = snapshot.docs.map((d) => ({
-        id: d.id,
-        bookingId: d.data().bookingId,
-        originalDate: d.data().originalDate,
-        type: d.data().type,
-        reason: d.data().reason ?? undefined,
-        newDate: d.data().newDate,
-        newStartTime: d.data().newStartTime,
-        newEndTime: d.data().newEndTime,
-        newLocationId: d.data().newLocationId,
-        newLocationName: d.data().newLocationName,
-        newNote: d.data().newNote,
-        newClassName: d.data().newClassName,
-        newStudentIds: d.data().newStudentIds,
-        newStudentPriceCents:
-          d.data().newStudentPriceCents ??
-          (d.data().newStudentPrices
-            ? mapRmToCents(d.data().newStudentPrices)
-            : undefined),
-        newStudentWallets: d.data().newStudentWallets,
-        createdAt: d.data().createdAt?.toDate() || new Date(),
-      }));
+      const items: ClassException[] = snapshot.docs.map((d) => exceptionFromDoc(d.id, d.data()));
       setClassExceptions(items);
       setLoading(false);
     });
