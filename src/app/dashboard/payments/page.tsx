@@ -56,7 +56,7 @@ import {
 import { parseDateString } from '@/lib/date-format';
 import { countClasses } from '@/lib/lesson-logs';
 import type { AwayPeriod, Wallet, WalletTransaction, DayOfWeek } from '@/types';
-import { centsToInputValue, formatCents, formatCentsGrouped, parseMoneyToCents } from '@/lib/money';
+import { centsFromLegacy, centsToInputValue, formatCents, formatCentsGrouped, parseMoneyToCents } from '@/lib/money';
 
 const PORTAL_BASE_URL = 'https://coach-simplify.com';
 
@@ -844,7 +844,7 @@ export default function PaymentsPage() {
                 ? sums.last
                 : null;
           if (!bucket) continue;
-          bucket.cents += data.amountCents ?? 0;
+          bucket.cents += centsFromLegacy(data.amountCents, data.amount);
           bucket.count += 1;
         }
         byWallet.set(wallet.id, sums);
@@ -1151,6 +1151,11 @@ export default function PaymentsPage() {
     const amount = parseMoneyToCents(topUpAmount);
     if (amount === null || amount <= 0) {
       showToast('Enter a valid amount', 'error');
+      return;
+    }
+    // Top-ups are money already received — never a future date.
+    if (topUpDate > todayYMD()) {
+      showToast("Top-up date can't be in the future", 'error');
       return;
     }
     setToppingUp(true);
@@ -1848,6 +1853,7 @@ export default function PaymentsPage() {
             <input
               type="date"
               value={topUpDate}
+              max={todayYMD()}
               onChange={(e) => setTopUpDate(e.target.value)}
               className={paperInputClass}
               style={paperInputStyle}
