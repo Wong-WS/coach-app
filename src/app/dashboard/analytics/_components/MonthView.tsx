@@ -20,6 +20,7 @@ import {
   StatCard,
 } from './StatCard';
 import type { AnalyticsInputs } from './types';
+import { INFO } from './info-text';
 
 const shortMonth = (date: string) => parseDateString(date).toLocaleDateString('en-MY', { month: 'short' });
 const longMonth = (date: string) => parseDateString(date).toLocaleDateString('en-MY', { month: 'long' });
@@ -114,6 +115,7 @@ export function MonthView({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
         <StatCard
           label="Classes"
+          info={INFO.classes}
           value={
             isCurrent ? (
               <>
@@ -132,6 +134,7 @@ export function MonthView({
         />
         <StatCard
           label="Taught"
+          info={INFO.taught}
           value={formatRM(proj.taught.cents)}
           sub={isCurrent ? `of ${formatRM(proj.projected.cents)} projected` : 'earned this month'}
           progress={isCurrent && proj.projected.cents > 0 ? proj.taught.cents / proj.projected.cents : undefined}
@@ -146,6 +149,7 @@ export function MonthView({
         {m.likely && (
           <StatCard
             label="Likely to receive"
+            info={INFO.likely}
             value={`+${formatRM(m.likely.totalCents)}`}
             sub={
               <>
@@ -205,6 +209,7 @@ export function MonthView({
 
         <Card>
           <SectionTitle
+            info={INFO.cancelledMonth}
             right={
               <span className="flex items-center gap-2">
                 <span className="mono tnum text-[18px] font-semibold">{m.cancels.length}</span>
@@ -222,7 +227,7 @@ export function MonthView({
           <ReasonBars counts={m.reasons} />
           {m.topCancellers.length > 0 && (
             <div className="mt-4">
-              <RankList title="Cancels most" items={m.topCancellers} unit="this month" />
+              <RankList title="Cancels most" items={m.topCancellers} unit="this month" info={INFO.cancelsMost} />
             </div>
           )}
         </Card>

@@ -36,6 +36,7 @@ import {
   plural,
 } from './StatCard';
 import type { AnalyticsInputs } from './types';
+import { INFO } from './info-text';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAYS: { day: DayOfWeek; short: string; long: string }[] = [
@@ -143,7 +144,7 @@ export function YearView({
 
       {y.forecast && (
         <Card>
-          <Label>Year-end forecast</Label>
+          <Label info={INFO.forecast}>Year-end forecast</Label>
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-1">
             <div className="mono tnum text-[28px] sm:text-[32px] font-semibold" style={{ letterSpacing: '-0.8px' }}>
               {formatRM(y.forecast.forecast.cents)}
@@ -229,7 +230,7 @@ export function YearView({
       <div className={`grid gap-3 ${y.days ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
         {y.days && (
         <Card>
-          <SectionTitle>Days</SectionTitle>
+          <SectionTitle info={INFO.days}>Days</SectionTitle>
           <div className="flex h-3.5 rounded-full overflow-hidden mb-2" style={{ background: 'var(--line)' }}>
             <div style={{ width: `${pct(y.days.worked)}%`, background: 'var(--ink)' }} />
             <div style={{ width: `${pct(y.days.timeOff)}%`, background: 'var(--ink-4)' }} />
@@ -244,7 +245,7 @@ export function YearView({
         )}
 
         <Card>
-          <SectionTitle>Cancelled &amp; moved</SectionTitle>
+          <SectionTitle info={INFO.cancelledYear}>Cancelled &amp; moved</SectionTitle>
           <Row label="Cancelled" value={count(y.cancels)} />
           <Row label="Rescheduled" value={count(y.reschedules)} />
           <div className="mt-3">
@@ -253,7 +254,7 @@ export function YearView({
         </Card>
 
         <Card>
-          <SectionTitle>Classes by day</SectionTitle>
+          <SectionTitle info={INFO.byDay}>Classes by day</SectionTitle>
           <div className="flex flex-col gap-1.5">
             {DAYS.map((d) => (
               <div
@@ -285,7 +286,7 @@ export function YearView({
 
       <div className="grid gap-3 lg:grid-cols-2">
         <Card>
-          <SectionTitle>Students</SectionTitle>
+          <SectionTitle info={INFO.students}>Students</SectionTitle>
           <Row label="Taught this year" value={count(y.students.taught)} />
           {y.students.newThisYear !== null && <Row label="New this year" value={count(y.students.newThisYear)} />}
           <Row label="Stopped this year" value={count(y.students.stopped)} />

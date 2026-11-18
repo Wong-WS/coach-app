@@ -1,4 +1,9 @@
-import type { ReactNode } from 'react';
+'use client';
+
+import { useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { PaperModal } from '@/components/paper';
+import type { Info } from './info-text';
 import type { ReasonBucket } from '@/lib/analytics/cancellations';
 import type { Ranked } from '@/lib/analytics/families';
 import { formatCentsGrouped } from '@/lib/money';
@@ -22,22 +27,61 @@ export function Card({ children, className = '' }: { children: ReactNode; classN
   );
 }
 
-export function Label({ children }: { children: ReactNode }) {
+/** Small ⓘ that opens a popup explaining how a number is worked out. */
+export function InfoButton({ info }: { info: Info }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={`How ${info.title} is worked out`}
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center justify-center w-[15px] h-[15px] rounded-full border text-[9.5px] font-semibold leading-none normal-case flex-shrink-0"
+        style={{ borderColor: 'var(--line-2)', color: 'var(--ink-3)', letterSpacing: 0 }}
+      >
+        i
+      </button>
+      {/* Portal: the ⓘ sits inside small uppercase labels, which the popup
+          text must not inherit. */}
+      {open &&
+        createPortal(
+          <PaperModal open onClose={() => setOpen(false)} title={info.title}>
+            <div className="text-[13.5px] leading-relaxed" style={{ color: 'var(--ink-2)' }}>
+              {info.text}
+            </div>
+          </PaperModal>,
+          document.body,
+        )}
+    </>
+  );
+}
+
+export function Label({ children, info }: { children: ReactNode; info?: Info }) {
   return (
     <div
-      className="text-[10.5px] font-semibold uppercase"
+      className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase"
       style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
     >
       {children}
+      {info && <InfoButton info={info} />}
     </div>
   );
 }
 
-export function SectionTitle({ children, right }: { children: ReactNode; right?: ReactNode }) {
+export function SectionTitle({
+  children,
+  right,
+  info,
+}: {
+  children: ReactNode;
+  right?: ReactNode;
+  info?: Info;
+}) {
   return (
     <div className="flex items-center justify-between gap-2 mb-2.5">
-      <div className="text-[13.5px] font-semibold" style={{ color: 'var(--ink)' }}>
+      <div className="flex items-center gap-1.5 text-[13.5px] font-semibold" style={{ color: 'var(--ink)' }}>
         {children}
+        {info && <InfoButton info={info} />}
       </div>
       {right}
     </div>
@@ -59,16 +103,18 @@ export function StatCard({
   sub,
   progress,
   delta,
+  info,
 }: {
   label: string;
   value: ReactNode;
   sub?: ReactNode;
   progress?: number;
   delta?: ReactNode;
+  info?: Info;
 }) {
   return (
     <Card className="p-3.5">
-      <Label>{label}</Label>
+      <Label info={info}>{label}</Label>
       <div
         className="mono tnum mt-1 text-[20px] sm:text-[22px] font-semibold"
         style={{ color: 'var(--ink)', letterSpacing: '-0.5px' }}
@@ -158,12 +204,22 @@ export function ReasonBars({ counts }: { counts: Record<ReasonBucket, number> })
   );
 }
 
-export function RankList({ title, items, unit }: { title: string; items: Ranked[]; unit?: string }) {
+export function RankList({
+  title,
+  items,
+  unit,
+  info,
+}: {
+  title: string;
+  items: Ranked[];
+  unit?: string;
+  info?: Info;
+}) {
   if (items.length === 0) return null;
   return (
     <div>
       <div className="mb-1">
-        <Label>{title}</Label>
+        <Label info={info}>{title}</Label>
       </div>
       {items.map((r, i) => (
         <div
