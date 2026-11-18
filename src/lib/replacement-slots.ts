@@ -15,6 +15,8 @@ export function slotsForDate(
   poolId: string,
   lessonMinutes: number,
 ): { start: string; end: string }[] {
+  // A bad record (end not after start) must never hang the public page.
+  if (!(lessonMinutes > 0)) return [];
   const sorted = [...classes].sort((a, b) => a.startTime.localeCompare(b.startTime));
   const starts = new Set<number>();
 
@@ -25,19 +27,21 @@ export function slotsForDate(
   };
   const travel = (locationId: string) => (locationId === poolId ? 0 : TRAVEL_MIN);
 
-  let freeFrom = toMin(DAY_START);
+  // Track the latest class end from midnight, so travel after an early class
+  // (e.g. one ending 7:45 at another pool) still pushes the first slot back.
+  let freeFrom = 0;
   let prev: Booking | null = null;
+  const windowStart = () => Math.max(toMin(DAY_START), freeFrom + (prev ? travel(prev.locationId) : 0));
   for (const c of sorted) {
     const start = toMin(c.startTime);
     const end = toMin(c.endTime);
-    const windowStart = freeFrom + (prev && toMin(prev.endTime) >= toMin(DAY_START) ? travel(prev.locationId) : 0);
-    offer(windowStart, Math.min(start - travel(c.locationId), toMin(DAY_END)));
+    offer(windowStart(), Math.min(start - travel(c.locationId), toMin(DAY_END)));
     if (end >= freeFrom) {
-      freeFrom = Math.max(end, toMin(DAY_START));
+      freeFrom = end;
       prev = c;
     }
   }
-  offer(freeFrom + (prev && toMin(prev.endTime) >= toMin(DAY_START) ? travel(prev.locationId) : 0), toMin(DAY_END));
+  offer(windowStart(), toMin(DAY_END));
 
   return [...starts]
     .sort((a, b) => a - b)
@@ -121,7 +125,9 @@ export function replacementSections(a: {
   for (const sid of a.studentIds) {
     const main = mainWeeklyClass(sid, confirmed, a.today);
     if (!main) continue;
-    const key = `${main.locationId}|${toMin(main.endTime) - toMin(main.startTime)}`;
+    const minutes = toMin(main.endTime) - toMin(main.startTime);
+    if (!(minutes > 0)) continue; // bad record: skip rather than offer nonsense
+    const key = `${main.locationId}|${minutes}`;
     const list = groups.get(key) ?? [];
     if (!list.some((b) => b.id === main.id)) list.push(main);
     groups.set(key, list);

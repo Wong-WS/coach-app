@@ -68,6 +68,10 @@ describe('slotsForDate', () => {
     expect(slots[slots.length - 1].end <= '20:30').toBe(true);
   });
 
+  it('leaves travel time after an early class at another pool that ends before 8 am', () => {
+    expect(slotsForDate([cls('07:00', '07:45', 'granito')], 'permai', 60)[0]).toEqual({ start: '08:15', end: '09:15' });
+  });
+
   it('waits for the later of two overlapping classes to finish', () => {
     const day = [cls('10:00', '11:00', 'permai'), cls('10:30', '11:30', 'permai')];
     const after = slotsForDate(day, 'permai', 60).filter((s) => s.start >= '10:00');
@@ -186,5 +190,16 @@ describe('weekLabel', () => {
     expect(weekLabel('2026-11-20', TODAY)).toBe('This week');
     expect(weekLabel('2026-11-24', TODAY)).toBe('Next week');
     expect(weekLabel('2026-12-01', TODAY)).toBe('Week of 30 Nov');
+  });
+});
+
+describe('bad lesson lengths', () => {
+  it('offers nothing (and does not hang) for a zero-length lesson', () => {
+    expect(slotsForDate([], 'permai', 0)).toEqual([]);
+  });
+
+  it('skips a weekly class whose end is not after its start', () => {
+    const broken = weekly('broken', 'thursday', '16:00', '16:00', 'permai', ['s1']);
+    expect(replacementSections({ studentIds: ['s1'], bookings: [broken], exceptions: [], awayPeriods: [], today: TODAY })).toEqual([]);
   });
 });
