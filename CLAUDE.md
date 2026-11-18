@@ -184,7 +184,7 @@ coaches/{coachId}/wallets/{walletId}/transactions/{txnId}
 - **Students**: add/edit/delete/search/filter; linked students (group lessons with separate-paying parents via `linkedStudentIds[]` + `studentPrices{}`)
 - **Today's Classes** (dashboard home): mark-as-done (single + bulk), duplicate (prefilled Add Lesson modal), cancel-scope (this date vs. future), class exceptions (per-date cancel/reschedule of recurring bookings)
 - **Wallets**: named multi-student balance; top-up / charge / refund / adjust / archive; tab mode; health states = `healthy / low / empty / owing / tab / inactive` (see `getWalletHealth`); depletion alert is a popup (not toast)
-- **Wallet portal**: parent/student-facing at `/portal/[token]` (shareable via WhatsApp). Shows balance, status chip, coach-set top-up suggestion, paginated charges + top-ups (10 per page with Load more). Read-only; uses Admin SDK to bypass owner rules.
+- **Wallet portal**: parent/student-facing at `/portal/[token]` (shareable via WhatsApp). Shows balance, status chip, paginated charges + top-ups (10 per page with Load more), and a folded "Need a replacement class?" row listing the coach's free slots at the family's main pool for 3 weeks (`src/lib/replacement-slots.ts`; only the finished slot list reaches the browser). Read-only; uses Admin SDK to bypass owner rules.
 - **Income dashboard**: projected (from recurring bookings) vs. actual (from lessonLogs)
 - **Time off (away periods)**: full-day blackouts for travel/leave (Settings → Time off). Recurring classes inside the range are skipped automatically; ad-hoc + rescheduled lessons surface in a conflict resolver. Persists indefinitely as a labelled record visible on dashboard + schedule.
 
