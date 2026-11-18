@@ -5,7 +5,7 @@ Status: mockup approved (`.superpowers/brainstorm/50167-1794987833/content/porta
 
 ## Why
 
-When a parent asks to reschedule ("they can't make Thursday for the next 3 weeks"), the coach currently needs about a day to work out free slots, types them into WhatsApp, and often the parent can't make any — "let me know if other slots open up later", which puts the job back on the coach. The parent already has a portal link (`/portal/[token]`). Let them see the coach's real free slots there, any time, and ask for one with a single tap. The coach still books it themselves.
+When a parent asks to reschedule ("they can't make Thursday for the next 3 weeks"), the coach currently needs about a day to work out free slots, types them into WhatsApp, and often the parent can't make any — "let me know if other slots open up later", which puts the job back on the coach. The parent already has a portal link (`/portal/[token]`). Let them see the coach's real free slots there, any time, then message the coach as usual with the time they want. The coach still books it themselves.
 
 The coach's priorities: the portal's main job is still balance + recent lessons; replacements are occasional and must not push that down. Keep it simple ("if it works, it's good").
 
@@ -13,13 +13,14 @@ The coach's priorities: the portal's main job is still balance + recent lessons;
 
 - A folded row on the portal, **below Recent lessons and above Top-ups**: "Need a replacement class? See Coach Wong's free slots at Permai ›". Tapping it opens the list in place.
 - Opened: free slots grouped by week ("This week", "Next week", then "+ Week of 1 Dec ›" reveals the third week), one line per date with the times as green buttons; a date with nothing free says "Fully booked" (only for dates in range that have no slot). Footer: "Updated live — check back if nothing fits."
-- Tapping a time opens WhatsApp to the coach with a pre-filled message: "Hi Coach, can Ethan take a replacement class on Fri 21 Nov, 1–2pm at Permai? 🙏". The parent just presses Send.
+- Times are plain labels, not buttons (no tap-to-WhatsApp — dropped by the coach). A line under the list: "Message Coach Wong with the time you'd like."
 - Slots are real dated slots: they reflect one-off classes, cancellations, reschedules and time off on that date — not the weekly pattern.
 - Only slots at the student's **main pool**, of the student's **usual lesson length**, with travel counted so the coach is never double-booked across pools.
 
 ## Non-goals
 
 - Parents booking directly into the schedule. Nothing is written by the portal; the coach adds the class as today.
+- A pre-filled WhatsApp message / coach WhatsApp number (considered, dropped by the coach).
 - Notifications when a slot opens up. Parents check back themselves.
 - Per-pool-pair travel times. One fixed 30-minute travel time between different pools (coach: "when travel buffer is shorter, just leave it as it is").
 - Coach-side curation of which slots to offer (e.g. hiding some). Every free slot that passes the rules is shown.
@@ -28,21 +29,19 @@ The coach's priorities: the portal's main job is still balance + recent lessons;
 
 - Offering a slot the coach can't actually make (overlap, or not enough travel time between pools).
 - Showing anything about other students (names, classes) — parents see only free times.
-- Making the portal noticeably slower or costlier: the only new reads are the wallet's own student records (usually 1–2 per visit, for names); the coach's WhatsApp number comes from the coach doc already fetched.
+- Making the portal slower or costlier: no new Firestore reads — everything comes from what `fetchPortalData` already loads.
 
 ## Rules (decided)
 
 - **Main pool & lesson length** per student: from the student's confirmed weekly booking(s) (`startDate !== endDate`, i.e. not one-off, and still running: no `endDate` or `endDate >= today`). If a student has weekly bookings at more than one pool, use the pool with the most weekly classes; tie → the earliest-starting weekly class *(my call)*. Lesson length = that booking's `endTime − startTime`.
-- **Who gets a section**: each student in the wallet with a weekly booking. Students sharing the same main pool and lesson length are combined into one section ("for Ethan & Ella"). Students with no weekly booking get none. If nobody has one, the row is hidden *(my call)*.
+- **Who gets a section**: each student in the wallet with a weekly booking. Students sharing the same main pool and lesson length are combined into one section. Students with no weekly booking get none. If nobody has one, the row is hidden *(my call)*.
+- **Section label** (no names, so no extra reads): "Free 1-hour slots at Permai". Only when a wallet has more than one section, add the weekly class it replaces: "… for the Thu 4:30pm class" *(my call)*.
 - **Dates**: tomorrow through 3 weeks (Mon–Sun weeks: the rest of this week, next week, the week after). Skip dates inside the coach's time off (`awayPeriods`).
 - **Day hours**: 8 am – 9 pm every day, the same fixed values as the Schedule page (`DAY_START`, `DAY_END` in `src/lib/schedule-gaps.ts`). Days with no classes are offered too (coach chose "everything").
 - **Weekday mornings (coach's rule)**: if a section's weekly class starts at or after **2 pm**, weekday (Mon–Fri) slots starting **before 12 pm** are hidden behind a "Show morning slots" button in that section (one tap reveals them for all dates). If the weekly class starts before 2 pm, everything is shown — they're likely a morning/adult student. Weekends always show everything. "Morning" = before 12 pm *(interpretation: the coach offered 1–2 pm weekday slots to an afternoon family, so early-afternoon slots must stay visible)*.
 - **Busy time** on a date = `getClassesForDate(date, confirmedBookings, exceptions, awayPeriods)` (`src/lib/class-schedule.ts`) — includes one-offs and moved classes, drops cancellations.
 - **Free windows at pool P with length L**: between consecutive classes (and from DAY_START / to DAY_END), the usable window at P shrinks by 30 min on a side where the neighbouring class is at a different pool (none for the same pool; none at the day's start/end).
 - **Slots offered** in a usable window [s, e]: back-to-back slots of length L starting at s (s, s+L, …), plus the slot ending exactly at e if it isn't already in the list. This keeps the slot right before/after an existing class at the same pool (e.g. 3:30–4:30 before a 4:30 class), which is the one the coach most often offers.
-- **WhatsApp**: link to `https://wa.me/<coach number>?text=<message>`. If the coach hasn't set a number, use `https://wa.me/?text=<message>` (WhatsApp asks the parent to pick the contact) *(my call)*.
-- **Coach WhatsApp number**: a new "WhatsApp number" field in Settings → account, saved as `whatsappNumber` on `coaches/{coachId}` (already in the documented data model, unused). Digits with country code (e.g. 60123456789); the existing `PhoneInput` component may be reused.
-- **Names**: read the wallet's student records (`coaches/{coachId}/students/{id}`, one read each) and use the student's name in the section ("for Ethan & Ella") and always in the WhatsApp message ("can Ethan take…"), so the coach knows who's asking among ~70 families. Note: the existing `hideStudentNames` flag in `resolvePortalToken` is not a setting — it's `studentIds.length <= 1`, used to blank names in the recent-lessons list; it does not apply to this feature *(my call)*.
 - **Mobile first**: the portal is used on phones; the slot buttons must be easy to tap.
 
 ## Reuse
