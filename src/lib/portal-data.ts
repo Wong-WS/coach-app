@@ -2,6 +2,8 @@ import 'server-only';
 import { getAdminDb } from '@/lib/firebase-admin';
 import type { Booking, ClassException, LessonLog, Wallet, AwayPeriod } from '@/types';
 import { getWalletHealth, type WalletHealth } from '@/lib/wallet-alerts';
+import { replacementSections, type ReplacementSection } from '@/lib/replacement-slots';
+import { COACH_TIME_ZONE, isoDateInTimeZone } from '@/lib/time-zone';
 import { centsFromLegacy, mapRmToCents, rmToCents } from '@/lib/money';
 import type { Firestore, Timestamp } from 'firebase-admin/firestore';
 
@@ -32,6 +34,8 @@ export type PortalPayload = {
   };
   charges: { items: PortalChargeRow[]; hasMore: boolean };
   topUps: { items: PortalTopUpRow[]; hasMore: boolean };
+  /** Free replacement slots. Only safe fields — this is serialized into the public page. */
+  replacement: { today: string; sections: ReplacementSection[] };
 };
 
 export type PortalTokenResolution = {
@@ -167,7 +171,7 @@ export async function fetchTopUpsPage(
 export async function fetchPortalData(token: string): Promise<PortalPayload | null> {
   const ctx = await resolvePortalToken(token);
   if (!ctx) return null;
-  const { db, coachId, walletId, hideStudentNames } = ctx;
+  const { db, coachId, walletId, studentIds, hideStudentNames } = ctx;
 
   const today = todayIsoDate();
   // Fetch a 4-month exception window centred on today, matching the dashboard's
@@ -296,6 +300,9 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
     };
   });
 
+  // Malaysia's date, not the server's (UTC) — "tomorrow" must be the parent's tomorrow.
+  const replacementToday = isoDateInTimeZone(new Date(), COACH_TIME_ZONE);
+
   const { health, rateCents } = getWalletHealth(wallet, bookings, exceptions, todayLogs, today, awayPeriods);
 
   return {
@@ -309,5 +316,15 @@ export async function fetchPortalData(token: string): Promise<PortalPayload | nu
     },
     charges,
     topUps,
+    replacement: {
+      today: replacementToday,
+      sections: replacementSections({
+        studentIds,
+        bookings,
+        exceptions,
+        awayPeriods,
+        today: replacementToday,
+      }),
+    },
   };
 }
