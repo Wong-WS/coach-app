@@ -34,7 +34,7 @@ import {
 } from '@/hooks/useCoachData';
 import { usePointerType } from '@/hooks/usePointerType';
 import { useToast } from '@/components/ui/Toast';
-import { getScheduledRevenueForDateRange } from '@/lib/class-schedule';
+import { projectPeriod } from '@/lib/analytics/projection';
 import {
   getWalletStatus,
   getWalletHealth,
@@ -1074,14 +1074,10 @@ export default function PaymentsPage() {
   ).toLocaleDateString('en-MY', { month: 'long' });
   const monthProjected = useMemo(
     () =>
-      getScheduledRevenueForDateRange(
-        monthRange.start,
-        monthRange.end,
-        bookings,
-        classExceptions,
-        awayPeriods,
-      ),
-    [monthRange, bookings, classExceptions, awayPeriods],
+      // Taught so far + still to come — same rule as the Analytics page.
+      projectPeriod(monthRange, todayStr, bookings, classExceptions, awayPeriods, lessonLogs)
+        .projected.cents,
+    [monthRange, todayStr, bookings, classExceptions, awayPeriods, lessonLogs],
   );
 
   // Top-up presets. Tab wallets pay per class, so the natural amount is
