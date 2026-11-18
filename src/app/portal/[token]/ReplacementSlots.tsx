@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { weekLabel, type ReplacementSection } from '@/lib/replacement-slots';
+import { visibleWindow, weekLabel, type ReplacementSection } from '@/lib/replacement-slots';
 
 const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -47,9 +47,9 @@ function Section({ section, today, coachName }: { section: ReplacementSection; t
   return (
     <div className="pt-1">
       <div className="text-[12px] mb-2" style={{ color: 'var(--ink-3)' }}>
-        Free {lengthLabel(section.lessonMinutes)} slots at{' '}
-        <b style={{ color: 'var(--ink-2)' }}>{section.poolName}</b>
-        {section.forClass ? ` for the ${section.forClass} class` : ''}.
+        Free times at <b style={{ color: 'var(--ink-2)' }}>{section.poolName}</b>
+        {section.forClass ? ` for the ${section.forClass} class` : ''}. Any{' '}
+        {lengthLabel(section.lessonMinutes)} lesson inside these times works.
       </div>
 
       {section.hideWeekdayMornings && (
@@ -69,16 +69,18 @@ function Section({ section, today, coachName }: { section: ReplacementSection; t
             {week.label}
           </div>
           {week.days.map((day) => {
-            const slots = day.slots.filter((s) => showMornings || !s.weekdayMorning);
-            const onlyMornings = slots.length === 0 && day.slots.length > 0;
+            const shown = day.windows
+              .map((w) => visibleWindow(w, showMornings, section.lessonMinutes))
+              .filter((w): w is { start: string; end: string } => w !== null);
+            const onlyMornings = shown.length === 0 && day.windows.length > 0;
             return (
               <div key={day.date} className="flex gap-2.5 py-2 border-t" style={{ borderColor: 'var(--line)' }}>
                 <div className="w-[78px] shrink-0 text-[12.5px] font-semibold pt-1" style={{ color: 'var(--ink)' }}>
                   {dateLabel(day.date)}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {slots.length > 0 ? (
-                    slots.map((s) => (
+                  {shown.length > 0 ? (
+                    shown.map((s) => (
                       <span
                         key={s.start}
                         className="mono tnum text-[12.5px] font-semibold rounded-full px-2.5 py-1"

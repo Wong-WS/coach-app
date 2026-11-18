@@ -4,31 +4,29 @@ import { isDateInAwayPeriod } from '@/lib/away-periods';
 import { DAY_END, DAY_START, TRAVEL_MIN, toMin, toTime } from '@/lib/schedule-gaps';
 
 /**
- * Free replacement slots of `lessonMinutes` at pool `poolId` on one date,
- * given that date's classes (from getClassesForDate). Travel time is kept
- * free on a side where the neighbouring class is at a different pool. In each
- * usable window, slots run back-to-back from its start, plus the slot ending
- * exactly at its end (the one right before a class, which coaches offer most).
+ * Free time at pool `poolId` on one date, as windows long enough for a lesson
+ * of `lessonMinutes`, given that date's classes (from getClassesForDate).
+ * Travel time is kept free on a side where the neighbouring class is at a
+ * different pool. Parents pick any lesson-length time inside a window, so
+ * nothing possible is hidden (e.g. "6:30–9pm" covers 7–8pm).
  */
-export function slotsForDate(
+export function freeWindowsForDate(
   classes: Booking[],
   poolId: string,
   lessonMinutes: number,
 ): { start: string; end: string }[] {
-  // A bad record (end not after start) must never hang the public page.
+  // A bad record (end not after start) must never produce nonsense windows.
   if (!(lessonMinutes > 0)) return [];
   const sorted = [...classes].sort((a, b) => a.startTime.localeCompare(b.startTime));
-  const starts = new Set<number>();
+  const windows: { start: number; end: number }[] = [];
 
   const offer = (from: number, to: number) => {
-    if (to - from < lessonMinutes) return;
-    for (let s = from; s + lessonMinutes <= to; s += lessonMinutes) starts.add(s);
-    starts.add(to - lessonMinutes);
+    if (to - from >= lessonMinutes) windows.push({ start: from, end: to });
   };
   const travel = (locationId: string) => (locationId === poolId ? 0 : TRAVEL_MIN);
 
   // Track the latest class end from midnight, so travel after an early class
-  // (e.g. one ending 7:45 at another pool) still pushes the first slot back.
+  // (e.g. one ending 7:45 at another pool) still pushes the first window back.
   let freeFrom = 0;
   let prev: Booking | null = null;
   const windowStart = () => Math.max(toMin(DAY_START), freeFrom + (prev ? travel(prev.locationId) : 0));
@@ -43,9 +41,7 @@ export function slotsForDate(
   }
   offer(windowStart(), toMin(DAY_END));
 
-  return [...starts]
-    .sort((a, b) => a - b)
-    .map((s) => ({ start: toTime(s), end: toTime(s + lessonMinutes) }));
+  return windows.map((w) => ({ start: toTime(w.start), end: toTime(w.end) }));
 }
 
 // ── Sections for a family ───────────────────────────────────────────────────
@@ -53,15 +49,16 @@ export function slotsForDate(
 // lesson length and free times. No ids, other pools, names or prices — this
 // is serialized into the public portal page.
 
-export type ReplacementSlot = { start: string; end: string; weekdayMorning: boolean };
+/** A free stretch. `weekdayMorning`: a Mon–Fri window starting before noon. */
+export type ReplacementWindow = { start: string; end: string; weekdayMorning: boolean };
 export type ReplacementSection = {
   poolName: string;
   lessonMinutes: number;
   /** "Thu 4:30pm" — only when a family has more than one section. */
   forClass: string | null;
-  /** Afternoon students: weekday slots before noon sit behind "Show morning slots". */
+  /** Afternoon students: weekday time before noon sits behind "Show morning slots". */
   hideWeekdayMornings: boolean;
-  days: { date: string; slots: ReplacementSlot[] }[];
+  days: { date: string; windows: ReplacementWindow[] }[];
 };
 
 const AFTERNOON_FROM = '14:00';
@@ -154,9 +151,9 @@ export function replacementSections(a: {
         const weekday = !['saturday', 'sunday'].includes(getDayOfWeekForDate(date));
         return {
           date,
-          slots: slotsForDate(classesOn.get(date) ?? [], main.locationId, lessonMinutes).map((s) => ({
-            ...s,
-            weekdayMorning: weekday && s.start < MORNING_UNTIL,
+          windows: freeWindowsForDate(classesOn.get(date) ?? [], main.locationId, lessonMinutes).map((w) => ({
+            ...w,
+            weekdayMorning: weekday && w.start < MORNING_UNTIL,
           })),
         };
       }),
@@ -172,4 +169,18 @@ export function weekLabel(date: string, today: string): string {
   if (monday === addDays(thisMonday, 7)) return 'Next week';
   const d = parse(monday);
   return `Week of ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+
+/**
+ * What to show for a window: as is, or — when weekday mornings are hidden —
+ * trimmed to start at noon, or null if no full lesson is left after noon.
+ */
+export function visibleWindow(
+  w: ReplacementWindow,
+  showMornings: boolean,
+  lessonMinutes: number,
+): { start: string; end: string } | null {
+  if (showMornings || !w.weekdayMorning) return { start: w.start, end: w.end };
+  if (toMin(w.end) - toMin(MORNING_UNTIL) < lessonMinutes) return null;
+  return { start: MORNING_UNTIL, end: w.end };
 }

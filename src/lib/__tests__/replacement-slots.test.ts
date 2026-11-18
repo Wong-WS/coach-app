@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mainWeeklyClass, replacementSections, slotsForDate, weekLabel } from '@/lib/replacement-slots';
+import { freeWindowsForDate, mainWeeklyClass, replacementSections, visibleWindow, weekLabel } from '@/lib/replacement-slots';
 import { getClassesForDate } from '@/lib/class-schedule';
 import type { AwayPeriod, Booking, ClassException } from '@/types';
 
@@ -22,60 +22,59 @@ function cls(startTime: string, endTime: string, locationId: string, overrides: 
   };
 }
 
-const starts = (slots: { start: string; end: string }[]) => slots.map((s) => `${s.start}-${s.end}`);
+const spans = (w: { start: string; end: string }[]) => w.map((x) => `${x.start}-${x.end}`);
 
-describe('slotsForDate', () => {
-  it('offers every hour from 8 am to 9 pm on a free day', () => {
-    const slots = slotsForDate([], 'permai', 60);
-    expect(slots).toHaveLength(13);
-    expect(slots[0]).toEqual({ start: '08:00', end: '09:00' });
-    expect(slots[12]).toEqual({ start: '20:00', end: '21:00' });
+describe('freeWindowsForDate', () => {
+  it('is one window from 8 am to 9 pm on a free day', () => {
+    expect(freeWindowsForDate([], 'permai', 60)).toEqual([{ start: '08:00', end: '21:00' }]);
   });
 
-  it('offers the slots right before and after a class at the same pool', () => {
-    const slots = starts(slotsForDate([cls('16:30', '17:30', 'permai')], 'permai', 60));
-    expect(slots[0]).toBe('08:00-09:00');
-    expect(slots).toContain('15:30-16:30');
-    expect(slots).toContain('17:30-18:30');
-    expect(slots).not.toContain('16:00-17:00');
+  it('splits around a class at the same pool with no travel', () => {
+    expect(spans(freeWindowsForDate([cls('16:30', '17:30', 'permai')], 'permai', 60))).toEqual([
+      '08:00-16:30',
+      '17:30-21:00',
+    ]);
+  });
+
+  it('keeps an evening window whole, so any hour inside it can be asked for (6:30–9pm)', () => {
+    const day = [cls('17:00', '18:00', 'quavside')];
+    expect(spans(freeWindowsForDate(day, 'brezza', 60))).toContain('18:30-21:00');
   });
 
   it('allows travel time only towards a different pool', () => {
     const day = [cls('12:00', '13:00', 'granito'), cls('14:30', '15:30', 'quavside')];
-    expect(starts(slotsForDate(day, 'granito', 60))).toContain('13:00-14:00');
-    expect(starts(slotsForDate(day, 'quavside', 60))).toContain('13:30-14:30');
+    expect(spans(freeWindowsForDate(day, 'granito', 60))).toContain('13:00-14:00');
+    expect(spans(freeWindowsForDate(day, 'quavside', 60))).toContain('13:30-14:30');
   });
 
-  it('offers nothing in a gap too short once travel both ways is counted', () => {
+  it('leaves out a gap too short once travel both ways is counted', () => {
     const day = [cls('12:00', '13:00', 'granito'), cls('14:00', '15:00', 'quavside')];
-    const between = slotsForDate(day, 'permai', 60).filter((s) => s.start >= '13:00' && s.end <= '14:00');
+    const between = freeWindowsForDate(day, 'permai', 60).filter((w) => w.start >= '13:00' && w.end <= '14:00');
     expect(between).toEqual([]);
   });
 
-  it('uses the lesson length, here 45 minutes', () => {
-    const slots = starts(slotsForDate([cls('16:00', '16:45', 'permai')], 'permai', 45));
-    expect(slots).toContain('15:15-16:00');
-    expect(slots).toContain('16:45-17:30');
-    expect(slots[0]).toBe('08:00-08:45');
+  it('only keeps windows long enough for the lesson (45 minutes here)', () => {
+    const day = [cls('10:00', '11:00', 'permai'), cls('11:40', '12:40', 'permai')];
+    expect(spans(freeWindowsForDate(day, 'permai', 45))).not.toContain('11:00-11:40');
+    expect(spans(freeWindowsForDate(day, 'permai', 30))).toContain('11:00-11:40');
   });
 
   it('starts after a class that runs past 8 am', () => {
-    expect(slotsForDate([cls('07:00', '08:30', 'permai')], 'permai', 60)[0]).toEqual({ start: '08:30', end: '09:30' });
-  });
-
-  it('never runs past the start of a late class or past 9 pm', () => {
-    const slots = slotsForDate([cls('20:30', '21:30', 'permai')], 'permai', 60);
-    expect(slots[slots.length - 1].end <= '20:30').toBe(true);
+    expect(freeWindowsForDate([cls('07:00', '08:30', 'permai')], 'permai', 60)[0].start).toBe('08:30');
   });
 
   it('leaves travel time after an early class at another pool that ends before 8 am', () => {
-    expect(slotsForDate([cls('07:00', '07:45', 'granito')], 'permai', 60)[0]).toEqual({ start: '08:15', end: '09:15' });
+    expect(freeWindowsForDate([cls('07:00', '07:45', 'granito')], 'permai', 60)[0].start).toBe('08:15');
+  });
+
+  it('stops before a late class', () => {
+    const w = freeWindowsForDate([cls('20:30', '21:30', 'permai')], 'permai', 60);
+    expect(w[w.length - 1].end).toBe('20:30');
   });
 
   it('waits for the later of two overlapping classes to finish', () => {
     const day = [cls('10:00', '11:00', 'permai'), cls('10:30', '11:30', 'permai')];
-    const after = slotsForDate(day, 'permai', 60).filter((s) => s.start >= '10:00');
-    expect(after[0]).toEqual({ start: '11:30', end: '12:30' });
+    expect(freeWindowsForDate(day, 'permai', 60).find((w) => w.start >= '10:00')?.start).toBe('11:30');
   });
 
   it('reflects that date: a cancelled class frees its time, a one-off blocks it', () => {
@@ -88,13 +87,29 @@ describe('slotsForDate', () => {
       type: 'cancelled',
       createdAt: new Date(),
     };
-    const withClass = starts(slotsForDate(getClassesForDate('2026-11-19', [weekly, oneOff], []), 'permai', 60));
-    expect(withClass).not.toContain('16:00-17:00'); // the weekly class is in the way
+    const covers = (w: { start: string; end: string }[], from: string, to: string) => w.some((x) => x.start <= from && x.end >= to);
+    const withClass = freeWindowsForDate(getClassesForDate('2026-11-19', [weekly, oneOff], []), 'permai', 60);
+    expect(covers(withClass, '16:30', '17:30')).toBe(false);
+    const day = freeWindowsForDate(getClassesForDate('2026-11-19', [weekly, oneOff], [cancelled]), 'permai', 60);
+    expect(covers(day, '16:30', '17:30')).toBe(true);
+    expect(covers(day, '10:00', '11:00')).toBe(false);
+  });
+});
 
-    const day = getClassesForDate('2026-11-19', [weekly, oneOff], [cancelled]);
-    const slots = starts(slotsForDate(day, 'permai', 60));
-    expect(slots).toContain('16:00-17:00'); // cancelled → that time is free
-    expect(slots).not.toContain('10:00-11:00'); // the one-off on that date blocks it
+describe('visibleWindow', () => {
+  const w = (start: string, end: string, weekdayMorning: boolean) => ({ start, end, weekdayMorning });
+
+  it('trims a weekday window to start at noon when mornings are hidden', () => {
+    expect(visibleWindow(w('08:00', '15:00', true), false, 60)).toEqual({ start: '12:00', end: '15:00' });
+  });
+
+  it('drops a weekday morning window with no full lesson left after noon', () => {
+    expect(visibleWindow(w('08:00', '12:30', true), false, 60)).toBeNull();
+  });
+
+  it('shows everything once mornings are shown, and never trims weekends', () => {
+    expect(visibleWindow(w('08:00', '15:00', true), true, 60)).toEqual({ start: '08:00', end: '15:00' });
+    expect(visibleWindow(w('08:00', '15:00', false), false, 60)).toEqual({ start: '08:00', end: '15:00' });
   });
 });
 
@@ -148,9 +163,8 @@ describe('replacementSections', () => {
     expect(section.hideWeekdayMornings).toBe(true);
     const fri = section.days.find((d) => d.date === '2026-11-20')!;
     const sat = section.days.find((d) => d.date === '2026-11-21')!;
-    expect(fri.slots.find((s) => s.start === '09:00')?.weekdayMorning).toBe(true);
-    expect(fri.slots.find((s) => s.start === '13:00')?.weekdayMorning).toBe(false);
-    expect(sat.slots.find((s) => s.start === '09:00')?.weekdayMorning).toBe(false);
+    expect(fri.windows).toEqual([{ start: '08:00', end: '21:00', weekdayMorning: true }]);
+    expect(sat.windows).toEqual([{ start: '08:00', end: '21:00', weekdayMorning: false }]);
   });
 
   it('shows everything for a student whose weekly class starts before 2 pm', () => {
@@ -194,8 +208,8 @@ describe('weekLabel', () => {
 });
 
 describe('bad lesson lengths', () => {
-  it('offers nothing (and does not hang) for a zero-length lesson', () => {
-    expect(slotsForDate([], 'permai', 0)).toEqual([]);
+  it('offers nothing for a zero-length lesson', () => {
+    expect(freeWindowsForDate([], 'permai', 0)).toEqual([]);
   });
 
   it('skips a weekly class whose end is not after its start', () => {
