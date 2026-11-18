@@ -1,12 +1,6 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
-import {
-  Firestore,
-  getFirestore,
-  initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
-} from 'firebase/firestore';
+import { Firestore, getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -23,24 +17,14 @@ let auth: Auth | undefined;
 let db: Firestore | undefined;
 
 if (typeof window !== 'undefined' && firebaseConfig.apiKey) {
-  const isFirstInit = getApps().length === 0;
-  app = isFirstInit ? initializeApp(firebaseConfig) : getApps()[0];
+  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
   auth = getAuth(app);
-
-  if (isFirstInit) {
-    try {
-      db = initializeFirestore(app, {
-        localCache: persistentLocalCache({
-          tabManager: persistentMultipleTabManager(),
-        }),
-      });
-    } catch {
-      // Browsers without IndexedDB (private mode in some) fall back to in-memory.
-      db = getFirestore(app);
-    }
-  } else {
-    db = getFirestore(app);
-  }
+  // In-memory cache only (the default). An IndexedDB-backed cache
+  // (persistentLocalCache) was tried and removed: Safari's IndexedDB can stop
+  // responding after a long-idle tab reloads, or a tab reloads itself after a
+  // deploy. Every Firestore read then hangs inside the SDK, and refreshing the
+  // same tab doesn't clear it. Loading skeletons cover the brief empty state.
+  db = getFirestore(app);
 }
 
 export { auth, db };
