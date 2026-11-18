@@ -22,11 +22,11 @@ export type TimelineItem =
   | { kind: 'class'; booking: Booking }
   | { kind: 'free'; start: string; end: string; minutes: number; fits: FreeFit[] };
 
-const toMin = (t: string) => {
+export const toMin = (t: string) => {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
 };
-const toTime = (min: number) =>
+export const toTime = (min: number) =>
   `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 
 const placeOf = (b: Booking): Place => ({ locationId: b.locationId, locationName: b.locationName });
