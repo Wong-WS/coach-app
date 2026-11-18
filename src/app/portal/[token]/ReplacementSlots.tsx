@@ -160,6 +160,14 @@ export default function ReplacementSlots({
 
       {open && (
         <div className="px-3 pb-3">
+          <div
+            className="rounded-[10px] px-3 py-2 mb-2 text-[12px] leading-snug"
+            style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}
+          >
+            <b>For one-off replacement classes only.</b> These are gaps that happen to be free on these
+            dates, often because another class moved or was cancelled. They are not regular weekly slots
+            and can change any time.
+          </div>
           {sections.map((section) => (
             <Section key={`${section.poolName}|${section.forClass}`} section={section} today={today} coachName={coachName} />
           ))}
