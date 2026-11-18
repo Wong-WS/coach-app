@@ -79,6 +79,9 @@ export const IconMore = (p: IconProps) => (
 export const IconClose = (p: IconProps) => (
   <Icon {...p}><path d="M6 6l12 12M18 6L6 18" /></Icon>
 );
+export const IconChart = (p: IconProps) => (
+  <Icon {...p}><path d="M5 20V11M12 20V5M19 20v-6M3 20h18" /></Icon>
+);
 export const IconChevL = (p: IconProps) => (
   <Icon {...p}><path d="M15 18l-6-6 6-6" /></Icon>
 );

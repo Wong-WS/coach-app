@@ -10,6 +10,7 @@ import { db } from '@/lib/firebase';
 import {
   IconHome,
   IconWallet,
+  IconChart,
   IconCalendar,
   IconUsers,
   IconSettings,
@@ -24,6 +25,7 @@ import { Btn } from '@/components/paper/Button';
 const navItems = [
   { href: '/dashboard', label: 'Overview', icon: IconHome },
   { href: '/dashboard/payments', label: 'Payments', icon: IconWallet },
+  { href: '/dashboard/analytics', label: 'Analytics', icon: IconChart },
   { href: '/dashboard/bookings', label: 'Schedule', icon: IconCalendar },
   { href: '/dashboard/students', label: 'Students', icon: IconUsers },
 ] as const;
