@@ -72,6 +72,12 @@ describe('likelyToReceive — prepaid wallets', () => {
     expect(run([wallet({ balanceCents: -500 })], []).rows[0].runOut).toEqual({ kind: 'now' });
   });
 
+  it('expects only the debt, not a usual top-up, from a family with nothing left to come', () => {
+    const { rows, totalCents } = run([wallet({ balanceCents: -2000, usualTopUpCents: 60000 })], []);
+    expect(rows[0].amountCents).toBe(2000);
+    expect(totalCents).toBe(2000);
+  });
+
   it('is not listed when the balance lasts the month', () => {
     expect(run([wallet({ balanceCents: 50000 })], [booking()]).rows).toEqual([]);
   });

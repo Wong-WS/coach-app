@@ -74,12 +74,11 @@ export function likelyToReceive(args: {
       balance -= list[i].cents;
     }
     if (!runOut) continue;
-    rows.push({
-      walletId: w.id,
-      name: w.name,
-      runOut,
-      amountCents: w.usualTopUpCents ?? lastTopUpCents[w.id] ?? null,
-    });
+    // Nothing left to come (e.g. the family stopped): expect only the debt,
+    // not a fresh top-up.
+    const amountCents =
+      list.length === 0 ? -w.balanceCents : (w.usualTopUpCents ?? lastTopUpCents[w.id] ?? null);
+    rows.push({ walletId: w.id, name: w.name, runOut, amountCents });
   }
 
   const order = (r: RunOut) => (r.kind === 'now' ? '0' : r.kind === 'date' ? `1${r.date}` : '2');

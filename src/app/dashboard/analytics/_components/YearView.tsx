@@ -12,6 +12,7 @@ import {
 } from '@/lib/analytics/cancellations';
 import { familyResolver, mostLessons } from '@/lib/analytics/families';
 import {
+  busiestDay,
   busiestSlot,
   classesByWeekday,
   daysSplit,
@@ -123,7 +124,10 @@ export function YearView({
   const count = (n: number) => n.toLocaleString('en-MY');
   const maxBar = Math.max(1, ...y.bars.map((b) => b.cents));
   const maxDay = Math.max(1, ...Object.values(y.weekdays));
-  const busiestDay = y.busiest ? DAYS.find((d) => d.day === y.busiest!.day)! : null;
+  // Busiest day = tallest bar; busiest time = most common day + start hour.
+  const topDay = busiestDay(y.weekdays);
+  const topDayInfo = topDay ? DAYS.find((d) => d.day === topDay)! : null;
+  const slotDay = y.busiest ? DAYS.find((d) => d.day === y.busiest!.day)! : null;
   const daysTotal = y.days.worked + y.days.timeOff + y.days.other;
   const pct = (n: number) => (daysTotal > 0 ? (n / daysTotal) * 100 : 0);
 
@@ -261,11 +265,11 @@ export function YearView({
               </div>
             ))}
           </div>
-          {busiestDay && y.busiest && (
+          {topDayInfo && slotDay && y.busiest && (
             <div className="text-[11.5px] mt-2.5" style={{ color: 'var(--ink-3)' }}>
-              Busiest: <b style={{ color: 'var(--ink)' }}>{busiestDay.long}</b> · busiest time{' '}
+              Busiest: <b style={{ color: 'var(--ink)' }}>{topDayInfo.long}</b> · busiest time{' '}
               <b style={{ color: 'var(--ink)' }}>
-                {busiestDay.short} {hourLabel(y.busiest.hour)}
+                {slotDay.short} {hourLabel(y.busiest.hour)}
               </b>
             </div>
           )}

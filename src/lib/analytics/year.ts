@@ -119,7 +119,20 @@ export function classesByWeekday(logs: LessonLog[]): Record<DayOfWeek, number> {
   return counts;
 }
 
-/** Most common (weekday, start hour) across classes; null with no lessons. */
+const WEEK: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+/** Day with the most classes (Monday first on ties); null with no classes. */
+export function busiestDay(weekdays: Record<DayOfWeek, number>): DayOfWeek | null {
+  let best: DayOfWeek | null = null;
+  for (const d of WEEK) if (weekdays[d] > 0 && (!best || weekdays[d] > weekdays[best])) best = d;
+  return best;
+}
+
+/**
+ * Most common (weekday, start hour) across classes; null with no lessons.
+ * Ties go to the earlier weekday, then the earlier hour, so the answer doesn't
+ * depend on the order lessons were loaded in.
+ */
 export function busiestSlot(logs: LessonLog[]): { day: DayOfWeek; hour: number } | null {
   const counts = new Map<string, { day: DayOfWeek; hour: number; count: number }>();
   for (const l of distinctClasses(logs)) {
@@ -130,9 +143,10 @@ export function busiestSlot(logs: LessonLog[]): { day: DayOfWeek; hour: number }
     if (cur) cur.count += 1;
     else counts.set(key, { day, hour, count: 1 });
   }
-  let best: { day: DayOfWeek; hour: number; count: number } | null = null;
-  for (const c of counts.values()) if (!best || c.count > best.count) best = c;
-  return best ? { day: best.day, hour: best.hour } : null;
+  const ranked = [...counts.values()].sort(
+    (a, b) => b.count - a.count || WEEK.indexOf(a.day) - WEEK.indexOf(b.day) || a.hour - b.hour,
+  );
+  return ranked[0] ? { day: ranked[0].day, hour: ranked[0].hour } : null;
 }
 
 /**

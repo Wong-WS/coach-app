@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  busiestDay,
   busiestSlot,
   classesByWeekday,
   daysSplit,
@@ -159,6 +160,31 @@ describe('classesByWeekday / busiestSlot', () => {
 
   it('is null with no lessons', () => {
     expect(busiestSlot([])).toBeNull();
+  });
+
+  it('names the day with the most classes, even when another day has the busiest single hour', () => {
+    const mixed = [
+      log({ date: '2026-11-02', startTime: '07:00' }),
+      log({ date: '2026-11-09', startTime: '08:00' }),
+      log({ date: '2026-11-16', startTime: '10:00' }),
+      log({ date: '2026-11-07', startTime: '09:00' }),
+      log({ date: '2026-11-14', startTime: '09:00' }),
+    ];
+    const weekdays = classesByWeekday(mixed);
+    expect(busiestDay(weekdays)).toBe('monday');
+    expect(busiestSlot(mixed)).toEqual({ day: 'saturday', hour: 9 });
+  });
+
+  it('breaks ties by weekday order, then hour, whatever order the lessons arrive in', () => {
+    const a = log({ date: '2026-11-08', startTime: '10:00' }); // Sun 10
+    const b = log({ date: '2026-11-07', startTime: '09:00' }); // Sat 9
+    expect(busiestSlot([a, b])).toEqual({ day: 'saturday', hour: 9 });
+    expect(busiestSlot([b, a])).toEqual({ day: 'saturday', hour: 9 });
+    expect(busiestDay({ monday: 0, tuesday: 0, wednesday: 0, thursday: 0, friday: 0, saturday: 1, sunday: 1 })).toBe('saturday');
+  });
+
+  it('has no busiest day with no lessons', () => {
+    expect(busiestDay(classesByWeekday([]))).toBeNull();
   });
 });
 
