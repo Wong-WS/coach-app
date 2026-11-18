@@ -7,6 +7,7 @@ import { getBookingTotalCents } from '@/lib/class-schedule';
 import { Chip } from '@/components/paper';
 import type { Booking, DayOfWeek, Student } from '@/types';
 import { formatCents, formatCentsGrouped } from '@/lib/money';
+import { dayTimeline, type FreeFit, type TimelineItem } from '@/lib/schedule-gaps';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -40,99 +41,178 @@ const DAY_LABELS_FULL: Record<DayOfWeek, string> = {
   sunday: 'Sunday',
 };
 
-const HOUR_PX = 56;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// "14:00" → "2p", "14:30" → "2:30p". Duplicated from src/app/dashboard/page.tsx
-// to keep this PR single-file; a follow-up can hoist to @/lib/time-format.
-function fmtTimeShort(t: string): string {
+function hm(t: string): { label: string; period: 'am' | 'pm' } {
   const [hh, mm] = t.split(':').map(Number);
-  const period = hh >= 12 ? 'p' : 'a';
   const h12 = hh % 12 || 12;
-  if (mm === 0) return `${h12}${period}`;
-  return `${h12}:${String(mm).padStart(2, '0')}${period}`;
+  return { label: mm === 0 ? `${h12}` : `${h12}:${String(mm).padStart(2, '0')}`, period: hh < 12 ? 'am' : 'pm' };
 }
 
-// Returns the inclusive list of hours the grid should display. Floors at 8am
-// and ceilings at 9pm (mock default), but expands if any booking starts
-// earlier or ends later.
-function computeGridHours(bookings: Booking[]): number[] {
-  let startH = 8;
-  let endH = 21;
-  for (const b of bookings) {
-    const [sh] = b.startTime.split(':').map(Number);
-    const [eh, em] = b.endTime.split(':').map(Number);
-    if (sh < startH) startH = sh;
-    const ceil = em > 0 ? eh + 1 : eh;
-    if (ceil > endH) endH = ceil;
-  }
-  const out: number[] = [];
-  for (let h = startH; h < endH; h++) out.push(h);
-  return out;
+/** "3:30–4:30pm", "11:30am–12:30pm". */
+function fmtRange(start: string, end: string): string {
+  const a = hm(start);
+  const b = hm(end);
+  return `${a.label}${a.period === b.period ? '' : a.period}–${b.label}${b.period}`;
 }
 
-// ─── Mobile list ─────────────────────────────────────────────────────────────
+function fmtDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (!h) return `${m}m`;
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
 
-function RecurringCard({
+/** Student names instead of "Swimming class with …": "Vera", "Ana & Ben", "Nadia +3". */
+function classTitle(b: Booking, studentsById: Map<string, Student>): string {
+  const names = b.studentIds
+    .map((sid) => studentsById.get(sid)?.clientName)
+    .filter((n): n is string => Boolean(n));
+  if (names.length === 0) return b.className || 'Class';
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} & ${names[1]}`;
+  return `${names[0]} +${names.length - 1}`;
+}
+
+function fitLabel(f: FreeFit): string {
+  const where = f.locationName;
+  if (f.kind === 'slot') return where ? `${where} ${fmtRange(f.start, f.end)}` : `anywhere else ${fmtRange(f.start, f.end)}`;
+  return where ? `${f.count} at ${where}` : `${f.count} anywhere else`;
+}
+
+// ─── Cards ───────────────────────────────────────────────────────────────────
+
+function ClassCard({
   b,
   studentsById,
+  showPrice = false,
 }: {
   b: Booking;
   studentsById: Map<string, Student>;
+  showPrice?: boolean;
 }) {
   const isGroup = b.studentIds.length > 1;
-  const total = getBookingTotalCents(b);
-  const firstNames = b.studentIds
-    .map((sid) => studentsById.get(sid)?.clientName.split(' ')[0])
-    .filter((n): n is string => Boolean(n))
-    .join(', ');
   return (
     <div
-      className="flex items-center gap-2.5 p-2.5 rounded-[10px]"
+      className="flex items-start gap-2 rounded-[8px] px-2.5 py-2"
       style={{
-        background: 'var(--panel)',
-        border: '1px solid var(--line)',
-        borderLeft: `3px solid ${isGroup ? 'var(--accent)' : 'var(--ink-3)'}`,
+        background: 'var(--line)',
+        borderLeft: `4px solid ${isGroup ? 'var(--accent)' : 'var(--ink-3)'}`,
       }}
     >
-      <div
-        className="mono tnum text-[12.5px] font-semibold"
-        style={{ color: 'var(--ink)', width: 64 }}
-      >
-        {fmtTimeShort(b.startTime)}
-      </div>
       <div className="flex-1 min-w-0">
-        <div
-          className="text-[13px] truncate"
-          style={{ color: 'var(--ink)', fontWeight: 500 }}
-        >
-          {b.className}
-          {isGroup && (
-            <span style={{ color: 'var(--accent-ink)' }}>
-              {' '}
-              · {b.studentIds.length}
-            </span>
-          )}
+        <div className="mono tnum text-[12.5px] font-semibold" style={{ color: 'var(--ink)' }}>
+          {fmtRange(b.startTime, b.endTime)}
         </div>
-        <div
-          className="text-[11.5px] truncate"
-          style={{ color: 'var(--ink-3)' }}
-        >
+        <div className="text-[13.5px] font-semibold truncate" style={{ color: 'var(--ink)' }}>
+          {classTitle(b, studentsById)}
+        </div>
+        <div className="text-[11.5px] truncate" style={{ color: 'var(--ink-2)' }}>
           {b.locationName}
-          {firstNames ? ` · ${firstNames}` : ''}
+          {isGroup ? ` · ${b.studentIds.length}` : ''}
         </div>
       </div>
-      <div
-        className="mono tnum text-[12.5px] shrink-0"
-        style={{ color: 'var(--ink-2)', fontWeight: 500 }}
-      >
-        RM {formatCents(total)}
-      </div>
+      {showPrice && (
+        <div className="mono tnum text-[12.5px] shrink-0 pt-0.5" style={{ color: 'var(--ink-2)', fontWeight: 500 }}>
+          RM {formatCents(getBookingTotalCents(b))}
+        </div>
+      )}
     </div>
   );
 }
 
+function FreeBox({ item, allDay }: { item: Extract<TimelineItem, { kind: 'free' }>; allDay: boolean }) {
+  // Too short for a class: a quiet dashed line with the minutes.
+  if (item.minutes < 60 && item.fits.length === 0) {
+    return (
+      <div className="flex items-center gap-1.5 px-0.5 text-[10.5px] font-medium" style={{ color: 'var(--ink-4)' }}>
+        <span className="flex-1" style={{ borderTop: '1px dashed var(--line-2)' }} />
+        <span className="mono tnum">{fmtDuration(item.minutes)}</span>
+        <span className="flex-1" style={{ borderTop: '1px dashed var(--line-2)' }} />
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-[8px] px-2.5 py-2" style={{ border: '1.5px dashed var(--line-2)' }}>
+      <div className="mono tnum text-[11.5px] font-semibold" style={{ color: 'var(--ink-3)' }}>
+        {allDay ? 'Free all day' : `${fmtRange(item.start, item.end)} · Free ${fmtDuration(item.minutes)}`}
+      </div>
+      {!allDay &&
+        (item.fits.length > 0 ? (
+          item.fits.map((f) => (
+            <div key={fitLabel(f)} className="text-[11.5px] truncate" style={{ color: 'var(--good)' }}>
+              {fitLabel(f)}
+            </div>
+          ))
+        ) : (
+          <div className="text-[11.5px]" style={{ color: 'var(--ink-4)' }}>
+            too tight with travel
+          </div>
+        ))}
+    </div>
+  );
+}
+
+function DayTimeline({
+  day,
+  classes,
+  studentsById,
+  showPrice = false,
+}: {
+  day: DayOfWeek;
+  classes: Booking[];
+  studentsById: Map<string, Student>;
+  showPrice?: boolean;
+}) {
+  const items = dayTimeline(classes, day === 'saturday' || day === 'sunday');
+  const allDay = classes.length === 0;
+  return (
+    <div className="flex flex-col gap-1.5">
+      {items.map((item) =>
+        item.kind === 'class' ? (
+          <ClassCard key={item.booking.id} b={item.booking} studentsById={studentsById} showPrice={showPrice} />
+        ) : (
+          <FreeBox key={`free-${item.start}`} item={item} allDay={allDay} />
+        ),
+      )}
+    </div>
+  );
+}
+
+function DayHeading({ day, count, full = false }: { day: DayOfWeek; count: number; full?: boolean }) {
+  return (
+    <div className="text-[12px] font-semibold uppercase mb-2" style={{ color: 'var(--ink-2)', letterSpacing: '0.05em' }}>
+      {full ? DAY_LABELS_FULL[day] : DAY_LABELS_SHORT[day]}{' '}
+      <span style={{ color: 'var(--ink-4)', fontWeight: 500 }}>· {count}</span>
+    </div>
+  );
+}
+
+/** Desktop: seven day columns, each a list of classes with free time between. */
+function WeekColumns({
+  byDay,
+  studentsById,
+}: {
+  byDay: Record<DayOfWeek, Booking[]>;
+  studentsById: Map<string, Student>;
+}) {
+  return (
+    <div
+      className="rounded-[12px] border p-2.5 grid gap-2.5 items-start"
+      style={{ background: 'var(--panel)', borderColor: 'var(--line)', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}
+    >
+      {DAYS.map((d) => (
+        <div key={d} className="min-w-0">
+          <DayHeading day={d} count={byDay[d].length} />
+          <DayTimeline day={d} classes={byDay[d]} studentsById={studentsById} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Phone and narrow screens: days stacked, same timeline, with prices. */
 function DayList({
   byDay,
   studentsById,
@@ -141,193 +221,13 @@ function DayList({
   studentsById: Map<string, Student>;
 }) {
   return (
-    <div>
+    <div className="flex flex-col gap-5">
       {DAYS.map((d) => (
-        <div key={d} className="mb-4 last:mb-0">
-          <div
-            className="text-[11px] font-semibold uppercase mb-2"
-            style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
-          >
-            {DAY_LABELS_FULL[d]}
-          </div>
-          {byDay[d].length === 0 ? (
-            <div
-              className="text-[12.5px] italic py-1"
-              style={{ color: 'var(--ink-4)' }}
-            >
-              No classes
-            </div>
-          ) : (
-            <div className="flex flex-col gap-1.5">
-              {byDay[d].map((b) => (
-                <RecurringCard key={b.id} b={b} studentsById={studentsById} />
-              ))}
-            </div>
-          )}
+        <div key={d}>
+          <DayHeading day={d} count={byDay[d].length} full />
+          <DayTimeline day={d} classes={byDay[d]} studentsById={studentsById} showPrice />
         </div>
       ))}
-    </div>
-  );
-}
-
-// ─── Desktop weekly grid ─────────────────────────────────────────────────────
-
-function WeeklyGrid({
-  byDay,
-  hours,
-}: {
-  byDay: Record<DayOfWeek, Booking[]>;
-  hours: number[];
-}) {
-  const gridStart = hours[0];
-  const gridMinHeight = hours.length * HOUR_PX;
-
-  return (
-    <div
-      className="rounded-[12px] border overflow-hidden"
-      style={{ background: 'var(--panel)', borderColor: 'var(--line)' }}
-    >
-      {/* Day header row */}
-      <div
-        className="grid"
-        style={{
-          gridTemplateColumns: '52px repeat(7, 1fr)',
-          borderBottom: '1px solid var(--line)',
-          background: 'var(--panel)',
-        }}
-      >
-        <div />
-        {DAYS.map((d) => {
-          const count = byDay[d].length;
-          return (
-            <div
-              key={d}
-              className="px-3 py-3.5"
-              style={{ borderLeft: '1px solid var(--line)' }}
-            >
-              <div
-                className="text-[11px] font-semibold uppercase"
-                style={{ color: 'var(--ink-3)', letterSpacing: '0.06em' }}
-              >
-                {DAY_LABELS_SHORT[d]}
-              </div>
-              <div
-                className="text-[13px] mt-0.5"
-                style={{ color: 'var(--ink)', fontWeight: 500 }}
-              >
-                {count} {count === 1 ? 'class' : 'classes'}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Body: hour gutter + 7 day columns */}
-      <div
-        className="grid relative"
-        style={{
-          gridTemplateColumns: '52px repeat(7, 1fr)',
-        }}
-      >
-        {/* Hour labels */}
-        <div>
-          {hours.map((h) => (
-            <div
-              key={h}
-              className="flex justify-end pr-2 pt-0.5"
-              style={{ height: HOUR_PX }}
-            >
-              <span
-                className="mono tnum text-[10.5px]"
-                style={{ color: 'var(--ink-4)', fontWeight: 500 }}
-              >
-                {h === 12 ? '12p' : h < 12 ? `${h}a` : `${h - 12}p`}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        {/* Day columns */}
-        {DAYS.map((d) => (
-          <div
-            key={d}
-            className="relative"
-            style={{
-              borderLeft: '1px solid var(--line)',
-              minHeight: gridMinHeight,
-            }}
-          >
-            {/* Hour lines */}
-            {hours.map((h, i) => (
-              <div
-                key={h}
-                className="absolute left-0 right-0"
-                style={{
-                  top: i * HOUR_PX,
-                  height: 1,
-                  background: 'var(--line)',
-                  opacity: 0.5,
-                }}
-              />
-            ))}
-            {/* Booking blocks */}
-            {byDay[d].map((b) => {
-              const [sh, sm] = b.startTime.split(':').map(Number);
-              const [eh, em] = b.endTime.split(':').map(Number);
-              const startOffset = (sh - gridStart + sm / 60) * HOUR_PX;
-              const height = (eh - sh + (em - sm) / 60) * HOUR_PX;
-              const isGroup = b.studentIds.length > 1;
-              const background = isGroup ? 'var(--accent-soft)' : 'var(--line)';
-              const borderColor = isGroup ? 'var(--accent)' : 'var(--line-2)';
-              const accentEdge = isGroup ? 'var(--accent)' : 'var(--ink-3)';
-              const primaryColor = isGroup ? 'var(--accent-ink)' : 'var(--ink)';
-              const secondaryColor = isGroup ? 'var(--accent-ink)' : 'var(--ink-2)';
-              const tertiaryColor = isGroup ? 'var(--accent-ink)' : 'var(--ink-3)';
-              const firstLocationWord = b.locationName.split(' ')[0];
-              return (
-                <div
-                  key={b.id}
-                  className="absolute flex flex-col overflow-hidden"
-                  style={{
-                    top: startOffset + 2,
-                    left: 4,
-                    right: 4,
-                    height: height - 4,
-                    borderRadius: 8,
-                    background,
-                    border: `1px solid ${borderColor}`,
-                    borderLeft: `3px solid ${accentEdge}`,
-                    padding: '5px 7px',
-                    gap: 1,
-                  }}
-                >
-                  <div
-                    className="text-[11px] font-semibold truncate"
-                    style={{ color: primaryColor }}
-                  >
-                    {b.className}
-                  </div>
-                  <div
-                    className="mono tnum text-[10px]"
-                    style={{ color: secondaryColor, opacity: 0.85 }}
-                  >
-                    {fmtTimeShort(b.startTime)}–{fmtTimeShort(b.endTime)}
-                  </div>
-                  {height > 48 && (
-                    <div
-                      className="text-[10px] truncate"
-                      style={{ color: tertiaryColor, opacity: 0.8 }}
-                    >
-                      {firstLocationWord}
-                      {isGroup ? ` · ${b.studentIds.length}` : ''}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -367,11 +267,6 @@ export default function BookingsPage() {
     for (const d of DAYS) m[d].sort((a, b) => a.startTime.localeCompare(b.startTime));
     return m;
   }, [confirmedBookings]);
-
-  const hours = useMemo(
-    () => computeGridHours(confirmedBookings),
-    [confirmedBookings],
-  );
 
   const studentsById = useMemo(() => {
     const m = new Map<string, Student>();
@@ -449,42 +344,25 @@ export default function BookingsPage() {
         </div>
       ) : (
         <>
-          <div className="hidden sm:block">
-            <WeeklyGrid byDay={byDay} hours={hours} />
-            <div
-              className="flex items-center gap-3.5 mt-3 text-[12px]"
-              style={{ color: 'var(--ink-3)' }}
-            >
-              <div className="flex items-center gap-1.5">
-                <span
-                  style={{
-                    width: 12,
-                    height: 12,
-                    borderRadius: 3,
-                    background: 'var(--line)',
-                    border: '1px solid var(--line-2)',
-                    borderLeft: '3px solid var(--ink-3)',
-                  }}
-                />{' '}
-                Private
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span
-                  style={{
-                    width: 12,
-                    height: 12,
-                    borderRadius: 3,
-                    background: 'var(--accent-soft)',
-                    border: '1px solid var(--accent)',
-                    borderLeft: '3px solid var(--accent)',
-                  }}
-                />{' '}
-                Group
-              </div>
-            </div>
+          <div className="hidden lg:block">
+            <WeekColumns byDay={byDay} studentsById={studentsById} />
           </div>
-          <div className="sm:hidden">
+          <div className="lg:hidden">
             <DayList byDay={byDay} studentsById={studentsById} />
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 mt-3 text-[12px]" style={{ color: 'var(--ink-3)' }}>
+            <span className="flex items-center gap-1.5">
+              <span style={{ width: 4, height: 12, borderRadius: 2, background: 'var(--ink-3)' }} /> Private
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span style={{ width: 4, height: 12, borderRadius: 2, background: 'var(--accent)' }} /> Group
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span style={{ width: 14, height: 10, borderRadius: 3, border: '1.5px dashed var(--line-2)' }} /> Free time
+            </span>
+            <span>
+              · <span style={{ color: 'var(--good)' }}>green</span> = a 1-hour class that fits (30 min travel between different pools)
+            </span>
           </div>
         </>
       )}
