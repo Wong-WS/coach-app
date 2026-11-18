@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { fetchPortalData, type PortalPayload } from '@/lib/portal-data';
 import ChargesList from './ChargesList';
 import TopUpsList from './TopUpsList';
+import ReplacementSlots from './ReplacementSlots';
 import { formatCents } from '@/lib/money';
 
 export const dynamic = 'force-dynamic';
@@ -39,7 +40,7 @@ export default async function PortalPage({
   const data = await fetchPortalData(token);
   if (!data) notFound();
 
-  const { coach, wallet, charges, topUps } = data;
+  const { coach, wallet, charges, topUps, replacement } = data;
   const owing = wallet.balanceCents < 0;
 
   return (
@@ -104,6 +105,13 @@ export default async function PortalPage({
           initialHasMore={charges.hasMore}
         />
       </section>
+
+      {/* Replacement slots — folded; occasional, so below the lessons */}
+      <ReplacementSlots
+        sections={replacement.sections}
+        today={replacement.today}
+        coachName={coach.displayName}
+      />
 
       {/* Top-up history */}
       <section>
