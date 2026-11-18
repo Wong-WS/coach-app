@@ -29,6 +29,7 @@ The coach's priorities: the portal's main job is still balance + recent lessons;
 
 - Offering a slot the coach can't actually make (overlap, or not enough travel time between pools).
 - Showing anything about other students (names, classes) — parents see only free times.
+- **Leaking the schedule through page data.** Slots must be computed on the server (in `fetchPortalData` or the server component) and only the finished list — `{ date, start, end }` per slot, plus the section label and the morning flag — may be passed to any client component. Never pass bookings, exceptions, other pools, names or prices as props: React Server Component props are serialized into the page and readable by anyone with the link. Verify before shipping by checking the page's HTML/RSC payload contains no booking IDs, student IDs or other pools.
 - Making the portal slower or costlier: no new Firestore reads — everything comes from what `fetchPortalData` already loads.
 
 ## Rules (decided)
