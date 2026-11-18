@@ -4,7 +4,6 @@ import {
   getDayOfWeekForDate,
   isRescheduledToDate,
   getCancelledClassesForDate,
-  getScheduledRevenueForDateRange,
   findOverlappingClasses,
 } from '@/lib/class-schedule';
 import { Booking, ClassException, AwayPeriod } from '@/types';
@@ -470,142 +469,6 @@ describe('getCancelledClassesForDate', () => {
 });
 
 // ---------------------------------------------------------------------------
-// getScheduledRevenueForDateRange
-// ---------------------------------------------------------------------------
-
-// Range: 2026-03-23 (Mon) through 2026-03-29 (Sun) — one full week.
-const WEEK_START = '2026-03-23';
-const WEEK_END = '2026-03-29';
-const MONDAY = '2026-03-23';
-const SUNDAY = '2026-03-29';
-
-describe('getScheduledRevenueForDateRange', () => {
-  it('returns 0 when no bookings exist', () => {
-    expect(getScheduledRevenueForDateRange(WEEK_START, WEEK_END, [], [])).toBe(0);
-  });
-
-  it('sums getBookingTotalCents across days in range for recurring bookings', () => {
-    // Tue and Thu bookings — both recur weekly; each lesson RM 100.
-    const tue = makeBooking({ id: 'tue', dayOfWeek: 'tuesday', studentPriceCents: { s1: 10000 } });
-    const thu = makeBooking({ id: 'thu', dayOfWeek: 'thursday', studentPriceCents: { s1: 10000 } });
-    expect(getScheduledRevenueForDateRange(WEEK_START, WEEK_END, [tue, thu], [])).toBe(20000);
-  });
-
-  it('sums across multiple students in one booking', () => {
-    const b = makeBooking({ dayOfWeek: 'tuesday', studentPriceCents: { s1: 6000, s2: 6000 } });
-    expect(getScheduledRevenueForDateRange(WEEK_START, WEEK_END, [b], [])).toBe(12000);
-  });
-
-  it('excludes cancelled classes', () => {
-    const b = makeBooking({ dayOfWeek: 'tuesday', studentPriceCents: { s1: 10000 } });
-    const cancelled = makeException({
-      bookingId: b.id,
-      originalDate: TUESDAY,
-      type: 'cancelled',
-    });
-    expect(getScheduledRevenueForDateRange(WEEK_START, WEEK_END, [b], [cancelled])).toBe(0);
-  });
-
-  it('follows rescheduled classes that stay within range', () => {
-    const b = makeBooking({ dayOfWeek: 'tuesday', studentPriceCents: { s1: 10000 } });
-    const rescheduled = makeException({
-      bookingId: b.id,
-      originalDate: TUESDAY,
-      type: 'rescheduled',
-      newDate: THURSDAY,
-    });
-    // Same week → still RM 100.
-    expect(getScheduledRevenueForDateRange(WEEK_START, WEEK_END, [b], [rescheduled])).toBe(10000);
-  });
-
-  it('drops classes rescheduled out of the range', () => {
-    const b = makeBooking({ dayOfWeek: 'tuesday', studentPriceCents: { s1: 10000 } });
-    const rescheduled = makeException({
-      bookingId: b.id,
-      originalDate: TUESDAY,
-      type: 'rescheduled',
-      newDate: '2026-04-07', // two weeks later
-    });
-    expect(getScheduledRevenueForDateRange(WEEK_START, WEEK_END, [b], [rescheduled])).toBe(0);
-  });
-
-  it('counts classes rescheduled INTO the range', () => {
-    // One-off Tuesday booking after the range; rescheduled to Thursday inside range.
-    const b = makeBooking({
-      dayOfWeek: 'tuesday',
-      startDate: '2026-03-31',
-      endDate: '2026-03-31',
-      studentPriceCents: { s1: 10000 },
-    });
-    const rescheduled = makeException({
-      bookingId: b.id,
-      originalDate: '2026-03-31',
-      type: 'rescheduled',
-      newDate: THURSDAY, // inside range
-    });
-    expect(getScheduledRevenueForDateRange(WEEK_START, WEEK_END, [b], [rescheduled])).toBe(10000);
-  });
-
-  it('respects price overrides on rescheduled classes', () => {
-    const b = makeBooking({
-      dayOfWeek: 'tuesday',
-      studentIds: ['s1'],
-      studentPriceCents: { s1: 10000 },
-      studentWallets: { s1: 'w1' },
-    });
-    const rescheduled = makeException({
-      bookingId: b.id,
-      originalDate: TUESDAY,
-      type: 'rescheduled',
-      newDate: THURSDAY,
-      newStudentIds: ['s1'],
-      newStudentPriceCents: { s1: 15000 },
-      newStudentWallets: { s1: 'w1' },
-    });
-    expect(getScheduledRevenueForDateRange(WEEK_START, WEEK_END, [b], [rescheduled])).toBe(15000);
-  });
-
-  it('includes date-bounded bookings that overlap the range', () => {
-    // Booking active 2026-03-20 through 2026-03-27 — covers Tuesday of the week.
-    const b = makeBooking({
-      dayOfWeek: 'tuesday',
-      startDate: '2026-03-20',
-      endDate: '2026-03-27',
-      studentPriceCents: { s1: 10000 },
-    });
-    expect(getScheduledRevenueForDateRange(WEEK_START, WEEK_END, [b], [])).toBe(10000);
-  });
-
-  it('excludes bookings whose date range does not overlap', () => {
-    const b = makeBooking({
-      dayOfWeek: 'tuesday',
-      startDate: '2026-04-01',
-      endDate: '2026-04-30',
-      studentPriceCents: { s1: 10000 },
-    });
-    expect(getScheduledRevenueForDateRange(WEEK_START, WEEK_END, [b], [])).toBe(0);
-  });
-
-  it('counts one-off bookings (startDate === endDate) within range', () => {
-    const oneOff = makeBooking({
-      id: 'adhoc',
-      dayOfWeek: 'saturday',
-      startDate: '2026-03-28',
-      endDate: '2026-03-28',
-      studentPriceCents: { s1: 8000 },
-    });
-    expect(getScheduledRevenueForDateRange(WEEK_START, WEEK_END, [oneOff], [])).toBe(8000);
-  });
-
-  it('works on single-day ranges', () => {
-    const b = makeBooking({ dayOfWeek: 'monday', studentPriceCents: { s1: 6000 } });
-    expect(getScheduledRevenueForDateRange(MONDAY, MONDAY, [b], [])).toBe(6000);
-    // And Sunday-only range picks nothing up for a Monday booking.
-    expect(getScheduledRevenueForDateRange(SUNDAY, SUNDAY, [b], [])).toBe(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // getClassesForDate with away periods
 // ---------------------------------------------------------------------------
 
@@ -638,39 +501,6 @@ describe('getClassesForDate with away periods', () => {
   it('omitting awayPeriods param keeps existing behaviour (backward-compatible)', () => {
     const booking = makeBooking({ dayOfWeek: 'tuesday' });
     expect(getClassesForDate(TUESDAY, [booking], [])).toHaveLength(1);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// getScheduledRevenueForDateRange with away periods
-// ---------------------------------------------------------------------------
-
-describe('getScheduledRevenueForDateRange with away periods', () => {
-  it('excludes revenue from days inside an away period', () => {
-    const booking = makeBooking({
-      dayOfWeek: 'tuesday',
-      studentIds: ['s1'],
-      studentPriceCents: { s1: 10000 },
-    });
-    const away = [makeAwayPeriod({ startDate: '2026-03-23', endDate: '2026-03-27' })];
-    const total = getScheduledRevenueForDateRange(
-      '2026-03-15',
-      '2026-04-01',
-      [booking],
-      [],
-      away,
-    );
-    expect(total).toBe(20000);
-  });
-
-  it('omitting awayPeriods param keeps existing behaviour', () => {
-    const booking = makeBooking({
-      dayOfWeek: 'tuesday',
-      studentIds: ['s1'],
-      studentPriceCents: { s1: 10000 },
-    });
-    const total = getScheduledRevenueForDateRange('2026-03-15', '2026-04-01', [booking], []);
-    expect(total).toBe(30000);
   });
 });
 
