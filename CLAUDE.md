@@ -55,6 +55,7 @@ src/
 │   │   ├── bookings/page.tsx               # Recurring + ad-hoc schedule mgmt
 │   │   ├── students/page.tsx               # Student list + wallet top-up + lesson history
 │   │   ├── payments/page.tsx               # Wallets + health alerts + portal link share
+│   │   ├── analytics/page.tsx              # Month + Year analytics, year-end forecast (logic in src/lib/analytics/)
 │   │   └── settings/page.tsx               # Account name, locations, time off
 │   ├── portal/[token]/                     # Parent/student-facing wallet portal (public via token URL)
 │   │   ├── page.tsx                        # Server component: header, balance card, suggestion
@@ -79,6 +80,8 @@ src/
 │   ├── time-format.ts                      # formatTimeDisplay, getDayDisplayName
 │   ├── time-input.ts                       # 5/30-min snapping helpers
 │   ├── date-format.ts                      # en-MY date formatters
+│   ├── analytics/                          # Pure analytics maths (periods, projection, cancellations, families, wallet-forecast, year) + one-time range fetchers
+│   ├── firestore-mappers.ts                # Doc → Booking/LessonLog/ClassException, shared by hooks + fetchers
 │   └── __tests__/                          # vitest: cancel-scope, class-schedule, date-format, time-input, wallet-alerts
 ├── components/
 │   ├── ui/                                 # Button, Input, Select, Modal, DatePicker, TimePicker, PhoneInput, Toast, GoogleButton
@@ -172,6 +175,7 @@ coaches/{coachId}/wallets/{walletId}/transactions/{txnId}
 
 **Composite indexes** (`firestore.indexes.json`):
 - `transactions` on `(type ASC, createdAt DESC)` — powers portal pagination.
+- `transactions` on `(type ASC, date ASC)` — analytics top-ups by date range.
 
 ### Key Features
 
