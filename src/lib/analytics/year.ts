@@ -2,7 +2,7 @@ import type { AwayPeriod, Booking, ClassException, DayOfWeek, LessonLog, Student
 import { isDateInAwayPeriod } from '@/lib/away-periods';
 import { getDayOfWeekForDate } from '@/lib/class-schedule';
 import { classKey } from '@/lib/lesson-logs';
-import { eachDate, monthRange, yearRange, type DateRange } from './periods';
+import { addDays, clampRange, eachDate, monthRange, yearRange, type DateRange } from './periods';
 import { stillToCome, taughtIn, type Tally } from './projection';
 
 type ScheduleInputs = {
@@ -67,6 +67,16 @@ export function monthlyTaught(
     }
   }
   return bars;
+}
+
+/**
+ * The days the Days card covers: from the first lesson (or 1 Jan) to
+ * yesterday — today isn't over, so it can't be a day off yet. null when the
+ * coach has no lessons at all, or nothing before today to count.
+ */
+export function daysRangeFor(year: number, firstLogDate: string | null, today: string): DateRange | null {
+  if (!firstLogDate) return null;
+  return clampRange(yearRange(year), firstLogDate, addDays(today, -1));
 }
 
 /**

@@ -57,21 +57,21 @@ describe('familyResolver', () => {
 
 describe('cancelsMost', () => {
   it('counts siblings in the same class once for the family', () => {
-    expect(cancelsMost([rec(['s1', 's2'], 'student')], resolve)).toEqual([{ name: 'Lee siblings', count: 1 }]);
+    expect(cancelsMost([rec(['s1', 's2'], 'student')], resolve)).toMatchObject([{ name: 'Lee siblings', count: 1 }]);
   });
 
   it('ignores weather and coach cancellations', () => {
-    expect(cancelsMost([rec(['s3'], 'weather'), rec(['s3'], 'coach')], resolve)).toEqual([]);
+    expect(cancelsMost([rec(['s3'], 'weather'), rec(['s3'], 'coach')], resolve)).toMatchObject([]);
   });
 
   it('counts student, other and no-reason cancellations', () => {
-    expect(cancelsMost([rec(['s3'], 'none'), rec(['s3'], 'other'), rec(['s3'], 'student')], resolve)).toEqual([
+    expect(cancelsMost([rec(['s3'], 'none'), rec(['s3'], 'other'), rec(['s3'], 'student')], resolve)).toMatchObject([
       { name: 'Marcus', count: 3 },
     ]);
   });
 
   it('counts each family on a mixed group class', () => {
-    expect(cancelsMost([rec(['s1', 's3'], 'student')], resolve)).toEqual([
+    expect(cancelsMost([rec(['s1', 's3'], 'student')], resolve)).toMatchObject([
       { name: 'Lee siblings', count: 1 },
       { name: 'Marcus', count: 1 },
     ]);
@@ -79,14 +79,25 @@ describe('cancelsMost', () => {
 
   it('sorts by count then name and keeps the top N', () => {
     const records = [rec(['s3'], 'none'), rec(['s3'], 'none'), rec(['s1'], 'none'), rec(['s1'], 'none'), rec(['s1'], 'none')];
-    expect(cancelsMost(records, resolve, 1)).toEqual([{ name: 'Lee siblings', count: 3 }]);
+    expect(cancelsMost(records, resolve, 1)).toMatchObject([{ name: 'Lee siblings', count: 3 }]);
+  });
+});
+
+describe('ranked keys', () => {
+  it('keeps two families with the same name apart', () => {
+    const twins = familyResolver(
+      [wallet('wa', 'Lee family', ['a']), wallet('wb', 'Lee family', ['b'])],
+      [],
+    );
+    const ranked = cancelsMost([rec(['a'], 'none'), rec(['b'], 'none')], twins);
+    expect(ranked.map((r) => r.key)).toEqual(['w:wa', 'w:wb']);
   });
 });
 
 describe('mostLessons', () => {
   it('counts a class once per family even with two siblings logged', () => {
     const logs = [log({ id: 'a', studentId: 's1' }), log({ id: 'b', studentId: 's2' })];
-    expect(mostLessons(logs, resolve)).toEqual([{ name: 'Lee siblings', count: 1 }]);
+    expect(mostLessons(logs, resolve)).toMatchObject([{ name: 'Lee siblings', count: 1 }]);
   });
 
   it('ranks families by classes taught', () => {
@@ -95,7 +106,7 @@ describe('mostLessons', () => {
       log({ id: 'b', studentId: 's3', studentName: 'Marcus', date: '2026-11-23' }),
       log({ id: 'c', studentId: 's1' }),
     ];
-    expect(mostLessons(logs, resolve)).toEqual([
+    expect(mostLessons(logs, resolve)).toMatchObject([
       { name: 'Marcus', count: 2 },
       { name: 'Lee siblings', count: 1 },
     ]);

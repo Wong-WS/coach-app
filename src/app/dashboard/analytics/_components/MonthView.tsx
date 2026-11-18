@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Chip } from '@/components/paper';
-import { clampRange, comparisonRange, monthRange, type DateRange } from '@/lib/analytics/periods';
+import { clampRange, comparisonRange, monthRange, rangeLabel, type DateRange } from '@/lib/analytics/periods';
 import { projectPeriod, taughtIn } from '@/lib/analytics/projection';
 import { collectCancellations, reasonCounts } from '@/lib/analytics/cancellations';
 import { cancelsMost, familyResolver } from '@/lib/analytics/families';
@@ -78,7 +78,7 @@ export function MonthView({
     const resolve = familyResolver(wallets, students);
 
     const daysInMonth = Number(period.end.slice(8));
-    const vsLabel = isCurrent ? `${Number(cmp.start.slice(8))}–${dayMonth(cmp.end)}` : shortMonth(cmp.start);
+    const vsLabel = isCurrent ? rangeLabel(cmp) : shortMonth(cmp.start);
     const subtitle = isCurrent
       ? `Compared with ${vsLabel} · ${Number(today.slice(8))} of ${daysInMonth} days gone`
       : `Compared with ${longMonth(cmp.start)}`;

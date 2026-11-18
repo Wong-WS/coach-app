@@ -15,6 +15,7 @@ import {
   busiestDay,
   busiestSlot,
   classesByWeekday,
+  daysRangeFor,
   daysSplit,
   minutesTaught,
   monthlyTaught,
@@ -88,8 +89,9 @@ export function YearView({
     const bars = monthlyTaught({ ...sched, year, today, firstLogDate });
     const taught = taughtIn(yr, logs);
     const minutes = minutesTaught(yearLogs);
-    const daysRange = clampRange(yr, since ?? undefined, today);
-    const days = daysRange ? daysSplit(daysRange, yearLogs, awayPeriods) : { worked: 0, timeOff: 0, other: 0 };
+    // Up to yesterday (today isn't over); null for a coach with no lessons yet.
+    const daysRange = daysRangeFor(year, firstLogDate, today);
+    const days = daysRange ? daysSplit(daysRange, yearLogs, awayPeriods) : null;
     const yearTopUps = topUps.filter((t) => t.date >= yr.start && t.date <= yr.end);
     const cancels = collectCancellations(toToday, exceptions, allBookings);
 
@@ -128,7 +130,7 @@ export function YearView({
   const topDay = busiestDay(y.weekdays);
   const topDayInfo = topDay ? DAYS.find((d) => d.day === topDay)! : null;
   const slotDay = y.busiest ? DAYS.find((d) => d.day === y.busiest!.day)! : null;
-  const daysTotal = y.days.worked + y.days.timeOff + y.days.other;
+  const daysTotal = y.days ? y.days.worked + y.days.timeOff + y.days.other : 0;
   const pct = (n: number) => (daysTotal > 0 ? (n / daysTotal) * 100 : 0);
 
   return (
@@ -168,7 +170,7 @@ export function YearView({
         <StatCard
           label="Hours coached"
           value={`${count(Math.round(y.hours))} h`}
-          sub={y.days.worked > 0 ? `avg ${(y.hours / y.days.worked).toFixed(1)} h a working day` : undefined}
+          sub={y.days && y.days.worked > 0 ? `avg ${(y.hours / y.days.worked).toFixed(1)} h a working day` : undefined}
         />
         <StatCard
           label="Taught"
@@ -224,7 +226,8 @@ export function YearView({
         </div>
       </Card>
 
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className={`grid gap-3 ${y.days ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
+        {y.days && (
         <Card>
           <SectionTitle>Days</SectionTitle>
           <div className="flex h-3.5 rounded-full overflow-hidden mb-2" style={{ background: 'var(--line)' }}>
@@ -234,7 +237,11 @@ export function YearView({
           <Row label="Worked" value={count(y.days.worked)} />
           <Row label="Time off (planned)" value={count(y.days.timeOff)} />
           <Row label="Other days off" value={count(y.days.other)} />
+          <div className="text-[11px] mt-2" style={{ color: 'var(--ink-3)' }}>
+            Up to yesterday
+          </div>
         </Card>
+        )}
 
         <Card>
           <SectionTitle>Cancelled &amp; moved</SectionTitle>

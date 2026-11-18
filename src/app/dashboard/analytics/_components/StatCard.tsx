@@ -167,7 +167,7 @@ export function RankList({ title, items, unit }: { title: string; items: Ranked[
       </div>
       {items.map((r, i) => (
         <div
-          key={r.name}
+          key={r.key}
           className="flex items-center gap-3 py-2 text-[13px]"
           style={{ borderTop: i === 0 ? 'none' : '1px solid var(--line)' }}
         >

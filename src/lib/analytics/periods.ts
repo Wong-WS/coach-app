@@ -73,3 +73,13 @@ export function sinceDate(firstLogDate: string | null, year: number): string | n
   if (!firstLogDate.startsWith(`${year}-`)) return null;
   return firstLogDate > `${year}-01-01` ? firstLogDate : null;
 }
+
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "1–18 Oct", or "1 Nov" for a single day. Assumes start and end share a month. */
+export function rangeLabel(range: DateRange): string {
+  const month = SHORT_MONTHS[Number(range.end.slice(5, 7)) - 1];
+  const endDay = Number(range.end.slice(8));
+  if (range.start === range.end) return `${endDay} ${month}`;
+  return `${Number(range.start.slice(8))}–${endDay} ${month}`;
+}

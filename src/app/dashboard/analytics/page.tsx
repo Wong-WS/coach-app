@@ -44,8 +44,8 @@ export default function AnalyticsPage() {
   const { bookings: allBookings, loading: bookingsLoading } = useBookings(coachId);
   const confirmed = useMemo(() => allBookings.filter((b) => b.status === 'confirmed'), [allBookings]);
   const { wallets, loading: walletsLoading } = useWallets(coachId);
-  const { students } = useStudents(coachId);
-  const { awayPeriods } = useAllAwayPeriods(coachId);
+  const { students, loading: studentsLoading } = useStudents(coachId);
+  const { awayPeriods, loading: awayLoading } = useAllAwayPeriods(coachId);
   const firstLogDate = useFirstLogDate(coachId);
 
   const [view, setView] = useState<View>('month');
@@ -59,8 +59,8 @@ export default function AnalyticsPage() {
 
   // One fetch per view/period. Month: the month + its comparison window.
   // Current year: the year (exceptions to 31 Dec for the forecast) reaching
-  // back 90 days for the cancellation rate. Past year: to today, so later
-  // lessons can tell who stopped.
+  // back 90 days for the cancellation rate. Past year: just that year (later
+  // lessons come in through logsEnd below).
   const range = useMemo(() => {
     if (walletsLoading) return null;
     if (view === 'month') {
@@ -72,11 +72,14 @@ export default function AnalyticsPage() {
       const back = addDays(today, -89);
       return { start: back < y.start ? back : y.start, end: y.end };
     }
-    return { start: y.start, end: today };
+    return y;
   }, [walletsLoading, view, month, year, today, thisYear]);
 
   const walletIds = useMemo(() => wallets.map((w) => w.id).sort(), [wallets]);
-  const data = useAnalyticsData(coachId, range, walletIds);
+  // A past year also reads later lessons (to tell who stopped), but not later
+  // exceptions or top-ups.
+  const logsEnd = view === 'year' && year < thisYear ? today : undefined;
+  const data = useAnalyticsData(coachId, range, walletIds, logsEnd);
 
   const inputs: AnalyticsInputs = {
     today,
@@ -95,7 +98,7 @@ export default function AnalyticsPage() {
   // no usual top-up set — keeps reads to a handful instead of every wallet.
   const isCurrentMonth = view === 'month' && month.year === thisYear && month.month === thisMonth;
   const needLastTopUp = useMemo(() => {
-    if (!isCurrentMonth || data.loading) return [];
+    if (!isCurrentMonth || data.loading || awayLoading) return [];
     const { rows } = likelyToReceive({
       wallets,
       bookings: confirmed,
@@ -107,8 +110,8 @@ export default function AnalyticsPage() {
       lastTopUpCents: {},
     });
     return rows.filter((r) => r.amountCents === null).map((r) => r.walletId);
-  }, [isCurrentMonth, data.loading, data.exceptions, data.logs, wallets, confirmed, awayPeriods, today, thisYear, thisMonth]);
-  const lastTopUps = useLastTopUps(coachId, needLastTopUp);
+  }, [isCurrentMonth, data.loading, awayLoading, data.exceptions, data.logs, wallets, confirmed, awayPeriods, today, thisYear, thisMonth]);
+  const { amounts: lastTopUps, loading: lastTopUpsLoading } = useLastTopUps(coachId, needLastTopUp);
 
   const atFirst =
     view === 'month'
@@ -129,7 +132,15 @@ export default function AnalyticsPage() {
   };
 
   const title = view === 'month' ? `${MONTH_NAMES[month.month - 1]} ${month.year}` : `${year}`;
-  const loading = bookingsLoading || walletsLoading || firstLogDate === undefined || data.loading;
+  // Wait for everything, so no number shows half-computed and then jumps.
+  const loading =
+    bookingsLoading ||
+    walletsLoading ||
+    studentsLoading ||
+    awayLoading ||
+    firstLogDate === undefined ||
+    data.loading ||
+    lastTopUpsLoading;
 
   return (
     <div className="px-4 sm:px-6 py-5 sm:py-7 max-w-[1100px]" style={{ color: 'var(--ink)' }}>

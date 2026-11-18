@@ -5,6 +5,7 @@ import {
   comparisonRange,
   eachDate,
   monthRange,
+  rangeLabel,
   sinceDate,
   yearRange,
   ymd,
@@ -115,5 +116,15 @@ describe('eachDate / clampRange / addDays / ymd', () => {
 
   it('formats a local date', () => {
     expect(ymd(new Date(2026, 0, 5))).toBe('2026-01-05');
+  });
+});
+
+describe('rangeLabel', () => {
+  it('shows a span within one month', () => {
+    expect(rangeLabel({ start: '2026-10-01', end: '2026-10-18' })).toBe('1–18 Oct');
+  });
+
+  it('shows a single day without a dash', () => {
+    expect(rangeLabel({ start: '2026-11-01', end: '2026-11-01' })).toBe('1 Nov');
   });
 });

@@ -3,6 +3,7 @@ import {
   busiestDay,
   busiestSlot,
   classesByWeekday,
+  daysRangeFor,
   daysSplit,
   minutesTaught,
   monthlyTaught,
@@ -231,5 +232,24 @@ describe('studentStats', () => {
         students, confirmedBookings: [], isFirstYear: false,
       }).stopped,
     ).toBe(1);
+  });
+});
+
+describe('daysRangeFor', () => {
+  it('runs from the first lesson to yesterday, so today is not a day off yet', () => {
+    expect(daysRangeFor(2026, '2026-04-18', '2026-11-18')).toEqual({ start: '2026-04-18', end: '2026-11-17' });
+  });
+
+  it('covers a past year in full', () => {
+    expect(daysRangeFor(2026, '2026-04-18', '2027-03-01')).toEqual({ start: '2026-04-18', end: '2026-12-31' });
+    expect(daysRangeFor(2027, '2026-04-18', '2028-01-05')).toEqual({ start: '2027-01-01', end: '2027-12-31' });
+  });
+
+  it('is null for a coach with no lessons yet', () => {
+    expect(daysRangeFor(2026, null, '2026-11-18')).toBeNull();
+  });
+
+  it('is null on the day of the first lesson (nothing before today to count)', () => {
+    expect(daysRangeFor(2026, '2026-11-18', '2026-11-18')).toBeNull();
   });
 });

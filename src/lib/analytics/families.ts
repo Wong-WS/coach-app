@@ -4,7 +4,8 @@ import type { CancellationRecord, ReasonBucket } from './cancellations';
 
 /** A paying family: the wallet a student belongs to, or the student alone. */
 export type Family = { key: string; name: string };
-export type Ranked = { name: string; count: number };
+/** `key` tells apart families that share a name. */
+export type Ranked = { key: string; name: string; count: number };
 export type ResolveFamily = (studentId: string, fallbackName?: string) => Family;
 
 export function familyResolver(wallets: Wallet[], students: Student[]): ResolveFamily {
@@ -32,7 +33,7 @@ function rank(counts: Map<string, Ranked>, limit: number): Ranked[] {
 function bump(counts: Map<string, Ranked>, family: Family) {
   const cur = counts.get(family.key);
   if (cur) cur.count += 1;
-  else counts.set(family.key, { name: family.name, count: 1 });
+  else counts.set(family.key, { key: family.key, name: family.name, count: 1 });
 }
 
 /** Reasons that could be the family's doing. Weather and the coach are not. */
