@@ -45,9 +45,21 @@ describe('dayTimeline — free time between classes', () => {
     expect(items[2]).toMatchObject({ kind: 'free', fits: [{ kind: 'slot', ...at('Granito'), start: '13:00', end: '14:00' }] });
   });
 
-  it('counts how many classes fit in a long same-pool gap', () => {
+  it('shows a long same-pool gap as one free range (both ends are next to a class)', () => {
     const items = dayTimeline([cls('a', '12:00', '13:00', 'Granito'), cls('b', '15:00', '16:00', 'Granito')], false);
-    expect(items[2]).toMatchObject({ fits: [{ kind: 'count', ...at('Granito'), count: 2 }] });
+    expect(items[2]).toMatchObject({ fits: [{ kind: 'range', ...at('Granito'), start: '13:00', end: '15:00', best: null }] });
+  });
+
+  it('in a long gap between pools, points at the hour next to each class, then how far it stretches', () => {
+    // Tamarind 9–10, Permai Garden 3:30–4:30 (the coach's Thursday).
+    const items = dayTimeline([cls('a', '09:00', '10:00', 'Tamarind'), cls('b', '15:30', '16:30', 'Permai')], false);
+    expect(items.find((i) => i.kind === 'free' && i.start === '10:00')).toMatchObject({
+      fits: [
+        { kind: 'range', ...at('Tamarind'), start: '10:00', end: '15:00', best: { start: '10:00', end: '11:00' } },
+        { kind: 'range', ...at('Permai'), start: '10:30', end: '15:30', best: { start: '14:30', end: '15:30' } },
+        { kind: 'range', ...anywhere, start: '10:30', end: '15:00', best: null },
+      ],
+    });
   });
 
   it('includes anywhere else when the gap leaves room for travel both ways', () => {
@@ -90,14 +102,14 @@ describe('dayTimeline — start and end of the day', () => {
     });
   });
 
-  it('on a weekend, counts what fits across the whole morning', () => {
+  it('on a weekend, shows the whole morning, pointing at the hour before the first class', () => {
     const [lead] = dayTimeline([cls('a', '11:00', '12:00', 'Quavside')], true);
     expect(lead).toMatchObject({
       start: '08:00',
       end: '11:00',
       fits: [
-        { kind: 'count', ...at('Quavside'), count: 3 },
-        { kind: 'count', ...anywhere, count: 2 },
+        { kind: 'range', ...at('Quavside'), start: '08:00', end: '11:00', best: { start: '10:00', end: '11:00' } },
+        { kind: 'range', ...anywhere, start: '08:00', end: '10:30', best: null },
       ],
     });
   });
@@ -118,6 +130,17 @@ describe('dayTimeline — start and end of the day', () => {
     });
   });
 
+  it('shows a long evening as the hour after the last class, then until 9 pm', () => {
+    const items = dayTimeline([cls('a', '16:00', '17:00', 'Quavside')], false);
+    expect(items[items.length - 1]).toMatchObject({
+      start: '17:00',
+      fits: [
+        { kind: 'range', ...at('Quavside'), start: '17:00', end: '21:00', best: { start: '17:00', end: '18:00' } },
+        { kind: 'range', ...anywhere, start: '17:30', end: '21:00', best: null },
+      ],
+    });
+  });
+
   it('adds nothing after a class ending less than an hour before 9 pm', () => {
     const items = dayTimeline([cls('a', '19:30', '20:30', 'Quavside')], false);
     expect(items[items.length - 1].kind).toBe('class');
@@ -130,7 +153,7 @@ describe('dayTimeline — start and end of the day', () => {
 
   it('shows a day with no classes as free all day', () => {
     expect(dayTimeline([], false)).toEqual([
-      { kind: 'free', start: '08:00', end: '21:00', minutes: 780, fits: [{ kind: 'count', ...anywhere, count: 13 }] },
+      { kind: 'free', start: '08:00', end: '21:00', minutes: 780, fits: [{ kind: 'range', ...anywhere, start: '08:00', end: '21:00', best: null }] },
     ]);
   });
 

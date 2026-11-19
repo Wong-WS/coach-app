@@ -75,10 +75,20 @@ function classTitle(b: Booking, studentsById: Map<string, Student>): string {
   return `${names[0]} +${names.length - 1}`;
 }
 
-function fitLabel(f: FreeFit): string {
-  const where = f.locationName;
-  if (f.kind === 'slot') return where ? `${where} ${fmtRange(f.start, f.end)}` : `anywhere else ${fmtRange(f.start, f.end)}`;
-  return where ? `${f.count} at ${where}` : `${f.count} anywhere else`;
+const fmtTime = (t: string) => {
+  const { label, period } = hm(t);
+  return `${label}${period}`;
+};
+
+/**
+ * Green part + optional grey fallback: "Tamarind 10–11am" · "or until 3pm".
+ * The best hour sits right next to a class at that pool (no extra driving).
+ */
+function fitLabel(f: FreeFit): { main: string; extra: string | null } {
+  const where = f.locationName ?? 'anywhere else';
+  if (f.kind === 'slot' || !f.best) return { main: `${where} ${fmtRange(f.start, f.end)}`, extra: null };
+  const extra = f.best.start === f.start ? `or until ${fmtTime(f.end)}` : `or from ${fmtTime(f.start)}`;
+  return { main: `${where} ${fmtRange(f.best.start, f.best.end)}`, extra };
 }
 
 // ─── Cards ───────────────────────────────────────────────────────────────────
@@ -140,11 +150,15 @@ function FreeBox({ item, allDay }: { item: Extract<TimelineItem, { kind: 'free' 
       </div>
       {!allDay &&
         (item.fits.length > 0 ? (
-          item.fits.map((f) => (
-            <div key={fitLabel(f)} className="text-[11.5px] truncate" style={{ color: 'var(--good)' }}>
-              {fitLabel(f)}
-            </div>
-          ))
+          item.fits.map((f) => {
+            const { main, extra } = fitLabel(f);
+            return (
+              <div key={main} className="text-[11.5px]" style={{ color: 'var(--good)' }}>
+                {main}
+                {extra && <span style={{ color: 'var(--ink-3)' }}> · {extra}</span>}
+              </div>
+            );
+          })
         ) : (
           <div className="text-[11.5px]" style={{ color: 'var(--ink-4)' }}>
             too tight with travel

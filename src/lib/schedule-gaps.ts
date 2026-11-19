@@ -14,9 +14,16 @@ const WEEKDAY_LEAD_WINDOW = CLASS_MIN + TRAVEL_MIN;
 
 type Place = { locationId: string | null; locationName: string | null }; // null = anywhere else
 
+type Span = { start: string; end: string };
+
+/**
+ * One class fits → that slot. More fit → the whole usable range, plus the
+ * best hour (right next to the class at that pool, so no extra driving), or
+ * null when either end is as good (same pool both sides, or anywhere else).
+ */
 export type FreeFit =
-  | (Place & { kind: 'slot'; start: string; end: string })
-  | (Place & { kind: 'count'; count: number });
+  | (Place & { kind: 'slot' } & Span)
+  | (Place & { kind: 'range'; best: Span | null } & Span);
 
 export type TimelineItem =
   | { kind: 'class'; booking: Booking }
@@ -32,11 +39,14 @@ export const toTime = (min: number) =>
 const placeOf = (b: Booking): Place => ({ locationId: b.locationId, locationName: b.locationName });
 const ANYWHERE: Place = { locationId: null, locationName: null };
 
-function fit(place: Place, usable: number, slotStart: number): FreeFit | null {
-  const count = Math.floor(usable / CLASS_MIN);
+/** What fits in [from, to]; `near` is the end that sits next to a class at this pool. */
+function fit(place: Place, from: number, to: number, near: 'start' | 'end' | null): FreeFit | null {
+  const count = Math.floor((to - from) / CLASS_MIN);
   if (count <= 0) return null;
+  const slotStart = near === 'end' ? to - CLASS_MIN : from;
   if (count === 1) return { kind: 'slot', ...place, start: toTime(slotStart), end: toTime(slotStart + CLASS_MIN) };
-  return { kind: 'count', ...place, count };
+  const best = near ? { start: toTime(slotStart), end: toTime(slotStart + CLASS_MIN) } : null;
+  return { kind: 'range', ...place, start: toTime(from), end: toTime(to), best };
 }
 
 /**
@@ -46,24 +56,21 @@ function fit(place: Place, usable: number, slotStart: number): FreeFit | null {
  * has a class.
  */
 function fitsIn(start: number, end: number, before: Booking | null, after: Booking | null): FreeFit[] {
-  const gap = end - start;
   if (before && after && before.locationId === after.locationId) {
-    const f = fit(placeOf(before), gap, start);
+    const f = fit(placeOf(before), start, end, null);
     return f ? [f] : [];
   }
   const out: FreeFit[] = [];
   const bothSides = !!before && !!after;
   if (before) {
-    const f = fit(placeOf(before), gap - (bothSides ? TRAVEL_MIN : 0), start);
+    const f = fit(placeOf(before), start, end - (bothSides ? TRAVEL_MIN : 0), 'start');
     if (f) out.push(f);
   }
   if (after) {
-    const usable = gap - (bothSides ? TRAVEL_MIN : 0);
-    const f = fit(placeOf(after), usable, end - CLASS_MIN);
+    const f = fit(placeOf(after), start + (bothSides ? TRAVEL_MIN : 0), end, 'end');
     if (f) out.push(f);
   }
-  const sides = (before ? 1 : 0) + (after ? 1 : 0);
-  const f = fit(ANYWHERE, gap - TRAVEL_MIN * sides, start + (before ? TRAVEL_MIN : 0));
+  const f = fit(ANYWHERE, start + (before ? TRAVEL_MIN : 0), end - (after ? TRAVEL_MIN : 0), null);
   if (f) out.push(f);
   return out;
 }
